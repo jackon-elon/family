@@ -69,4 +69,5 @@
   </view>
 
   <view class="bottom-actions"><button wx:if="{{isAdmin}}" class="btn secondary" bindtap="onAddPerson">＋ 添加人物</button><button wx:if="{{isAdmin}}" class="btn ghost" bindtap="onManage">管理圈子</button></view>
+  <view class="leave-link" wx:if="{{role !== 'owner'}}" bindtap="onLeave">退出这个圈子</view>
 </view>

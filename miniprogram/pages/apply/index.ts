@@ -5,7 +5,11 @@ import { dateText, toast } from '../../utils/navigation';
 Page({
   data: { circle: null as Circle | null, status: '', expiryText: '', name: '', note: '', submitting: false, submitted: false, error: '' },
   async onLoad(this: any, options: any) {
-    this.token = options.token || '';
+    let sceneToken = '';
+    if (!options.token && options.scene) {
+      try { sceneToken = decodeURIComponent(options.scene); } catch (_) { sceneToken = options.scene; }
+    }
+    this.token = options.token || sceneToken;
     // A shared invite opens on a different device with no local mode setting.
     // The local admin preview opts into demo data explicitly via demoPreview=1.
     if (this.token && CLOUD_ENV_ID && options.demoPreview !== '1' && !setDemoMode(false)) {

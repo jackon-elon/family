@@ -96,6 +96,24 @@ test('普通成员不能邀请，圈主可以任免管理员', async () => {
   await f.denied('member', 'invite.create', {circleId: circle.id}, 'FORBIDDEN');
 });
 
+test('圈主移交后原圈主可退出，新圈主仍须先移交', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  await f.join('owner', 'member', circle.id);
+  const target = (await f.ok('owner', 'member.list', {circleId: circle.id})).members.find(m => !m.isSelf);
+  await f.denied('member', 'audit.list', {circleId: circle.id}, 'FORBIDDEN');
+  await f.denied('owner', 'member.leave', {circleId: circle.id}, 'OWNER_REQUIRED');
+  await f.ok('owner', 'circle.transferOwner', {circleId: circle.id, memberId: target.id});
+  const newOwner = await f.ok('member', 'circle.detail', {circleId: circle.id});
+  assert.equal(newOwner.role, 'owner');
+  await f.ok('owner', 'member.leave', {circleId: circle.id});
+  await f.denied('owner', 'person.list', {circleId: circle.id}, 'FORBIDDEN');
+  await f.denied('member', 'member.leave', {circleId: circle.id}, 'OWNER_REQUIRED');
+  const audit = (await f.ok('member', 'audit.list', {circleId: circle.id})).events;
+  assert.ok(audit.some(item => item.type === 'circle.transferOwner'));
+  assert.ok(audit.some(item => item.type === 'member.leave'));
+});
+
 test('联系方式与城市由本人逐字段公开，管理员不能绕过', async () => {
   const f = fixture();
   const circle = await f.create();

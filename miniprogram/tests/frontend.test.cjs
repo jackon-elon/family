@@ -124,12 +124,19 @@ test('a shared invite opens in cloud mode while an admin demo preview stays loca
   assert.equal(guest.data.circle.name, '真实家庭圈');
 
   setDemoMode(true);
+  const scanned = page();
+  await scanned.onLoad({ scene: encodeURIComponent('real-token') });
+  assert.equal(scanned.token, 'real-token');
+  assert.equal(isDemoMode(), false);
+  assert.equal(cloudCalls, 2);
+
+  setDemoMode(true);
   resetDemoData();
   const generated = await invoke({ action: 'invite.create', payload: { circleId: 'family_demo' } });
   const preview = page();
   await preview.onLoad({ token: generated.data.invite.token, demoPreview: '1' });
   assert.equal(isDemoMode(), true);
-  assert.equal(cloudCalls, 1);
+  assert.equal(cloudCalls, 2);
   assert.equal(preview.data.circle.name, '陈家的小圈子');
   config.CLOUD_ENV_ID = '';
   delete wx.cloud;
@@ -149,5 +156,71 @@ test('a joined non-admin without a card can create only their own card', async (
   const self = await invoke({ action: 'person.create', payload: { circleId: 'class_demo', name: '我的新卡', claimSelf: true } });
   assert.equal(self.ok, true);
   assert.equal(self.data.person.isSelf, true);
+  resetDemoData();
+});
+
+test('owner can appoint an admin, hand over ownership, and audit records the changes', async () => {
+  resetDemoData();
+  const promoted = await invoke({ action: 'member.setRole', payload: { circleId: 'family_demo', memberId: 'm_f_dad', role: 'admin' } });
+  assert.equal(promoted.ok, true);
+  const key = 'kin-network-demo-db-v2';
+  const db = storage.get(key);
+  db.delegations.push({ id: 'role_delegation', circleId: 'family_demo', personId: 'f_mom', adminMemberId: 'm_f_dad', fields: ['city'], active: true });
+  storage.set(key, db);
+  const demoted = await invoke({ action: 'member.setRole', payload: { circleId: 'family_demo', memberId: 'm_f_dad', role: 'member' } });
+  assert.equal(demoted.ok, true);
+  assert.equal(storage.get(key).delegations.find(d => d.id === 'role_delegation').active, false);
+  const promotedAgain = await invoke({ action: 'member.setRole', payload: { circleId: 'family_demo', memberId: 'm_f_dad', role: 'admin' } });
+  assert.equal(promotedAgain.ok, true);
+  const audit = await invoke({ action: 'audit.list', payload: { circleId: 'family_demo' } });
+  assert.equal(audit.ok, true);
+  assert.ok(audit.data.events.some(e => e.type === 'member.setRole' && e.targetId === 'm_f_dad'));
+  const transferred = await invoke({ action: 'circle.transferOwner', payload: { circleId: 'family_demo', memberId: 'm_f_dad' } });
+  assert.equal(transferred.ok, true);
+  const detail = await invoke({ action: 'circle.detail', payload: { circleId: 'family_demo' } });
+  assert.equal(detail.data.role, 'admin');
+  const cannotPromote = await invoke({ action: 'member.setRole', payload: { circleId: 'family_demo', memberId: 'm_f_mom', role: 'admin' } });
+  assert.equal(cannotPromote.ok, false);
+  const latest = await invoke({ action: 'audit.list', payload: { circleId: 'family_demo' } });
+  assert.ok(latest.data.events.some(e => e.type === 'circle.transferOwner' && e.targetId === 'm_f_dad'));
+  resetDemoData();
+});
+
+test('member leave revokes access and private data while retaining family links', async () => {
+  resetDemoData();
+  const key = 'kin-network-demo-db-v2';
+  const db = storage.get(key);
+  const self = db.members.find(m => m.id === 'm_f_self');
+  self.role = 'member';
+  db.delegations.push({ id: 'leave_delegation', circleId: 'family_demo', personId: 'f_me', adminMemberId: 'm_f_dad', fields: ['city'], active: true });
+  storage.set(key, db);
+  const left = await invoke({ action: 'member.leave', payload: { circleId: 'family_demo' } });
+  assert.equal(left.ok, true);
+  const denied = await invoke({ action: 'person.list', payload: { circleId: 'family_demo' } });
+  assert.equal(denied.ok, false);
+  const circles = await invoke({ action: 'circle.list' });
+  assert.ok(!circles.data.circles.some(c => c.id === 'family_demo'));
+  assert.ok(circles.data.circles.some(c => c.id === 'class_demo'));
+  const saved = storage.get(key);
+  assert.equal(saved.persons.find(p => p.id === 'f_me').city, undefined);
+  assert.equal(saved.persons.find(p => p.id === 'f_me').phone, undefined);
+  assert.equal(saved.members.find(m => m.id === 'm_f_self').personId, undefined);
+  assert.equal(saved.delegations.find(d => d.id === 'leave_delegation').active, false);
+  assert.ok(saved.relations.some(r => r.from === 'f_dad' && r.to === 'f_me'));
+  resetDemoData();
+});
+
+test('removing a member also revokes their active delegations', async () => {
+  resetDemoData();
+  const key = 'kin-network-demo-db-v2';
+  const db = storage.get(key);
+  db.delegations.push({ id: 'removed_delegation', circleId: 'family_demo', personId: 'f_mom', adminMemberId: 'm_f_dad', fields: ['city'], active: true });
+  storage.set(key, db);
+  const removed = await invoke({ action: 'member.remove', payload: { circleId: 'family_demo', memberId: 'm_f_dad' } });
+  assert.equal(removed.ok, true);
+  const saved = storage.get(key);
+  assert.equal(saved.members.find(m => m.id === 'm_f_dad').personId, undefined);
+  assert.equal(saved.persons.find(p => p.id === 'f_dad').city, undefined);
+  assert.equal(saved.delegations.find(d => d.id === 'removed_delegation').active, false);
   resetDemoData();
 });

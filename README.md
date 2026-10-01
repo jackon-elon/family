@@ -12,7 +12,7 @@ npm test
 npm run build:cloud
 ```
 
-`npm test` 运行 37 项亲属规则、后端权限、邀请与前端演示测试，以及 TypeScript 和页面配置检查。`build:cloud` 编译云端服务并将产物放入 `cloudfunctions/api/lib`。执行结果及未验证部分见[测试报告](./docs/test-report.md)。
+`npm test` 运行 41 项亲属规则、后端权限、邀请与前端演示测试，以及 TypeScript 和页面配置检查。`build:cloud` 编译云端服务并将产物放入 `cloudfunctions/api/lib`。执行结果及未验证部分见[测试报告](./docs/test-report.md)。
 
 安装微信开发者工具后，以**项目根目录**（本目录）导入 `project.config.json`；当前 `appid` 为 `touristappid`，只供本地演示。云函数目录在项目根的 `cloudfunctions/`，因此不要只导入 `miniprogram/` 子目录。前端演示数据保存在微信开发者工具的本地缓存中，不写入云端。
 

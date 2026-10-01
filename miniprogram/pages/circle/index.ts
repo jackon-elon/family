@@ -1,6 +1,6 @@
 import { Circle, Person, Relation, invoke, resolvePhotoUrls, showApiError } from '../../services/api';
 import { CityGroup, groupCities } from '../../utils/geography';
-import { go, q, toast } from '../../utils/navigation';
+import { confirm, go, q, toast } from '../../utils/navigation';
 import { relationshipFor } from '../../utils/relationship';
 
 interface PersonRow extends Person { initial: string; relationLabel: string; relationPath: string; relationMissing?: string; detail: string; depth: number }
@@ -93,5 +93,13 @@ Page({
   onAddPerson(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}`); },
   onAddMyself(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}`); },
   onManage(this: any) { go(`/pages/manage/index?circleId=${q(this.circleId)}`); },
-  onInvite(this: any) { go(`/pages/invite/index?circleId=${q(this.circleId)}`); }
+  onInvite(this: any) { go(`/pages/invite/index?circleId=${q(this.circleId)}`); },
+  async onLeave(this: any) {
+    if (this.data.role === 'owner') return toast('请先移交圈主，再退出圈子');
+    if (!(await confirm('退出这个圈子', '退出后会立即失去访问权，本人私人资料会从圈内隐藏或删除；家庭关系节点会保留最少信息。重新加入需要管理员邀请和审核。'))) return;
+    const result = await invoke({ action: 'member.leave', payload: { circleId: this.circleId } });
+    if (!result.ok) return showApiError(result);
+    wx.removeStorageSync('kin-current-circle');
+    wx.reLaunch({ url: '/pages/circles/index' });
+  }
 });

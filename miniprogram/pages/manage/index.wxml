@@ -13,7 +13,7 @@
   <view class="card" wx:if="{{suggestions.length}}"><view class="review-row" wx:for="{{suggestions}}" wx:key="id"><view class="pill grey">{{item.type === 'relation' ? '关系建议' : item.type === 'invite' ? '邀请推荐' : '资料建议'}}</view><view class="review-note">{{item.message}}</view><view class="review-actions"><button class="btn secondary small-btn" data-id="{{item.id}}" data-status="rejected" bindtap="onSuggestion">忽略</button><button class="btn small-btn" data-id="{{item.id}}" data-status="accepted" bindtap="onSuggestion">接受建议</button></view></view></view>
 
   <view class="row between block-title"><view class="section-title">人物与成员</view><text class="text-action" bindtap="onAddPerson">＋ 添加人物</text></view>
-  <view class="card"><view class="member-row" wx:for="{{members}}" wx:key="id"><view class="avatar">{{item.initial}}</view><view class="grow"><view class="person-name">{{item.name}}</view><view class="person-meta">{{item.role === 'owner' ? '圈主' : item.role === 'admin' ? '管理员' : '成员'}}</view></view><text class="text-action danger-text" wx:if="{{item.role === 'member'}}" data-id="{{item.id}}" bindtap="onRemove">移出</text></view></view>
+  <view class="card"><view class="member-row" wx:for="{{members}}" wx:key="id"><view class="avatar">{{item.initial}}</view><view class="grow"><view class="person-name">{{item.name}}</view><view class="person-meta">{{item.role === 'owner' ? '圈主' : item.role === 'admin' ? '管理员' : '成员'}}</view></view><text class="text-action" wx:if="{{item.canManage}}" data-id="{{item.id}}" bindtap="onMemberMenu">管理 ›</text></view></view>
 
   <view wx:if="{{circle.type === 'family'}}">
     <view class="section-title block-title">整理家庭关系</view>
@@ -27,4 +27,8 @@
     </view>
     <view class="card relation-list" wx:if="{{relationRows.length}}"><view class="relation-row" wx:for="{{relationRows}}" wx:key="id"><view class="grow"><view class="strong">{{item.text}}</view><view class="small muted" wx:if="{{item.extra}}">{{item.extra}}</view></view><text class="text-action danger-text" data-id="{{item.id}}" bindtap="onDeleteRelation">删除</text></view></view>
   </view>
+  <view class="section-title block-title">操作记录</view>
+  <view class="card audit-card" wx:if="{{auditRows.length}}"><view class="audit-row" wx:for="{{auditRows}}" wx:key="id"><view class="audit-dot"></view><view class="grow"><view class="strong">{{item.title}}</view><view class="small muted" wx:if="{{item.detail}}">{{item.detail}}</view></view><text class="audit-time">{{item.when}}</text></view></view>
+  <view class="card empty compact" wx:else>还没有操作记录。</view>
+  <view class="audit-more" wx:if="{{auditEvents.length > 6}}" bindtap="onMoreAudit">{{showAllAudit ? '收起记录' : '查看全部 ' + auditEvents.length + ' 条记录'}}</view>
 </view>

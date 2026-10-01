@@ -1,0 +1,12 @@
+import type { CollectionName, EntityMap } from './model';
+
+export interface UnitOfWork {
+  get<K extends CollectionName>(collection: K, id: string): Promise<EntityMap[K] | undefined>;
+  find<K extends CollectionName>(collection: K, match: Partial<EntityMap[K]>): Promise<EntityMap[K][]>;
+  put<K extends CollectionName>(collection: K, entity: EntityMap[K]): Promise<void>;
+  delete<K extends CollectionName>(collection: K, id: string): Promise<void>;
+}
+
+export interface Repository {
+  atomic<T>(work: (unit: UnitOfWork) => Promise<T>): Promise<T>;
+}

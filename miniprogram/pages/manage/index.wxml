@@ -1,0 +1,30 @@
+<view class="page manage-page" wx:if="{{circle}}">
+  <view class="eyebrow">CIRCLE ADMIN</view><view class="title">管理 {{circle.name}}</view><view class="subtitle intro">邀请熟人、核对申请，帮圈子里的关系保持清楚。</view>
+  <view class="action-tile" bindtap="onInvite"><view class="tile-icon">＋</view><view class="grow"><view class="strong">邀请一个人加入</view><view class="small muted">一次性邀请，72 小时内有效，仍需审核</view></view><text class="chevron">›</text></view>
+
+  <view class="section-title block-title">加入申请 <text class="count">{{applications.length}}</text></view>
+  <view class="card" wx:if="{{applications.length}}"><view class="review-row" wx:for="{{applications}}" wx:key="id"><view class="row between"><view class="person-name">{{item.applicantName || item.name}}</view><text class="small muted">{{item.createdText}}</text></view><view class="review-note">{{item.note || '未填写身份说明'}}</view><view class="review-actions"><button class="btn secondary small-btn" data-id="{{item.id}}" data-decision="reject" bindtap="onJoin">拒绝</button><button class="btn small-btn" data-id="{{item.id}}" data-decision="approve" bindtap="onJoin">确认加入</button></view></view></view>
+  <view class="card empty compact" wx:else>暂时没有待审核的加入申请。</view>
+
+  <view class="section-title block-title" wx:if="{{claimRequests.length}}">认领申请 <text class="count">{{claimRequests.length}}</text></view>
+  <view class="card" wx:if="{{claimRequests.length}}"><view class="review-row" wx:for="{{claimRequests}}" wx:key="id"><view class="person-name">{{item.applicantName}}</view><view class="review-note">申请认领现有人物卡，请核对本人身份。</view><view class="review-actions"><button class="btn secondary small-btn" data-id="{{item.id}}" data-decision="reject" bindtap="onClaim">拒绝</button><button class="btn small-btn" data-id="{{item.id}}" data-decision="approve" bindtap="onClaim">确认认领</button></view></view></view>
+
+  <view class="section-title block-title" wx:if="{{suggestions.length}}">更正建议 <text class="count">{{suggestions.length}}</text></view>
+  <view class="card" wx:if="{{suggestions.length}}"><view class="review-row" wx:for="{{suggestions}}" wx:key="id"><view class="pill grey">{{item.type === 'relation' ? '关系建议' : item.type === 'invite' ? '邀请推荐' : '资料建议'}}</view><view class="review-note">{{item.message}}</view><view class="review-actions"><button class="btn secondary small-btn" data-id="{{item.id}}" data-status="rejected" bindtap="onSuggestion">忽略</button><button class="btn small-btn" data-id="{{item.id}}" data-status="accepted" bindtap="onSuggestion">接受建议</button></view></view></view>
+
+  <view class="row between block-title"><view class="section-title">人物与成员</view><text class="text-action" bindtap="onAddPerson">＋ 添加人物</text></view>
+  <view class="card"><view class="member-row" wx:for="{{members}}" wx:key="id"><view class="avatar">{{item.initial}}</view><view class="grow"><view class="person-name">{{item.name}}</view><view class="person-meta">{{item.role === 'owner' ? '圈主' : item.role === 'admin' ? '管理员' : '成员'}}</view></view><text class="text-action danger-text" wx:if="{{item.role === 'member'}}" data-id="{{item.id}}" bindtap="onRemove">移出</text></view></view>
+
+  <view wx:if="{{circle.type === 'family'}}">
+    <view class="section-title block-title">整理家庭关系</view>
+    <view class="card relation-form">
+      <view class="small muted form-caption">先选两位人物，再决定他们之间的关系。</view>
+      <view class="field"><text class="field-label">左边这位</text><picker mode="selector" range="{{personNames}}" value="{{fromIndex}}" data-field="fromIndex" bindchange="onPick"><view class="field-control">{{personNames[fromIndex] || '先添加人物'}} ▾</view></picker></view>
+      <view class="field"><text class="field-label">右边这位</text><picker mode="selector" range="{{personNames}}" value="{{toIndex}}" data-field="toIndex" bindchange="onPick"><view class="field-control">{{personNames[toIndex] || '先添加人物'}} ▾</view></picker></view>
+      <view class="field"><text class="field-label">关系</text><picker mode="selector" range="{{relationTypes}}" value="{{relationIndex}}" data-field="relationIndex" bindchange="onPick"><view class="field-control">{{relationTypes[relationIndex]}} ▾</view></picker></view>
+      <view class="field" wx:if="{{relationIndex === 2}}"><text class="field-label">谁较年长？</text><picker mode="selector" range="{{olderOptions}}" value="{{olderIndex}}" data-field="olderIndex" bindchange="onPick"><view class="field-control">{{olderOptions[olderIndex]}} ▾</view></picker></view>
+      <button class="btn secondary" bindtap="onAddRelation">添加这条关系</button>
+    </view>
+    <view class="card relation-list" wx:if="{{relationRows.length}}"><view class="relation-row" wx:for="{{relationRows}}" wx:key="id"><view class="grow"><view class="strong">{{item.text}}</view><view class="small muted" wx:if="{{item.extra}}">{{item.extra}}</view></view><text class="text-action danger-text" data-id="{{item.id}}" bindtap="onDeleteRelation">删除</text></view></view>
+  </view>
+</view>

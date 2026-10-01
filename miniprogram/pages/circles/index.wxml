@@ -1,0 +1,36 @@
+<view class="page circles-page">
+  <view class="hero">
+    <view class="eyebrow">好久不见，也能随时找到</view>
+    <view class="title">亲友关系网</view>
+    <view class="subtitle">把家人和同学放进各自的小圈子。想知道怎么称呼、谁在同一座城，打开看看就好。</view>
+    <view class="hero-ornament ornament-one"></view><view class="hero-ornament ornament-two"></view>
+  </view>
+
+  <view class="mode-banner" wx:if="{{demoMode}}">
+    <text class="mode-dot"></text><text class="grow">本地演示 · 所有资料只保存在此设备</text>
+    <text class="mode-link" bindtap="onSwitchMode">连接云端 ›</text>
+  </view>
+  <view class="mode-banner" wx:else>
+    <text class="mode-dot cloud"></text><text class="grow">云端模式</text>
+    <text class="mode-link" bindtap="onSwitchMode">回到演示 ›</text>
+  </view>
+
+  <view class="row between group-heading"><view><view class="eyebrow">FAMILY</view><view class="section-title">家庭圈</view></view><text class="group-count">{{familyCircles.length}} 个圈子</text></view>
+  <view wx:if="{{familyCircles.length}}">
+    <view class="circle-card family" wx:for="{{familyCircles}}" wx:key="id" data-id="{{item.id}}" bindtap="onOpenCircle">
+      <view class="circle-mark">家</view><view class="grow"><view class="circle-name">{{item.name}}</view><view class="circle-meta">{{item.memberCount}} 位成员 · {{item.mode === 'private' ? '自己记录' : '一起维护'}}</view></view><text class="chevron">›</text>
+    </view>
+  </view>
+  <view class="card empty compact" wx:else>这里还没有家庭圈。先把几个熟悉的人加进来吧。</view>
+
+  <view class="row between group-heading"><view><view class="eyebrow">CLASSMATES</view><view class="section-title">同学圈</view></view><text class="group-count">{{classCircles.length}} 个圈子</text></view>
+  <view wx:if="{{classCircles.length}}">
+    <view class="circle-card class" wx:for="{{classCircles}}" wx:key="id" data-id="{{item.id}}" bindtap="onOpenCircle">
+      <view class="circle-mark">同</view><view class="grow"><view class="circle-name">{{item.name}}</view><view class="circle-meta">{{item.memberCount}} 位成员 · {{item.school || '同班同学'}}</view></view><text class="chevron">›</text>
+    </view>
+  </view>
+  <view class="card empty compact" wx:else>不同班级分开建圈，找同学更清楚。</view>
+
+  <view class="sticky-bottom"><button class="btn" bindtap="onCreate">＋ 新建一个圈子</button></view>
+  <view class="demo-footer" wx:if="{{demoMode}}"><text bindtap="onReset">恢复演示数据</text><text> · </text><text>地图只展示成员自愿填写的城市</text></view>
+</view>

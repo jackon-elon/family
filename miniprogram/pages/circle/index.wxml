@@ -1,0 +1,72 @@
+<view class="page circle-page" wx:if="{{circle}}">
+  <view class="circle-head">
+    <view class="row between"><view class="eyebrow">{{circle.type === 'family' ? 'FAMILY CIRCLE' : 'CLASS CIRCLE'}}</view><text class="pill {{circle.type === 'family' ? '' : 'class-pill'}}">{{circle.type === 'family' ? '家庭圈' : '同学圈'}}</text></view>
+    <view class="title">{{circle.name}}</view>
+    <view class="subtitle" wx:if="{{circle.type === 'classmate'}}">{{circle.school}} · {{circle.cohort}} · {{circle.className}}</view>
+    <view class="subtitle" wx:else>亲近的人，和他们现在生活的城市。</view>
+    <view class="head-footer"><text>{{people.length}} 张人物卡</text><text> · </text><text>{{circle.mode === 'private' ? '自己记录' : '邀请共建'}}</text></view>
+  </view>
+  <view class="self-prompt" wx:if="{{!selfId}}"><view class="grow"><view class="strong">先找到或创建你的本人卡</view><view class="small muted">认领后就能编辑自己的资料，家庭圈也会以你为视角。</view></view><button class="btn secondary small-btn" bindtap="onAddMyself">创建我的卡</button></view>
+
+  <view class="segmented main-tabs">
+    <view wx:if="{{circle.type === 'family'}}" class="segment {{tab === 'network' ? 'active' : ''}}" data-tab="network" bindtap="onTab">关系网</view>
+    <view class="segment {{tab === 'list' ? 'active' : ''}}" data-tab="list" bindtap="onTab">列表</view>
+    <view class="segment {{tab === 'map' ? 'active' : ''}}" data-tab="map" bindtap="onTab">地图</view>
+  </view>
+
+  <view class="search-box"><text class="search-icon">⌕</text><input value="{{query}}" placeholder="搜索姓名、称呼或城市" confirm-type="search" bindinput="onSearch" /></view>
+
+  <view wx:if="{{circle.type === 'family' && (tab === 'network' || tab === 'list')}}" class="viewpoint-bar">
+    <view><view class="small muted">当前视角</view><view class="viewpoint-name">{{perspectiveName || '请选择人物'}} 的视角</view></view>
+    <picker mode="selector" range="{{perspectiveNames}}" value="{{perspectiveIndex}}" bindchange="onPerspective"><view class="viewpoint-select">切换视角 ▾</view></picker>
+  </view>
+
+  <view wx:if="{{tab === 'network' && circle.type === 'family'}}">
+    <view class="network-center" wx:if="{{perspectiveId}}">
+      <view class="center-orbit orbit-one"></view><view class="center-orbit orbit-two"></view>
+      <view class="center-label">从这里出发</view><view class="center-avatar">{{perspectiveInitial}}</view><view class="center-name">{{perspectiveName}}</view><view class="center-sub">点开人物，看看该怎么叫 TA</view>
+    </view>
+    <view class="row between network-heading"><view class="section-title">身边的关系</view><text wx:if="{{selfId && perspectiveId !== selfId}}" class="text-action" bindtap="onMyView">回到我的视角</text></view>
+    <view class="network-list" wx:if="{{graphRows.length}}">
+      <view class="network-item" wx:for="{{graphRows}}" wx:key="id" data-id="{{item.id}}" bindtap="onPerson">
+        <view class="network-connector"><view class="connector-dot"></view></view>
+        <view class="avatar"><image wx:if="{{item.photoUrl}}" src="{{item.photoUrl}}" mode="aspectFill"/><text wx:else>{{item.initial}}</text></view>
+        <view class="grow"><view class="row gap"><text class="person-name">{{item.name}}</text><text class="pill small">{{item.relationLabel}}</text></view><view class="person-meta">{{item.city || '城市未公开'}}<text wx:if="{{item.relationMissing}}"> · 待补充{{item.relationMissing}}</text></view></view><text class="chevron">›</text>
+      </view>
+    </view>
+    <view class="card empty" wx:else><text class="empty-icon">♡</text>还没有可显示的关系。先添加人物，再把关系连起来。</view>
+    <view class="expand-link" wx:if="{{people.length > graphRows.length + 1 && !query}}" bindtap="onExpand">{{expanded ? '收起其他分支' : '展开更多分支'}} ↓</view>
+  </view>
+
+  <view wx:if="{{tab === 'list'}}">
+    <view class="filter-row" wx:if="{{circle.type === 'classmate'}}">
+      <picker mode="selector" range="{{cityOptions}}" value="{{cityIndex}}" data-field="cityIndex" bindchange="onFilter"><view class="filter-chip">{{cityOptions[cityIndex]}} ▾</view></picker>
+      <picker mode="selector" range="{{statusOptions}}" value="{{statusIndex}}" data-field="statusIndex" bindchange="onFilter"><view class="filter-chip">{{statusOptions[statusIndex]}} ▾</view></picker>
+      <picker mode="selector" range="{{industryOptions}}" value="{{industryIndex}}" data-field="industryIndex" bindchange="onFilter"><view class="filter-chip">{{industryOptions[industryIndex]}} ▾</view></picker>
+    </view>
+    <view class="row between list-heading"><view class="section-title">{{circle.type === 'family' ? '家人列表' : '同班同学'}}</view><text class="small muted">{{filteredCount}} 人</text></view>
+    <view class="card list-card" wx:if="{{rows.length}}">
+      <view class="person-row" wx:for="{{rows}}" wx:key="id" data-id="{{item.id}}" bindtap="onPerson"><view class="avatar"><image wx:if="{{item.photoUrl}}" src="{{item.photoUrl}}" mode="aspectFill"/><text wx:else>{{item.initial}}</text></view><view class="grow"><view class="row gap"><text class="person-name">{{item.name}}</text><text class="pill grey" wx:if="{{item.isSelf}}">我</text></view><view class="person-meta">{{item.relationLabel}} · {{item.detail}}</view></view><text class="chevron">›</text></view>
+    </view>
+    <view class="card empty" wx:else><text class="empty-icon">⌕</text>没有找到符合条件的人。试试换个名字或筛选。</view>
+  </view>
+
+  <view wx:if="{{tab === 'map'}}">
+    <view class="row between map-heading"><view><view class="section-title">城市分布示意</view><view class="small muted">只显示愿意公开的城市</view></view><view class="map-toggle"><text class="{{mapScope === 'china' ? 'active' : ''}}" data-scope="china" bindtap="onScope">中国</text><text class="{{mapScope === 'world' ? 'active' : ''}}" data-scope="world" bindtap="onScope">世界</text></view></view>
+    <view class="map-board {{mapScope}}">
+      <view class="map-grid"></view>
+      <block wx:if="{{mapScope === 'world'}}"><view class="land north-america"></view><view class="land south-america"></view><view class="land europe"></view><view class="land africa"></view><view class="land asia"></view><view class="land oceania"></view><text class="region region-na">北美</text><text class="region region-eu">欧洲</text><text class="region region-as">亚洲</text><text class="region region-oc">大洋洲</text></block>
+      <block wx:else><view class="china-land west"></view><view class="china-land east"></view><view class="china-land south"></view><text class="region region-china">中国城市分布</text></block>
+      <view class="map-dot" wx:for="{{mapGroups}}" wx:key="key" style="left:{{item.x}}%;top:{{item.y}}%;" data-key="{{item.key}}" bindtap="onCity"><text class="dot-count">{{item.count}}</text><text class="dot-label">{{item.city}}</text></view>
+      <view wx:if="{{!mapGroups.length}}" class="map-empty">目前没有可显示的城市</view>
+    </view>
+    <view class="map-note" wx:if="{{mapScope === 'china' && overseas}}">本圈另有 {{overseas}} 位成员在海外，切到「世界」看看。</view>
+    <view class="map-note" wx:if="{{unmapped}}">有 {{unmapped}} 位成员填写的城市暂未定位到地图，仍可在列表中找到。</view>
+    <view class="card city-sheet" wx:if="{{selectedCityRows.length}}"><view class="row between"><view class="section-title">{{selectedCityRows[0].city}} · {{selectedCityRows.length}} 人</view><text class="text-action" bindtap="clearCity">收起</text></view><view class="person-row" wx:for="{{selectedCityRows}}" wx:key="id" data-id="{{item.id}}" bindtap="onPerson"><view class="avatar"><image wx:if="{{item.photoUrl}}" src="{{item.photoUrl}}" mode="aspectFill"/><text wx:else>{{item.initial}}</text></view><view class="grow"><view class="person-name">{{item.name}}</view><view class="person-meta">{{item.relationLabel}} · {{item.status || '近况待完善'}}</view></view><text class="chevron">›</text></view></view>
+    <view class="section-title city-heading">城市索引</view>
+    <view class="card" wx:if="{{mapGroups.length}}"><view class="city-row" wx:for="{{mapGroups}}" wx:key="key" data-key="{{item.key}}" bindtap="onCity"><view class="city-pin">●</view><view class="grow">{{item.city}}<text class="small muted" wx:if="{{item.outsideChina}}"> · {{item.country}}</text></view><text class="pill grey">{{item.count}} 人</text></view></view>
+    <view class="card empty" wx:else>可在自己的资料里选择城市。没有位置的人仍会留在列表中。</view>
+  </view>
+
+  <view class="bottom-actions"><button wx:if="{{isAdmin}}" class="btn secondary" bindtap="onAddPerson">＋ 添加人物</button><button wx:if="{{isAdmin}}" class="btn ghost" bindtap="onManage">管理圈子</button></view>
+</view>

@@ -1,0 +1,15 @@
+.intro { margin: 16rpx 0 44rpx; }
+.choice-row { display: flex; gap: 18rpx; margin-bottom: 30rpx; }
+.choice { flex: 1; background: #fff; border: 3rpx solid transparent; border-radius: 27rpx; padding: 24rpx; }
+.choice.selected,.mode-card.selected { border-color: #53a77b; background: #f3fbf5; }
+.choice-icon { width: 65rpx; height: 65rpx; border-radius: 19rpx; display: flex; align-items: center; justify-content: center; margin-bottom: 21rpx; font-size: 30rpx; font-weight: 760; }
+.choice-icon.family { background: #d8efdf; color: #267450; }
+.choice-icon.class { background: #e1e9ff; color: #4f68af; }
+.choice-title { font-size: 28rpx; font-weight: 730; }
+.choice-sub { font-size: 22rpx; color: #819188; margin-top: 7rpx; line-height: 1.4; }
+.form-card { padding-top: 12rpx; }
+.form-hint { color: #82928a; font-size: 22rpx; line-height: 1.5; padding: 0 0 12rpx; }
+.mode-title { margin-top: 38rpx; }
+.mode-card { display: flex; align-items: center; margin: 12rpx 0; padding: 24rpx 26rpx; background: #fff; border: 3rpx solid transparent; border-radius: 23rpx; }
+.radio { font-size: 33rpx; color: #37875d; }
+.sticky-bottom { margin-top: 32rpx; }

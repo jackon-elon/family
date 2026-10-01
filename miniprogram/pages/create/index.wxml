@@ -1,0 +1,26 @@
+<view class="page create-page">
+  <view class="eyebrow">START A CIRCLE</view>
+  <view class="title">先建个小圈子</view>
+  <view class="subtitle intro">一个圈子只放一类熟人。家人和不同班级的同学，各有自己的空间。</view>
+
+  <view class="section-title">这是什么圈子？</view>
+  <view class="choice-row">
+    <view class="choice {{type === 'family' ? 'selected' : ''}}" data-type="family" bindtap="chooseType"><view class="choice-icon family">家</view><view class="choice-title">家庭圈</view><view class="choice-sub">认亲属、记称呼</view></view>
+    <view class="choice {{type === 'classmate' ? 'selected' : ''}}" data-type="classmate" bindtap="chooseType"><view class="choice-icon class">同</view><view class="choice-title">同学圈</view><view class="choice-sub">找同学、看城市</view></view>
+  </view>
+
+  <view class="card form-card">
+    <label class="field"><text class="field-label">圈子名称 *</text><input class="field-control" value="{{name}}" placeholder="例如：陈家的小圈子" maxlength="32" data-field="name" bindinput="onInput" /></label>
+    <block wx:if="{{type === 'classmate'}}">
+      <label class="field"><text class="field-label">学校 *</text><input class="field-control" value="{{school}}" placeholder="例如：青禾中学" maxlength="40" data-field="school" bindinput="onInput" /></label>
+      <label class="field"><text class="field-label">届别 / 入学年份 *</text><input class="field-control" value="{{cohort}}" placeholder="例如：2017 届" maxlength="20" data-field="cohort" bindinput="onInput" /></label>
+      <label class="field"><text class="field-label">班级 *</text><input class="field-control" value="{{className}}" placeholder="例如：高三二班" maxlength="30" data-field="className" bindinput="onInput" /></label>
+      <view class="form-hint">一个同学圈只对应一个班级，方便管理员核对申请。</view>
+    </block>
+  </view>
+
+  <view class="section-title mode-title">怎么开始？</view>
+  <view class="mode-card {{mode === 'private' ? 'selected' : ''}}" data-mode="private" bindtap="chooseMode"><view class="grow"><view class="choice-title">先自己记录</view><view class="choice-sub">慢慢整理，之后再邀请熟人加入</view></view><text class="radio">{{mode === 'private' ? '●' : '○'}}</text></view>
+  <view class="mode-card {{mode === 'shared' ? 'selected' : ''}}" data-mode="shared" bindtap="chooseMode"><view class="grow"><view class="choice-title">邀请大家共建</view><view class="choice-sub">建好后由管理员发一次性邀请</view></view><text class="radio">{{mode === 'shared' ? '●' : '○'}}</text></view>
+  <view class="sticky-bottom"><button class="btn" disabled="{{saving}}" bindtap="onSubmit">{{saving ? '正在创建…' : '创建圈子'}}</button></view>
+</view>

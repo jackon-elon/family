@@ -1,0 +1,4 @@
+{
+  "*": { "invoke": false },
+  "api": { "invoke": "auth != null" }
+}

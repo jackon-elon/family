@@ -1,0 +1,22 @@
+{
+  "pages": [
+    "pages/circles/index",
+    "pages/create/index",
+    "pages/circle/index",
+    "pages/person/index",
+    "pages/person-edit/index",
+    "pages/manage/index",
+    "pages/invite/index",
+    "pages/apply/index",
+    "pages/privacy/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "亲友关系网",
+    "navigationBarBackgroundColor": "#F7F8F5",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F7F8F5",
+    "backgroundTextStyle": "light"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

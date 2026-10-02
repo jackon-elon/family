@@ -254,7 +254,7 @@ Page({
       actions.push({ text: '移交圈主给 TA', kind: 'transfer' });
     }
     if (member.personId) actions.push({ text: '纠正错误认领', kind: 'unclaim' });
-    if (member.role === 'member') actions.push({ text: '移出圈子', kind: 'remove' });
+    if (member.role === 'member' || (this.data.isOwner && member.role === 'admin')) actions.push({ text: '移出圈子', kind: 'remove' });
     if (!actions.length) return;
     wx.showActionSheet({ itemList: actions.map(a => a.text), success: (result: any) => this.performMemberAction(member, actions[result.tapIndex]?.kind) });
   },

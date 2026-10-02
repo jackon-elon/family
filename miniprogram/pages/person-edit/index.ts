@@ -22,7 +22,7 @@ function accessFor(fields: string[]): Record<string, boolean> {
 
 Page({
   data: {
-    circle: null as Circle | null, personId: '', isNew: true, isSelf: false, claimSelf: false, canPrivate: false, createMode: 'other',
+    circle: null as Circle | null, personId: '', isNew: true, isSelf: false, claimSelf: false, canPrivate: false, hasPhoto: false, createMode: 'other',
     form: { name: '', nickname: '', gender: 'unknown', birthOrder: '', city: '', country: '', province: '', latitude: null as number | null, longitude: null as number | null, status: '', industry: '', occupation: '', school: '', bio: '', phone: '', wechatId: '', photoUrl: '', photoFileId: '' },
     cityLabels: ['暂不填写'].concat(CITY_OPTIONS.map(c => `${c.city}${c.country === '中国' ? '' : ' · ' + c.country}`)), cityIndex: 0,
     statusOptions: STATUS_OPTIONS, statusIndex: 0, genderOptions: GENDER_OPTIONS, genderIndex: 0,
@@ -58,7 +58,7 @@ Page({
     const optionIndex = CITY_OPTIONS.findIndex(c => c.city === p.city && c.country === (p.country || '中国'));
     const delegatedFields: string[] = (p as any).myDelegatedFields || [];
     const editable = accessFor(p.isSelf ? PROFILE_FIELDS : p.isClaimed ? delegatedFields : BARE_FIELDS);
-    this.setData({ circle: detail.data.circle, personId: p.id, isNew: false, isSelf: !!p.isSelf, canPrivate: !!p.isSelf || !!(p as any).myDelegatedFields?.length,
+    this.setData({ circle: detail.data.circle, personId: p.id, isNew: false, isSelf: !!p.isSelf, canPrivate: !!p.isSelf || !!(p as any).myDelegatedFields?.length, hasPhoto: !!p.hasPhoto,
       editable,
       form: { name: p.name || '', nickname: p.nickname || '', gender: p.gender || 'unknown', birthOrder: p.birthOrder ? String(p.birthOrder) : '', city: p.city || '', country: p.country || '', province: p.province || '', latitude: p.latitude ?? CITY_OPTIONS[optionIndex]?.latitude ?? null, longitude: p.longitude ?? CITY_OPTIONS[optionIndex]?.longitude ?? null, status: p.status || '', industry: p.industry || '', occupation: p.occupation || '', school: p.school || '', bio: p.bio || '', phone: p.phone || '', wechatId: p.wechatId || '', photoUrl: p.photoUrl || '', photoFileId: p.photoFileId || '' },
       initial: p.name ? p.name.slice(-1) : '人', photoVisibilityIndex: p.visibility?.photoFileId === 'circle' ? 1 : 0,
@@ -182,7 +182,9 @@ Page({
     if (!size || size > MAX_PHOTO_BYTES) { toast('照片超过 1 MB，请重新选择'); return false; }
     const base64: string = await new Promise(resolve => wx.getFileSystemManager().readFile({ filePath: this.photoPath, encoding: 'base64', success: (r: any) => resolve(r.data), fail: () => resolve('') }));
     if (!base64) { toast('照片读取失败，请重试'); return false; }
-    const uploaded = await invoke({ action: 'photo.upload', payload: { circleId: this.circleId, personId, base64 } });
+    const payload: any = { circleId: this.circleId, personId, base64 };
+    if (this.data.isSelf || this.data.claimSelf) payload.visibility = this.data.photoVisibilityIndex === 1 ? 'circle' : 'self';
+    const uploaded = await invoke({ action: 'photo.upload', payload });
     if (!uploaded.ok) { showApiError(uploaded); return false; }
     return true;
   },
@@ -198,10 +200,11 @@ Page({
     this.setData({ saving: true });
     let uploaded = true;
     if (this.photoPath && isDemoMode()) {
-      const result = await invoke({ action: 'person.update', payload: { circleId: this.circleId, personId: this.personId, patch: { photoUrl: this.data.form.photoUrl } } });
+      const visibility = this.data.isSelf ? { photoFileId: this.data.photoVisibilityIndex === 1 ? 'circle' : 'self' } : undefined;
+      const result = await invoke({ action: 'person.update', payload: { circleId: this.circleId, personId: this.personId, patch: { photoUrl: this.data.form.photoUrl }, ...(visibility ? { visibility } : {}) } });
       if (!result.ok) { showApiError(result); uploaded = false; }
     } else if (this.photoPath) uploaded = await this.uploadSelectedPhoto(this.personId);
-    if (uploaded) uploaded = await this.savePhotoVisibility(this.personId);
+    if (uploaded && !this.photoPath) uploaded = await this.savePhotoVisibility(this.personId);
     this.setData({ saving: false });
     if (!uploaded) return;
     this.photoPath = '';
@@ -221,20 +224,36 @@ Page({
       (typeof f.latitude !== 'number' || typeof f.longitude !== 'number')) return toast('请在地图上选城市中心');
     this.setData({ saving: true });
     let personId = this.personId;
+    let createdSelf = false;
     if (this.data.isNew) {
       const created = await invoke<{ person: Person }>({ action: 'person.create', payload: { circleId: this.circleId, name: f.name.trim(), gender: f.gender, birthOrder: f.birthOrder ? Number(f.birthOrder) : undefined, claimSelf: this.data.claimSelf } });
       if (!created.ok) { this.setData({ saving: false }); return showApiError(created); }
       personId = created.data.person.id;
+      createdSelf = !!created.data.person.isSelf;
     }
     const candidate: any = { name: f.name.trim(), nickname: f.nickname.trim(), gender: f.gender, birthOrder: f.birthOrder ? Number(f.birthOrder) : '', city: f.city, country: f.country, province: f.province, status: f.status, industry: f.industry.trim(), occupation: f.occupation.trim(), school: f.school.trim(), bio: f.bio.trim(), phone: f.phone.trim(), wechatId: f.wechatId.trim() };
     const patch: any = {};
     Object.keys(candidate).forEach(key => { if (this.data.editable[key]) patch[key] = candidate[key]; });
     if (this.data.editable.city) { patch.latitude = f.latitude; patch.longitude = f.longitude; }
     if (isDemoMode() && this.data.editable.photoFileId) patch.photoUrl = f.photoUrl;
-    const updated = await invoke({ action: 'person.update', payload: { circleId: this.circleId, personId, patch } });
-    if (!updated.ok) { this.setData({ saving: false }); return showApiError(updated); }
-    if (!(await this.uploadSelectedPhoto(personId))) { this.personId = personId; this.setData({ isNew: false, saving: false }); return; }
-    if (!(await this.savePhotoVisibility(personId))) { this.personId = personId; this.setData({ isNew: false, saving: false }); return; }
+    const preserveCreatedCard = () => {
+      if (this.data.isNew) {
+        this.personId = personId;
+        this.setData({ isNew: false, personId, isSelf: createdSelf, claimSelf: false });
+      }
+    };
+    const visibility = this.photoPath && isDemoMode() && (this.data.isSelf || this.data.claimSelf)
+      ? { photoFileId: this.data.photoVisibilityIndex === 1 ? 'circle' : 'self' } : undefined;
+    const updated = await invoke({ action: 'person.update', payload: { circleId: this.circleId, personId, patch, ...(visibility ? { visibility } : {}) } });
+    if (!updated.ok) {
+      const wasNew = this.data.isNew;
+      preserveCreatedCard();
+      this.setData({ saving: false });
+      if (wasNew) return wx.showModal({ title: '人物卡已创建', content: `详细资料暂未保存：${updated.error.message}。请修改后再次保存这张卡。`, showCancel: false });
+      return showApiError(updated);
+    }
+    if (!(await this.uploadSelectedPhoto(personId))) { preserveCreatedCard(); this.setData({ saving: false }); return; }
+    if (!this.photoPath && this.data.photoVisibilityDirty && !(await this.savePhotoVisibility(personId))) { preserveCreatedCard(); this.setData({ saving: false }); return; }
     this.setData({ saving: false });
     toast('人物卡已保存');
     wx.redirectTo({ url: `/pages/person/index?circleId=${q(this.circleId)}&personId=${q(personId)}` });

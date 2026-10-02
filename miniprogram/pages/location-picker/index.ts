@@ -24,10 +24,16 @@ Page({
     city: '', country: '', province: '',
     latitude: 35, longitude: 104, scale: 5,
     regions: REGIONS,
-    selecting: false
+    selecting: false, hasOpener: true
   },
   onLoad(this: any) {
-    const channel = this.getOpenerEventChannel();
+    let channel: any;
+    try { channel = this.getOpenerEventChannel?.(); } catch (_) { channel = null; }
+    if (!channel || typeof channel.on !== 'function' || typeof channel.emit !== 'function') {
+      this.setData({hasOpener: false});
+      return;
+    }
+    this.openerChannel = channel;
     channel.on('initialCityLocation', (initial: InitialCityLocation) => {
       const hasPoint = typeof initial.latitude === 'number' && typeof initial.longitude === 'number' &&
         Number.isFinite(initial.latitude) && Number.isFinite(initial.longitude);
@@ -39,7 +45,8 @@ Page({
       });
     });
   },
-  onReady(this: any) { this.mapContext = wx.createMapContext('cityMap', this); },
+  onReady(this: any) { if (this.data.hasOpener) this.mapContext = wx.createMapContext('cityMap', this); },
+  onBackHome() { wx.reLaunch({url: '/pages/circles/index'}); },
   onInput(this: any, event: any) {
     const field = event.currentTarget.dataset.field;
     if (field === 'city' || field === 'country' || field === 'province') this.setData({[field]: event.detail.value});
@@ -50,6 +57,7 @@ Page({
   },
   onConfirm(this: any) {
     if (this.data.selecting) return;
+    if (!this.openerChannel?.emit) return toast('请从人物资料编辑页打开城市地图');
     const city = this.data.city.trim();
     const country = this.data.country.trim();
     const province = this.data.province.trim();
@@ -64,7 +72,7 @@ Page({
           this.setData({selecting: false});
           return toast('地图位置无效，请重新选择');
         }
-        this.getOpenerEventChannel().emit('cityLocationSelected', {
+        this.openerChannel.emit('cityLocationSelected', {
           city, country, province,
           latitude: Math.round(point.latitude * 10) / 10,
           longitude: Math.round(point.longitude * 10) / 10

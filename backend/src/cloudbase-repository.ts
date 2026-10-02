@@ -1,4 +1,5 @@
 import type { CollectionName, EntityMap } from './model';
+import { QueryResultLimitError } from './repository';
 import type { Repository, UnitOfWork } from './repository';
 
 // Only the cloud function imports the SDK. This adapter accepts its database
@@ -25,9 +26,14 @@ export class CloudBaseRepository implements Repository {
         // scans are used for lists; security-critical invitation, member and
         // person decisions also read their deterministic IDs in transaction.
         const all: EntityMap[K][] = [];
-        for (let offset = 0; offset < 5000; offset += 100) {
-          const result = await this.db.collection(collection).where(match).orderBy('_id', 'asc').skip(offset).limit(100).get();
+        const maxResults = 5000;
+        for (let offset = 0; offset <= maxResults; offset += 100) {
+          // Fetch one sentinel after the cap so a full page never silently
+          // makes authorization/graph checks or list views incomplete.
+          const limit = offset === maxResults ? 1 : 100;
+          const result = await this.db.collection(collection).where(match).orderBy('_id', 'asc').skip(offset).limit(limit).get();
           const page = (result.data ?? []) as EntityMap[K][];
+          if (offset === maxResults && page.length) throw new QueryResultLimitError(collection);
           all.push(...page);
           if (page.length < 100) break;
         }

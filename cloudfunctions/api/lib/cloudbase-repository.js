@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CloudBaseRepository = void 0;
+const repository_1 = require("./repository");
 // Only the cloud function imports the SDK. This adapter accepts its database
 // object so the domain service stays independent of CloudBase and AppID.
 class CloudBaseRepository {
@@ -29,9 +30,15 @@ class CloudBaseRepository {
                 // scans are used for lists; security-critical invitation, member and
                 // person decisions also read their deterministic IDs in transaction.
                 const all = [];
-                for (let offset = 0; offset < 5000; offset += 100) {
-                    const result = await this.db.collection(collection).where(match).orderBy('_id', 'asc').skip(offset).limit(100).get();
+                const maxResults = 5000;
+                for (let offset = 0; offset <= maxResults; offset += 100) {
+                    // Fetch one sentinel after the cap so a full page never silently
+                    // makes authorization/graph checks or list views incomplete.
+                    const limit = offset === maxResults ? 1 : 100;
+                    const result = await this.db.collection(collection).where(match).orderBy('_id', 'asc').skip(offset).limit(limit).get();
                     const page = (result.data ?? []);
+                    if (offset === maxResults && page.length)
+                        throw new repository_1.QueryResultLimitError(collection);
                     all.push(...page);
                     if (page.length < 100)
                         break;

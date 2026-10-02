@@ -18,12 +18,22 @@ async function handlePhotoUpload(event, actorId, api, storage) {
   }
   const allowed = await api.invoke({action: 'photo.uploadPath', payload: {circleId: payload.circleId, personId: payload.personId}}, actorId);
   if (!allowed.ok) return allowed;
+  // Bind the file and its intended visibility in one person.update transaction.
+  // Older self-upload clients are private by default; delegated admins retain
+  // the owner's current setting and may not change it through this route.
+  if (payload.visibility !== undefined && payload.visibility !== 'self' && payload.visibility !== 'circle') {
+    return {ok: false, error: {code: 'INVALID_INPUT', message: '照片可见范围不支持'}};
+  }
+  if (!allowed.data.isSelf && payload.visibility !== undefined) {
+    return {ok: false, error: {code: 'FORBIDDEN', message: '代维护不能修改资料可见范围'}};
+  }
+  const visibility = allowed.data.isSelf ? {photoFileId: payload.visibility || 'self'} : undefined;
   let fileID;
   try {
     const uploaded = await storage.uploadFile({cloudPath: allowed.data.cloudPath, fileContent: bytes});
     fileID = uploaded.fileID;
     if (!fileID) throw new Error('Cloud storage returned no file ID');
-    const changed = await api.invoke({action: 'person.update', payload: {circleId: payload.circleId, personId: payload.personId, patch: {photoFileId: fileID}}}, actorId);
+    const changed = await api.invoke({action: 'person.update', payload: {circleId: payload.circleId, personId: payload.personId, patch: {photoFileId: fileID}, ...(visibility ? {visibility} : {})}}, actorId);
     if (!changed.ok) {
       await storage.deleteFile({fileList: [fileID]}).catch(() => undefined);
       return changed;

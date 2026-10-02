@@ -1,5 +1,11 @@
 import type { CollectionName, EntityMap } from './model';
 
+export class QueryResultLimitError extends Error {
+  constructor(public readonly collection: CollectionName) {
+    super(`Query result limit exceeded: ${collection}`);
+  }
+}
+
 export interface UnitOfWork {
   get<K extends CollectionName>(collection: K, id: string): Promise<EntityMap[K] | undefined>;
   find<K extends CollectionName>(collection: K, match: Partial<EntityMap[K]>): Promise<EntityMap[K][]>;

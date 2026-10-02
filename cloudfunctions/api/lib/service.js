@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ApiService = exports.ApiError = void 0;
 const crypto = require('node:crypto');
+const repository_1 = require("./repository");
 class ApiError extends Error {
     code;
     constructor(code, message) {
@@ -17,6 +18,7 @@ const bareFields = ['name', 'nickname', 'gender', 'birthOrder'];
 const delegableFields = profileFields.filter(field => field !== 'latitude' && field !== 'longitude');
 const relationTypes = ['parent', 'spouse', 'sibling'];
 const inviteLifetime = 72 * 60 * 60 * 1000;
+const maxBulkTransactionWrites = 80;
 function fail(code, message) { throw new ApiError(code, message); }
 function object(value) {
     if (typeof value !== 'object' || value === null || Array.isArray(value))
@@ -40,6 +42,7 @@ function oneOf(value, values, name) {
 }
 function id() { return crypto.randomUUID(); }
 function hash(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
+function photoOwnerPath(circleId, userId) { return hash(`${circleId}|${userId}`).slice(0, 40); }
 function memberId(circleId, userId) { return `${circleId}_${hash(userId).slice(0, 40)}`; }
 function claimRequestId(circleId, personId, userId) { return `${circleId}_${hash(`${personId}|${userId}`).slice(0, 40)}`; }
 function applicationId(inviteId, userId) { return `${inviteId}_${hash(userId).slice(0, 40)}`; }
@@ -146,10 +149,12 @@ class ApiService {
     repo;
     now;
     signPhoto;
-    constructor(repo, now = Date.now, signPhoto) {
+    signPhotos;
+    constructor(repo, now = Date.now, signPhoto, signPhotos) {
         this.repo = repo;
         this.now = now;
         this.signPhoto = signPhoto;
+        this.signPhotos = signPhotos;
     }
     async invoke(request, actorId) {
         try {
@@ -157,12 +162,18 @@ class ApiService {
             if (action !== 'invite.preview' && !actorId)
                 fail('UNAUTHENTICATED', '请先登录微信');
             const p = object(request.payload ?? {});
-            const data = await this.repo.atomic(tx => this.dispatch(tx, action, p, actorId ?? ''));
+            const data = action === 'photo.url'
+                ? await this.signedPhotoUrl(p, actorId ?? '')
+                : action === 'photo.urls'
+                    ? await this.signedPhotoUrls(p, actorId ?? '')
+                    : await this.repo.atomic(tx => this.dispatch(tx, action, p, actorId ?? ''));
             return { ok: true, data };
         }
         catch (error) {
             if (error instanceof ApiError)
                 return { ok: false, error: { code: error.code, message: error.message } };
+            if (error instanceof repository_1.QueryResultLimitError)
+                return { ok: false, error: { code: 'DATA_LIMIT', message: '当前数据量超过查询上限，请联系管理员处理' } };
             // Do not return database errors, secrets or stack traces to clients.
             return { ok: false, error: { code: 'SERVER_ERROR', message: '服务暂时不可用，请稍后重试' } };
         }
@@ -186,7 +197,6 @@ class ApiService {
             case 'person.claimReject': return this.resolveClaim(tx, p, actorId, false);
             case 'person.unclaim': return this.unclaimPerson(tx, p, actorId);
             case 'photo.uploadPath': return this.photoUploadPath(tx, p, actorId);
-            case 'photo.url': return this.photoUrl(tx, p, actorId);
             case 'relation.list': return this.listRelations(tx, p, actorId);
             case 'relation.create': return this.createRelation(tx, p, actorId);
             case 'relation.delete': return this.deleteRelation(tx, p, actorId);
@@ -198,7 +208,7 @@ class ApiService {
             case 'invite.list': return this.listInvites(tx, p, actorId);
             case 'invite.revoke': return this.revokeInvite(tx, p, actorId);
             case 'join.list': return this.listApplications(tx, p, actorId);
-            case 'join.mine': return this.myApplications(tx, actorId);
+            case 'join.mine': return this.myApplications(tx, p, actorId);
             case 'join.approve': return this.resolveApplication(tx, p, actorId, true);
             case 'join.reject': return this.resolveApplication(tx, p, actorId, false);
             case 'member.list': return this.listMembers(tx, p, actorId);
@@ -261,6 +271,8 @@ class ApiService {
     }
     async listCircles(tx, actorId) {
         const memberships = await tx.find('members', { userId: actorId, status: 'active' });
+        if (memberships.length > maxBulkTransactionWrites)
+            fail('DATA_LIMIT', '加入的圈子过多，暂无法一次性列出');
         const circles = [];
         for (const member of memberships) {
             const circle = await tx.get('circles', member.circleId);
@@ -307,6 +319,7 @@ class ApiService {
             id: person.id, circleId: person.circleId, name: person.name,
             nickname: person.nickname, gender: person.gender, birthOrder: person.birthOrder,
             isSelf: own, isClaimed: Boolean(person.claimedBy),
+            hasPhoto: false,
             createdAt: person.createdAt, updatedAt: person.updatedAt,
             lastConfirmedAt: person.lastConfirmedAt
         };
@@ -314,8 +327,14 @@ class ApiService {
             if (person[field] === undefined)
                 continue;
             const visibilityKey = field === 'country' || field === 'province' || field === 'latitude' || field === 'longitude' ? 'city' : field;
-            if (own || (person.claimedBy && person.visibility[visibilityKey] === 'circle'))
-                result[field] = person[field];
+            if (own || (person.claimedBy && person.visibility[visibilityKey] === 'circle')) {
+                // Cloud file IDs include their storage paths. Never expose the raw path
+                // (or its uploader identifier) in a person view.
+                if (field === 'photoFileId')
+                    result.hasPhoto = true;
+                else
+                    result[field] = person[field];
+            }
         }
         if (own)
             result.visibility = person.visibility;
@@ -335,12 +354,16 @@ class ApiService {
         }
         else if (rank(member.role) >= 2) {
             const delegation = await tx.get('delegations', `${person.id}_${hash(actorId).slice(0, 40)}`);
-            if (delegation && !delegation.revokedAt) {
+            if (delegation && !delegation.revokedAt && delegation.ownerUserId === person.claimedBy) {
                 const fields = effectiveDelegationFields(delegation.fields);
                 view.myDelegatedFields = fields;
                 for (const field of fields)
-                    if (privateFields.includes(field) && person[field] !== undefined)
-                        view[field] = person[field];
+                    if (privateFields.includes(field) && person[field] !== undefined) {
+                        if (field === 'photoFileId')
+                            view.hasPhoto = true;
+                        else
+                            view[field] = person[field];
+                    }
             }
         }
         return { person: view };
@@ -412,9 +435,9 @@ class ApiService {
             (latitudeTouched && ((patch.latitude === undefined) !== (patch.longitude === undefined)))) {
             fail('INVALID_INPUT', '城市坐标须同时填写或同时清除');
         }
-        const allowedPhoto = /^cloud:\/\/[^/]+\/photos\/([^/]+)\/([0-9a-f-]{36}\.jpg)$/;
+        const allowedPhoto = /^cloud:\/\/[^/]+\/photos\/([0-9a-f]{40})\/([0-9a-f-]{36}\.jpg)$/;
         const photoMatch = patch.photoFileId === undefined ? undefined : allowedPhoto.exec(patch.photoFileId);
-        if (patch.photoFileId !== undefined && (!photoMatch || photoMatch[1] !== actorId)) {
+        if (patch.photoFileId !== undefined && (!photoMatch || photoMatch[1] !== photoOwnerPath(circle.id, actorId))) {
             fail('INVALID_INPUT', '照片文件不在你的上传目录');
         }
         const own = person.claimedBy === actorId;
@@ -472,22 +495,65 @@ class ApiService {
             if (!person.claimedBy || rank(member.role) < 2)
                 fail('FORBIDDEN', '不能上传此人物的照片');
             const delegation = await tx.get('delegations', `${person.id}_${hash(actorId).slice(0, 40)}`);
-            if (!delegation || delegation.revokedAt || !delegation.fields.includes('photoFileId'))
+            if (!delegation || delegation.revokedAt || delegation.ownerUserId !== person.claimedBy || !delegation.fields.includes('photoFileId'))
                 fail('FORBIDDEN', '没有照片代维护授权');
         }
         if (!/^[A-Za-z0-9_-]{1,128}$/.test(actorId))
             fail('INVALID_IDENTITY', '微信身份格式不支持照片上传');
-        return { cloudPath: `photos/${actorId}/${id()}.jpg` };
+        return { cloudPath: `photos/${photoOwnerPath(circle.id, actorId)}/${id()}.jpg`, isSelf: person.claimedBy === actorId };
     }
-    async photoUrl(tx, p, actorId) {
-        const view = (await this.getPerson(tx, p, actorId)).person;
-        const fileId = view.photoFileId;
-        if (typeof fileId !== 'string')
+    async mayViewPhoto(tx, person, member, actorId) {
+        if (!person.photoFileId)
+            return false;
+        let canView = person.claimedBy === actorId || Boolean(person.claimedBy && person.visibility.photoFileId === 'circle');
+        if (!canView && rank(member.role) >= 2) {
+            const delegation = await tx.get('delegations', `${person.id}_${hash(actorId).slice(0, 40)}`);
+            canView = Boolean(delegation && !delegation.revokedAt && delegation.ownerUserId === person.claimedBy && delegation.fields.includes('photoFileId'));
+        }
+        return canView;
+    }
+    async authorizedPhotoFileId(tx, p, actorId) {
+        const { circle, member } = await this.access(tx, p.circleId, actorId);
+        const person = await this.person(tx, circle.id, p.personId);
+        if (!person.photoFileId || !(await this.mayViewPhoto(tx, person, member, actorId)))
             fail('FORBIDDEN', '照片未开放查看');
+        return person.photoFileId;
+    }
+    async signedPhotoUrl(p, actorId) {
         if (!this.signPhoto)
             fail('NOT_CONFIGURED', '当前未配置云存储');
+        // Finish the authorization transaction before contacting cloud storage.
+        const fileId = await this.repo.atomic(tx => this.authorizedPhotoFileId(tx, p, actorId));
         const url = await this.signPhoto(fileId);
         return { url };
+    }
+    async signedPhotoUrls(p, actorId) {
+        if (!Array.isArray(p.personIds) || p.personIds.length < 1 || p.personIds.length > 20)
+            fail('INVALID_INPUT', '每次最多获取 20 人的照片');
+        const personIds = [...new Set(p.personIds.map(personId => str(personId, 'personId')))];
+        const files = await this.repo.atomic(async (tx) => {
+            const { circle, member } = await this.access(tx, p.circleId, actorId);
+            const eligible = [];
+            for (const personId of personIds) {
+                const person = await tx.get('persons', personId);
+                if (person?.circleId === circle.id && person.photoFileId && await this.mayViewPhoto(tx, person, member, actorId)) {
+                    eligible.push({ personId, fileId: person.photoFileId });
+                }
+            }
+            return eligible;
+        });
+        if (!files.length)
+            return { urls: {} };
+        if (!this.signPhotos && !this.signPhoto)
+            fail('NOT_CONFIGURED', '当前未配置云存储');
+        const signed = this.signPhotos
+            ? await this.signPhotos([...new Set(files.map(file => file.fileId))])
+            : Object.fromEntries(await Promise.all(files.map(async (file) => [file.fileId, await this.signPhoto(file.fileId)])));
+        const urls = {};
+        for (const file of files)
+            if (typeof signed[file.fileId] === 'string')
+                urls[file.personId] = signed[file.fileId];
+        return { urls };
     }
     async deletePerson(tx, p, actorId) {
         const { circle } = await this.access(tx, p.circleId, actorId, 'admin');
@@ -533,18 +599,19 @@ class ApiService {
     async listClaims(tx, p, actorId) {
         const { circle } = await this.access(tx, p.circleId, actorId, 'admin');
         const requests = await tx.find('claimRequests', { circleId: circle.id, status: 'pending' });
-        const claimRequests = await Promise.all(requests.map(async (r) => {
-            const member = await tx.get('members', memberId(circle.id, r.userId));
-            return { ...this.safeClaim(r), memberId: memberId(circle.id, r.userId), applicantName: member?.name || '申请人' };
+        const members = new Map((await tx.find('members', { circleId: circle.id })).map(member => [member.id, member]));
+        const claimRequests = requests.map(r => ({
+            ...this.safeClaim(r), memberId: memberId(circle.id, r.userId),
+            applicantName: members.get(memberId(circle.id, r.userId))?.name || '申请人'
         }));
         return { claimRequests };
     }
     async myClaims(tx, p, actorId) {
         const { circle } = await this.access(tx, p.circleId, actorId);
         const requests = await tx.find('claimRequests', { circleId: circle.id, userId: actorId });
-        const claimRequests = await Promise.all(requests.map(async (request) => {
-            const person = await tx.get('persons', request.personId);
-            return { ...this.safeClaim(request), personName: person?.circleId === circle.id ? person.name : '人物卡已删除' };
+        const persons = new Map((await tx.find('persons', { circleId: circle.id })).map(person => [person.id, person]));
+        const claimRequests = requests.map(request => ({
+            ...this.safeClaim(request), personName: persons.get(request.personId)?.name || '人物卡已删除'
         }));
         return { claimRequests: claimRequests.sort((a, b) => b.createdAt - a.createdAt) };
     }
@@ -581,6 +648,10 @@ class ApiService {
             fail('INVALID_INPUT', '人物卡尚未认领');
         const reasonCode = p.reasonCode === undefined ? undefined : oneOf(p.reasonCode, ['wrong_person', 'member_request', 'duplicate_card', 'other'], '解绑原因');
         const oldOwner = person.claimedBy;
+        const delegations = await tx.find('delegations', { circleId: circle.id, personId: person.id });
+        const activeDelegations = delegations.filter(delegation => !delegation.revokedAt);
+        if (activeDelegations.length > maxBulkTransactionWrites)
+            fail('DATA_LIMIT', '授权记录过多，无法一次性安全解绑');
         const oldMemberId = memberId(circle.id, oldOwner);
         const clearedFields = privateFields.filter(field => person[field] !== undefined);
         const member = await tx.get('members', memberId(circle.id, oldOwner));
@@ -594,14 +665,11 @@ class ApiService {
         person.visibility = {};
         person.updatedAt = this.now();
         await tx.put('persons', person);
-        const delegations = await tx.find('delegations', { circleId: circle.id, personId: person.id });
-        let revokedDelegationCount = 0;
-        for (const delegation of delegations)
-            if (!delegation.revokedAt) {
-                delegation.revokedAt = this.now();
-                await tx.put('delegations', delegation);
-                revokedDelegationCount++;
-            }
+        for (const delegation of activeDelegations) {
+            delegation.revokedAt = this.now();
+            await tx.put('delegations', delegation);
+        }
+        const revokedDelegationCount = activeDelegations.length;
         await this.audit(tx, circle.id, actorId, 'person.unclaim', person.id, { oldMemberId, clearedFields, revokedDelegationCount, reasonCode });
         return { person: this.visiblePerson(person, actorId) };
     }
@@ -826,19 +894,27 @@ class ApiService {
     async listApplications(tx, p, actorId) {
         const { circle } = await this.access(tx, p.circleId, actorId, 'admin');
         const applications = await tx.find('applications', { circleId: circle.id, status: 'pending' });
-        const views = await Promise.all(applications.map(async (application) => {
-            const invite = await tx.get('invites', application.inviteId);
-            const validInvite = invite?.circleId === circle.id ? invite : undefined;
+        const invites = new Map((await tx.find('invites', { circleId: circle.id })).map(invite => [invite.id, invite]));
+        const views = applications.map(application => {
+            const validInvite = invites.get(application.inviteId);
             return {
                 ...this.safeApplication(application, true),
                 inviteStatus: validInvite ? this.inviteStatus(validInvite) : 'missing',
                 inviteExpiresAt: validInvite?.expiresAt
             };
-        }));
+        });
         return { applications: views };
     }
-    async myApplications(tx, actorId) {
-        const applications = await tx.find('applications', { userId: actorId });
+    async myApplications(tx, p, actorId) {
+        const requestedId = p.applicationId === undefined ? undefined : str(p.applicationId, 'applicationId');
+        const all = requestedId
+            ? [await tx.get('applications', requestedId)].filter((item) => Boolean(item && item.userId === actorId))
+            : (await tx.find('applications', { userId: actorId })).sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+        if (requestedId && all.length === 0)
+            fail('NOT_FOUND', '加入申请不存在');
+        // Bound document lookups: 20 applications require at most 40 circle/invite
+        // reads, well within CloudBase's per-transaction operation limit.
+        const applications = requestedId ? all : all.slice(0, 20);
         const views = await Promise.all(applications.map(async (application) => {
             const circle = await tx.get('circles', application.circleId);
             const invite = application.status === 'pending' ? await tx.get('invites', application.inviteId) : undefined;
@@ -846,7 +922,7 @@ class ApiService {
             const status = application.status === 'pending' && inviteStatus !== 'active' ? 'expired' : application.status;
             return { ...this.safeApplication(application), status, circleName: circle?.name || '圈子', circleType: circle?.type, inviteStatus };
         }));
-        return { applications: views.sort((a, b) => b.createdAt - a.createdAt) };
+        return { applications: views, hasMore: !requestedId && all.length > applications.length };
     }
     async resolveApplication(tx, p, actorId, approve) {
         const { circle } = await this.access(tx, p.circleId, actorId, 'admin');
@@ -866,6 +942,9 @@ class ApiService {
             const existing = await tx.get('members', mid);
             if (existing?.status === 'active')
                 fail('ALREADY_MEMBER', '申请人已经是成员');
+            const others = (await tx.find('applications', { inviteId: invite.id, status: 'pending' })).filter(other => other.id !== application.id);
+            if (others.length > maxBulkTransactionWrites)
+                fail('DATA_LIMIT', '同一邀请待审申请过多，请先处理申请');
             // Legacy application documents may still carry claimPersonId. Approval
             // must not trust or apply it; the new member claims a card afterwards.
             const member = { id: mid, circleId: circle.id, userId: application.userId, name: application.name, role: 'member', status: 'active', joinedAt: this.now() };
@@ -873,12 +952,10 @@ class ApiService {
             invite.usedAt = this.now();
             invite.usedBy = application.userId;
             await tx.put('invites', invite);
-            const others = await tx.find('applications', { inviteId: invite.id, status: 'pending' });
-            for (const other of others)
-                if (other.id !== application.id) {
-                    other.status = 'expired';
-                    await tx.put('applications', other);
-                }
+            for (const other of others) {
+                other.status = 'expired';
+                await tx.put('applications', other);
+            }
         }
         application.status = approve ? 'approved' : 'rejected';
         application.reviewedAt = this.now();
@@ -897,13 +974,17 @@ class ApiService {
     async listMembers(tx, p, actorId) {
         const { circle } = await this.access(tx, p.circleId, actorId);
         const members = await tx.find('members', { circleId: circle.id, status: 'active' });
-        const views = await Promise.all(members.map(async (m) => {
-            const person = m.personId ? await tx.get('persons', m.personId) : undefined;
-            return { ...this.safeMember(m, actorId), name: person?.circleId === circle.id ? person.name : m.name || '成员' };
+        const persons = new Map((await tx.find('persons', { circleId: circle.id })).map(person => [person.id, person]));
+        const views = members.map(m => ({
+            ...this.safeMember(m, actorId), name: (m.personId && persons.get(m.personId)?.name) || m.name || '成员'
         }));
         return { members: views };
     }
     async scrubAfterLeaving(tx, member) {
+        const delegations = await tx.find('delegations', { circleId: member.circleId });
+        const activeDelegations = delegations.filter(delegation => !delegation.revokedAt && (delegation.ownerUserId === member.userId || delegation.adminUserId === member.userId));
+        if (activeDelegations.length > maxBulkTransactionWrites)
+            fail('DATA_LIMIT', '授权记录过多，无法一次性安全移除成员');
         if (member.personId) {
             const person = await tx.get('persons', member.personId);
             if (person && person.circleId === member.circleId && person.claimedBy === member.userId) {
@@ -916,12 +997,9 @@ class ApiService {
             }
             member.personId = undefined;
         }
-        const delegations = await tx.find('delegations', { circleId: member.circleId });
-        for (const delegation of delegations) {
-            if (!delegation.revokedAt && (delegation.ownerUserId === member.userId || delegation.adminUserId === member.userId)) {
-                delegation.revokedAt = this.now();
-                await tx.put('delegations', delegation);
-            }
+        for (const delegation of activeDelegations) {
+            delegation.revokedAt = this.now();
+            await tx.put('delegations', delegation);
         }
     }
     async endMember(tx, p, actorId, state) {
@@ -954,15 +1032,16 @@ class ApiService {
         if (!target || target.circleId !== circle.id || target.status !== 'active' || target.role === 'owner')
             fail('NOT_FOUND', '可调整的成员不存在');
         const role = oneOf(p.role, ['admin', 'member'], '角色');
+        const activeDelegations = role === 'member'
+            ? (await tx.find('delegations', { circleId: circle.id, adminUserId: target.userId })).filter(delegation => !delegation.revokedAt)
+            : [];
+        if (activeDelegations.length > maxBulkTransactionWrites)
+            fail('DATA_LIMIT', '授权记录过多，无法一次性安全调整管理员');
         target.role = role;
         await tx.put('members', target);
-        if (role === 'member') {
-            const delegations = await tx.find('delegations', { circleId: circle.id, adminUserId: target.userId });
-            for (const delegation of delegations)
-                if (!delegation.revokedAt) {
-                    delegation.revokedAt = this.now();
-                    await tx.put('delegations', delegation);
-                }
+        for (const delegation of activeDelegations) {
+            delegation.revokedAt = this.now();
+            await tx.put('delegations', delegation);
         }
         await this.audit(tx, circle.id, actorId, 'member.setRole', target.id, { role });
         return { member: this.safeMember(target, actorId) };
@@ -1062,11 +1141,13 @@ class ApiService {
     async listAudit(tx, p, actorId) {
         const { circle } = await this.access(tx, p.circleId, actorId, 'admin');
         const events = await tx.find('audit', { circleId: circle.id });
-        const views = await Promise.all(events.sort((a, b) => b.at - a.at).slice(0, 100).map(async ({ id, circleId, actorId: eventActorId, type, targetId, at, details }) => {
-            const member = await tx.get('members', memberId(circle.id, eventActorId));
-            const person = member?.personId ? await tx.get('persons', member.personId) : undefined;
-            return { id, circleId, actorName: person?.circleId === circle.id ? person.name : member?.name || '原成员', type, targetId, at, details };
-        }));
+        const members = new Map((await tx.find('members', { circleId: circle.id })).map(member => [member.id, member]));
+        const persons = new Map((await tx.find('persons', { circleId: circle.id })).map(person => [person.id, person]));
+        const views = events.sort((a, b) => b.at - a.at).slice(0, 100).map(({ id, circleId, actorId: eventActorId, type, targetId, at, details }) => {
+            const member = members.get(memberId(circle.id, eventActorId));
+            const person = member?.personId ? persons.get(member.personId) : undefined;
+            return { id, circleId, actorName: person?.name || member?.name || '原成员', type, targetId, at, details };
+        });
         return { events: views };
     }
 }

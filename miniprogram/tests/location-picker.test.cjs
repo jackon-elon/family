@@ -45,3 +45,27 @@ test('native city picker returns only a coarse manually selected point', () => {
   }}]);
   assert.equal(navigatedBack, 1);
 });
+
+test('directly opening city picker without an opener shows a safe return path', () => {
+  let definition;
+  let route = '';
+  const toasts = [];
+  global.Page = options => {definition = options;};
+  global.wx = {
+    reLaunch: options => {route = options.url;},
+    showToast: options => {toasts.push(options.title);}
+  };
+  delete require.cache[require.resolve('../pages/location-picker/index.ts')];
+  require('../pages/location-picker/index.ts');
+  const page = {
+    ...definition, data: {...definition.data},
+    getOpenerEventChannel: () => undefined,
+    setData(patch) {this.data = {...this.data, ...patch};}
+  };
+  assert.doesNotThrow(() => page.onLoad());
+  assert.equal(page.data.hasOpener, false);
+  assert.doesNotThrow(() => page.onConfirm());
+  assert.match(toasts[0], /人物资料编辑页/);
+  page.onBackHome();
+  assert.equal(route, '/pages/circles/index');
+});

@@ -19,7 +19,15 @@ exports.main = async (event) => {
     if (!item || !item.tempFileURL) throw new Error('Could not sign photo URL');
     return item.tempFileURL;
   };
-  const api = new ApiService(new CloudBaseRepository(db), Date.now, signPhoto);
+  const signPhotos = async fileIDs => {
+    const result = await cloud.getTempFileURL({fileList: fileIDs.map(fileID => ({fileID, maxAge: 60}))});
+    const urls = {};
+    for (const item of result.fileList || []) {
+      if (fileIDs.includes(item.fileID) && item.tempFileURL) urls[item.fileID] = item.tempFileURL;
+    }
+    return urls;
+  };
+  const api = new ApiService(new CloudBaseRepository(db), Date.now, signPhoto, signPhotos);
   if (event && event.action === 'photo.upload') return handlePhotoUpload(event, OPENID, api, cloud);
   if (event && event.action === 'invite.code') return handleInviteCode(event, OPENID, api, cloud);
   return api.invoke(event || {}, OPENID);

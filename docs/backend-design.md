@@ -4,7 +4,7 @@
 
 ## 1. 架构与边界
 
-小程序只调用一个事件型云函数 `api`，请求格式为 `{action, payload}`。云函数从微信运行时取得 `OPENID`，将其作为账号标识交给 `ApiService`；客户端传来的 `userId`、角色或 `claimedBy` 均不参与鉴权。`ApiService` 依赖 `Repository` 接口，本地测试用 `MemoryRepository`，云端拟用 `CloudBaseRepository`。关键写操作使用数据库事务。人物照片存云存储，人物文档只保留 `photoFileId`；获取临时链接先经 `photo.url` 通过资料可见性检查。
+小程序只调用一个事件型云函数 `api`，请求格式为 `{action, payload}`。云函数从微信运行时取得 `OPENID`，将其作为账号标识交给 `ApiService`；客户端传来的 `userId`、角色或 `claimedBy` 均不参与鉴权。`ApiService` 依赖 `Repository` 接口，本地测试用 `MemoryRepository`，云端拟用 `CloudBaseRepository`。关键写操作使用数据库事务。人物照片存云存储，人物文档只保留 `photoFileId`；人物视图仅以 `hasPhoto` 告知可否查看，不向客户端返回原始文件 ID。临时链接经 `photo.url`／`photo.urls` 逐人鉴权后签发。
 
 返回值统一为 `{ok:true,data:{...}}` 或 `{ok:false,error:{code,message}}`。服务端错误只返回通用信息，不把数据库异常、令牌摘要和堆栈传给客户端。所有日期均为 Unix 毫秒时间戳。
 
@@ -62,8 +62,9 @@
 - `person.claim`：`{circleId,personId}` → `{claimRequest}`，仅已加入且尚无本人卡的成员可提出申请；管理员用 `person.claimList` 查看含 `applicantName` 的待审请求，再用 `person.claimApprove`、`person.claimReject`（后两者 `{circleId,claimRequestId}`）核对后绑定。加入申请不能携带 `claimPersonId`，加入审批也不绑定人物卡。
 - `person.claimMine`：`{circleId}` → `{claimRequests}`，仅返回当前成员在此圈的认领申请及人物名称，供本人查看待审、通过和拒绝状态。
 - `person.unclaim`：`{circleId,personId}` → `{person}`，管理员纠正误认领；解绑账号、清除该卡私人资料、撤销代维护授权并留审计记录。
-- `photo.upload`：`{circleId,personId,base64}` → `{person}`。小程序先将 JPEG 压缩到 1 MiB 以内，再以 base64 调用云函数；云函数验证文件签名、大小与人物编辑权限，服务端上传到 `photos/<当前 OPENID>/<UUID>.jpg`，并绑定到人物卡。若绑定时权限已变更，会尝试删除刚上传的文件。`photo.uploadPath` 是云函数内部用于二次鉴权的动作，客户端不需要调用。人物和成员查询不返回其他人的 OPENID。
-- `photo.url`：`{circleId,personId}` → `{url}`，先检查本圈成员与照片可见性；拥有有效 `photoFileId` 代维护授权的管理员也可查看该照片。随后签发短时链接。
+- `photo.upload`：`{circleId,personId,base64,visibility?}` → `{person}`。小程序先将 JPEG 压缩到 1 MiB 以内，再以 base64 调用云函数；云函数验证文件签名、大小与人物编辑权限，服务端上传到 `photos/<SHA-256(circleId|OPENID) 前 40 位>/<UUID>.jpg`。本人上传时，新照片与所选可见范围在同一次人物更新中绑定；旧客户端未传可见范围则默认仅自己可见。受托管理员不能更改可见范围。若绑定时权限已变更，会尝试删除刚上传的文件。`photo.uploadPath` 是云函数内部用于二次鉴权的动作，客户端不需要调用。人物视图和照片路径均不暴露原始 OPENID。
+- `photo.url`：`{circleId,personId}` → `{url}`，先检查本圈成员与照片可见性；拥有有效 `photoFileId` 代维护授权的管理员也可查看该照片。鉴权事务提交后再签发短时链接。
+- `photo.urls`：`{circleId,personIds:[...]}` → `{urls:{personId:url}}`，每次最多 20 人，逐人执行相同的可见性检查，再批量签发链接；无权或无照片的人不会出现在结果中，响应不含文件 ID。
 
 资料 `patch` 可用字段：`name,nickname,gender,birthOrder,country,province,city,latitude,longitude,status,school,industry,occupation,bio,phone,wechatId,photoFileId`。可设置可见性的字段：`city,status,school,industry,occupation,bio,phone,wechatId,photoFileId`。`country/province/city/latitude/longitude` 一起按 `city` 权限过滤；`latitude/longitude` 不作为单独的代维护授权项。
 
@@ -78,7 +79,7 @@
 - `invite.apply`：`{token,name,note?}` → `{application}`。同学圈 `note` 必填，家庭圈可选；旧客户端若传 `claimPersonId`，服务端拒绝。申请人最多看到自己的申请响应。
 - `invite.list/revoke`：`{circleId}`、`{circleId,inviteId}`，仅管理员；列表不返回原始 token。
 - `join.list`：`{circleId}` → `{applications}`；`join.approve/reject`：`{circleId,applicationId}` → `{application}`，仅管理员。批准时再次检查邀请到期／撤销／已用状态，并原子建立成员资格，但不创建或认领人物卡。多人用一份邀请码申请时，仅一人可获批准；其余申请标记过期。
-- `join.mine`：`{}` → `{applications}`，申请人查看自己的申请、圈名／类型及处理状态；待审申请若对应邀请已失效，响应显示失效状态，不返回别人的申请。
+- `join.mine`：`{}` → `{applications,hasMore}`，申请人查看最近 20 份自己的申请、圈名／类型及处理状态；`{applicationId}` 精确查询本人某一份申请，供状态页使用。待审申请若对应邀请已失效，响应显示失效状态，不返回别人的申请。
 - `delegation.grant`：`{circleId,personId,adminMemberId,fields:[...]}` → `{delegation}`，只有已认领人物本人可授权。
 - `delegation.revoke`：`{circleId,delegationId}` → `{delegation}`，只有授权人可撤销。
 - `suggestion.create/list/resolve`：创建 `{circleId,type:'person'|'relation'|'invite',personId?,message,relationChange?}`；关系建议必须带结构化 `relationChange`。管理员处理 `{circleId,suggestionId,status:'accepted'|'rejected'}`。采纳关系建议时按原边指纹检查是否过期，再于同一事务更新关系、建议状态和审计；冲突时仍为待处理。人物和邀请类建议不能只点击「已采纳」而不做实际操作；旧纯文字关系建议也不能直接采纳，可以拒绝并请成员重提具体更正。
@@ -94,7 +95,9 @@
 
 **数据库**：对 `circles,members,persons,relations,invites,applications,claimRequests,delegations,suggestions,audit` 每个集合设置自定义安全规则 [database-deny-client.json](../cloudfunctions/security/database-deny-client.json)，禁止小程序客户端直接读写原始文档。云函数使用环境范围数据库客户端操作数据，再由 `ApiService` 逐请求过滤。默认开放数据库读权限会泄露隐藏字段、邀请摘要及 OPENID，因此不能发布。
 
-**云存储**：设置 [storage-deny-client.json](../cloudfunctions/security/storage-deny-client.json) 为客户端读写均拒绝。照片仅经云函数 `photo.upload` 服务端上传，上传前做成员、本人／授权、JPEG 签名及 1 MiB 大小校验。小程序不能调用 `wx.cloud.uploadFile` 直传，以免未入圈用户占用存储额度。跨成员照片展示通过 `photo.url`，由云函数在权限校验后签发暂设 60 秒有效的临时 URL；已经签发的 URL 在到期前可能仍被持有者访问，因此移除成员后的照片访问不能仅靠前端清缓存声称瞬时撤回。上线前须在真实环境验证私有文件的服务端上传、签发、链接有效期与删除流程。还需配置资源费用告警和孤儿文件清理；被移除成员照片的物理清理尚未实现。请求内传 base64 会增加流量，已用 1 MiB 限制控制单次成本。
+CloudBase [事务限制](https://docs.cloudbase.net/database/transaction)为单次最多 100 个文档操作、30 秒，且事务内仅支持 `doc` 操作。服务将列表所需的关联姓名按圈批量读取，把安全关键的成员、邀请等确定 ID 留在事务内校验；批量撤销授权最多处理 80 条，超过时在写入前报 `DATA_LIMIT`。当前圈列表最多支持一人 80 个圈；仓库查询遇到超过 5000 条匹配记录时明确报 `DATA_LIMIT`，不会悄悄返回不完整数据。更大规模需要分页和批处理设计。正式建库时还应按各 `where` 条件及 `_id` 排序配置索引，参考[CloudBase 索引指南](https://docs.cloudbase.net/database/data-index)。
+
+**云存储**：设置 [storage-deny-client.json](../cloudfunctions/security/storage-deny-client.json) 为客户端读写均拒绝。照片仅经云函数 `photo.upload` 服务端上传，上传前做成员、本人／授权、JPEG 签名及 1 MiB 大小校验。小程序不能调用 `wx.cloud.uploadFile` 直传，以免未入圈用户占用存储额度。跨成员照片展示通过 `photo.url` 或每批最多 20 人的 `photo.urls`，由云函数在权限校验后签发暂设 60 秒有效的临时 URL；已经签发的 URL 在到期前可能仍被持有者访问，因此移除成员后的照片访问不能仅靠前端清缓存声称瞬时撤回。上线前须在真实环境验证私有文件的服务端上传、签发、链接有效期与删除流程。还需配置资源费用告警和孤儿文件清理；同一文件可能仍被其他人物卡引用，不能在换照片或移除成员时直接删除旧文件。物理清理需在云端建立引用核对和安全回收流程后实现。请求内传 base64 会增加流量，已用 1 MiB 限制控制单次成本。
 
 **函数**：可参考 [function-api-only.json](../cloudfunctions/security/function-api-only.json)，只开放 `api` 给已登录调用者。**上线硬门槛：`api` 只能由已绑定的小程序通过事件调用，禁用 HTTP、Web、定时器、数据库触发器及其他来源调用同一函数。**身份来源是 `wx.cloud.callFunction` 的 `OPENID`；腾讯云文档指出混合调用来源时 `getWXContext()` 可能因实例复用残留上一位用户身份，函数安全规则 `auth != null` 本身不能证明来源。未来增加其他端时须拆分入口或采用能够验证调用来源的可信上下文身份方案，不能沿用此入口。参考[云函数实例复用说明](https://docs.cloudbase.net/cloud-function/instance)。不要在客户端直连数据库或存储做越权查询。安全规则在真实环境中需要逐项检查生效情况，不能只因本地测试通过就发布。
 

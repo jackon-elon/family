@@ -42,6 +42,7 @@ export interface Person {
   wechatId?: string;
   photoFileId?: string;
   photoUrl?: string;
+  hasPhoto?: boolean;
   visibility?: Record<string, Visibility>;
   isSelf?: boolean;
   isClaimed?: boolean;
@@ -120,12 +121,14 @@ export type ApiResult<T = any> = { ok: true; data: T } | { ok: false; error: Api
 const MODE_KEY = 'kin-network-demo-mode';
 const DB_KEY = 'kin-network-demo-db-v2';
 const DEMO_ACTOR = 'demo-owner';
+class DemoStorageError extends Error {}
 
 function storageGet(key: string): any {
   try { return wx.getStorageSync(key); } catch (_) { return undefined; }
 }
 function storageSet(key: string, value: any): void {
-  try { wx.setStorageSync(key, value); } catch (_) { /* storage may be unavailable in tests */ }
+  try { wx.setStorageSync(key, value); }
+  catch (_) { throw new DemoStorageError('本机演示资料存储空间不足，操作没有保存'); }
 }
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)); }
 function good<T>(data: T): ApiResult<T> { return { ok: true, data }; }
@@ -135,9 +138,11 @@ function uid(prefix: string): string { return `${prefix}_${Date.now().toString(3
 export function isDemoMode(): boolean { return !CLOUD_ENV_ID || storageGet(MODE_KEY) !== false; }
 export function setDemoMode(enabled: boolean): boolean {
   if (!enabled && (!CLOUD_ENV_ID || !wx.cloud || !wx.cloud.callFunction)) return false;
-  storageSet(MODE_KEY, enabled);
-  if (!enabled && wx.cloud.init) wx.cloud.init({ env: CLOUD_ENV_ID, traceUser: true });
-  return true;
+  try {
+    if (!enabled && wx.cloud.init) wx.cloud.init({ env: CLOUD_ENV_ID, traceUser: true });
+    storageSet(MODE_KEY, enabled);
+    return true;
+  } catch (_) { return false; }
 }
 
 interface DemoDb {
@@ -224,7 +229,10 @@ function recordAudit(db: DemoDb, circleId: string, type: string, targetId: strin
   const actor = db.members.find(member => member.circleId === circleId && member.actorId === DEMO_ACTOR && member.status === 'joined');
   db.audits.push({ id: uid('audit'), circleId, type, targetId, at: Date.now(), actorName: actor?.name || '当前成员', details });
 }
-export function resetDemoData(): void { storageSet(DB_KEY, seedDb()); }
+export function resetDemoData(): boolean {
+  try { storageSet(DB_KEY, seedDb()); return true; }
+  catch (_) { return false; }
+}
 
 function roleFor(db: DemoDb, circleId: string): Role | undefined {
   const member = db.members.find(m => m.circleId === circleId && m.actorId === DEMO_ACTOR && m.status === 'joined');
@@ -246,7 +254,7 @@ function visiblePerson(raw: Person): Person {
     const restricted: Record<string, string> = { city: 'city', country: 'city', province: 'city', latitude: 'city', longitude: 'city', photoFileId: 'photoFileId', photoUrl: 'photoFileId', school: 'school', industry: 'industry', occupation: 'occupation', status: 'status', bio: 'bio', phone: 'phone', wechatId: 'wechatId' };
     Object.keys(restricted).forEach(field => {
       const visibilityKey = restricted[field];
-      if ((!raw.claimedBy || !raw.visibility || raw.visibility[visibilityKey] !== 'circle') && delegatedFields.indexOf(field) < 0) delete (p as any)[field];
+      if ((!raw.claimedBy || !raw.visibility || raw.visibility[visibilityKey] !== 'circle') && delegatedFields.indexOf(visibilityKey) < 0) delete (p as any)[field];
     });
     delete p.visibility;
     delete p.delegations;
@@ -254,6 +262,8 @@ function visiblePerson(raw: Person): Person {
   } else {
     p.delegations = db.delegations.filter(d => d.personId === raw.id && d.active);
   }
+  p.hasPhoto = !!(p.photoFileId || p.photoUrl);
+  delete p.photoFileId;
   return p;
 }
 function effectiveDelegationFields(fields: string[]): string[] {
@@ -352,7 +362,9 @@ function previewDemoRelation(db: DemoDb, circleId: string, change: RelationChang
 }
 
 function mockInvoke(action: string, p: any): ApiResult<any> {
-  const db = loadDb();
+  // Work on a detached copy so a failed storage write cannot appear saved in
+  // the current session (some test and device storage adapters return objects by reference).
+  const db = clone(loadDb());
   const circleId = p.circleId as string;
   if (action === 'circle.list') {
     return good({ circles: db.circles.filter(c => !!roleFor(db, c.id)).map(c => ({ ...c, role: roleFor(db, c.id), memberCount: db.members.filter(m => m.circleId === c.id && m.status === 'joined').length })) });
@@ -390,13 +402,16 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     return good({ application: visible });
   }
   if (action === 'join.mine') {
-    return good({ applications: db.applications.filter(a => !a.actorId || a.actorId === DEMO_ACTOR).map(a => {
+    const mine = db.applications.filter(a => !a.actorId || a.actorId === DEMO_ACTOR)
+      .sort((a, b) => b.createdAt - a.createdAt);
+    const selected = p.applicationId ? mine.filter(a => a.id === p.applicationId) : mine.slice(0, 20);
+    return good({ applications: selected.map(a => {
       const invite = db.invites.find(i => i.id === a.inviteId);
       const inviteStatus = !invite ? 'expired' : invite.revokedAt ? 'revoked' : invite.usedAt ? 'used' : invite.expiresAt <= Date.now() ? 'expired' : 'active';
       const status = a.status === 'pending' && inviteStatus !== 'active' ? 'expired' : a.status;
       const {actorId: _actorId, ...visible} = a;
       return {...visible, status, inviteStatus, circleName: getCircle(db, a.circleId)?.name || '亲友圈', circleType: getCircle(db, a.circleId)?.type};
-    }) });
+    }), hasMore: !p.applicationId && mine.length > 20 });
   }
   if (!circleId) return bad('INVALID', '缺少圈子 ID');
   const access = requireMember(db, circleId);
@@ -429,17 +444,45 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     const person = db.persons.find(x => x.id === p.personId && x.circleId === circleId);
     if (!person) return bad('NOT_FOUND', '人物卡不存在');
     const visible = visiblePerson(person);
-    if (!visible.photoUrl && !visible.photoFileId) return bad('FORBIDDEN', '照片未公开');
-    return good({ url: visible.photoUrl || visible.photoFileId });
+    if (!visible.photoUrl) return bad('FORBIDDEN', '照片未公开');
+    return good({ url: visible.photoUrl });
+  }
+  if (action === 'photo.urls') {
+    if (!Array.isArray(p.personIds) || !p.personIds.length || p.personIds.length > 20 || p.personIds.some((id: unknown) => typeof id !== 'string')) return bad('INVALID_INPUT', '请选择 1 至 20 张人物照片');
+    const urls: Record<string, string> = {};
+    for (const personId of new Set(p.personIds as string[])) {
+      const person = db.persons.find(x => x.id === personId && x.circleId === circleId);
+      if (!person) continue;
+      const url = visiblePerson(person).photoUrl;
+      if (url) urls[personId] = url;
+    }
+    return good({ urls });
   }
   if (action === 'photo.upload') {
     const person = db.persons.find(x => x.id === p.personId && x.circleId === circleId);
     if (!person || person.claimedBy !== DEMO_ACTOR) return bad('FORBIDDEN', '只能上传本人照片');
-    if (!p.base64) return bad('INVALID', '照片内容为空');
-    person.photoUrl = `data:image/jpeg;base64,${p.base64}`;
-    person.photoFileId = `demo-photo-${person.id}`;
-    person.updatedAt = Date.now(); saveDb(db);
-    return good({ person: visiblePerson(person) });
+    const base64 = String(p.base64 || '');
+    const byteLength = Math.floor(base64.length * 3 / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
+    if (!base64.startsWith('/9j/') || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64) || byteLength > 1024 * 1024) return bad('INVALID_INPUT', '请上传不超过 1 MB 的 JPG 照片');
+    if (p.visibility !== undefined && p.visibility !== 'self' && p.visibility !== 'circle') return bad('INVALID_INPUT', '照片可见范围不正确');
+    const fs = wx.getFileSystemManager?.();
+    const directory = wx.env?.USER_DATA_PATH;
+    if (!fs?.writeFileSync || !directory) return bad('PHOTO_UNAVAILABLE', '当前设备无法持久保存演示照片');
+    const path = `${directory}/demo-photo-${person.id}-${uid('file')}.jpg`;
+    try { fs.writeFileSync(path, base64, 'base64'); }
+    catch (_) { return bad('PHOTO_SAVE_FAILED', '演示照片保存失败，请清理本机存储后重试'); }
+    const nextDb = clone(db);
+    const updated = nextDb.persons.find(x => x.id === person.id)!;
+    updated.photoUrl = path;
+    updated.photoFileId = `demo-photo-${person.id}`;
+    updated.visibility = { ...(updated.visibility || {}), photoFileId: p.visibility || 'self' };
+    updated.updatedAt = Date.now();
+    try { wx.setStorageSync(DB_KEY, nextDb); }
+    catch (_) {
+      try { fs.unlinkSync?.(path); } catch (_) { /* The saved file is inaccessible without its DB reference. */ }
+      return bad('STORAGE_FULL', '演示资料存储空间不足，照片没有保存');
+    }
+    return good({ person: visiblePerson(updated) });
   }
   if (action === 'person.create') {
     if (!p.claimSelf) { const denied = requireAdmin(db, circleId); if (denied) return denied; }
@@ -452,13 +495,15 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     return good({ person: visiblePerson(person) });
   }
   if (action === 'person.update') {
-    const person = db.persons.find(x => x.id === p.personId && x.circleId === circleId);
+    const nextDb = clone(db);
+    const person = nextDb.persons.find(x => x.id === p.personId && x.circleId === circleId);
     if (!person) return bad('NOT_FOUND', '人物卡不存在');
     const self = person.claimedBy === DEMO_ACTOR;
-    const adminUnclaimed = isAdmin(roleFor(db, circleId)) && !person.claimedBy;
-    const actorMember = db.members.find(m => m.circleId === circleId && m.actorId === DEMO_ACTOR);
-    const delegated = db.delegations.find(d => d.personId === person.id && d.adminMemberId === (actorMember && actorMember.id) && d.active);
+    const adminUnclaimed = isAdmin(roleFor(nextDb, circleId)) && !person.claimedBy;
+    const actorMember = nextDb.members.find(m => m.circleId === circleId && m.actorId === DEMO_ACTOR);
+    const delegated = nextDb.delegations.find(d => d.personId === person.id && d.adminMemberId === (actorMember && actorMember.id) && d.active);
     if (!self && !adminUnclaimed && !delegated) return bad('FORBIDDEN', '只能编辑本人资料或已授权的资料');
+    if (p.visibility && !self) return bad('FORBIDDEN', '只有本人可以修改可见范围');
     const allowed = ['name','nickname','gender','birthOrder','country','province','city','latitude','longitude','status','industry','occupation','school','bio','phone','wechatId','photoFileId','photoUrl'];
     const patch = p.patch || {};
     const latitudeTouched = Object.prototype.hasOwnProperty.call(patch, 'latitude');
@@ -473,19 +518,22 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     for (const key of Object.keys(patch)) {
       if (allowed.indexOf(key) < 0) continue;
       if (adminUnclaimed && ['name','nickname','gender','birthOrder'].indexOf(key) < 0) return bad('FORBIDDEN', '未认领人物只可填写最少资料');
-      if (delegated && !self && !adminUnclaimed && effectiveDelegationFields(delegated.fields).indexOf(key) < 0) return bad('FORBIDDEN', '此字段不在代维护授权范围内');
+      if (delegated && !self && !adminUnclaimed && effectiveDelegationFields(delegated.fields).indexOf(key === 'photoUrl' ? 'photoFileId' : key) < 0) return bad('FORBIDDEN', '此字段不在代维护授权范围内');
       (next as any)[key] = key === 'latitude' ? (latitude === undefined ? undefined : Math.round(latitude * 10) / 10) :
         key === 'longitude' ? (longitude === undefined ? undefined : Math.round(longitude * 10) / 10) : patch[key];
     }
+    if (typeof patch.photoUrl === 'string' && patch.photoUrl) next.photoFileId = `demo-photo-${person.id}`;
+    else if (Object.prototype.hasOwnProperty.call(patch, 'photoUrl') && !patch.photoUrl) next.photoFileId = undefined;
     if (latitude !== undefined && !next.city) return bad('INVALID_INPUT', '请先填写城市再确认城市中心点');
     const locationNameChanged = ['city','country','province'].some(key => Object.prototype.hasOwnProperty.call(patch, key) && (next as any)[key] !== (person as any)[key]);
     if (!next.city || (locationNameChanged && !latitudeTouched)) { next.latitude = undefined; next.longitude = undefined; }
     Object.assign(person, next);
     if (p.visibility) {
-      if (!self) return bad('FORBIDDEN', '只有本人可以修改可见范围');
       person.visibility = { ...(person.visibility || {}), ...p.visibility };
     }
-    person.updatedAt = Date.now(); saveDb(db);
+    person.updatedAt = Date.now();
+    try { wx.setStorageSync(DB_KEY, nextDb); }
+    catch (_) { return bad('STORAGE_FULL', '演示资料存储空间不足，修改没有保存'); }
     return good({ person: visiblePerson(person) });
   }
   if (action === 'person.delete') {
@@ -630,7 +678,7 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     const denied = requireAdmin(db, circleId); if (denied) return denied;
     const member = db.members.find(m => m.id === p.memberId && m.circleId === circleId && m.status === 'joined');
     if (!member) return bad('NOT_FOUND', '成员不存在');
-    if (member.role === 'owner' || member.role === 'admin' || member.actorId === DEMO_ACTOR) return bad('FORBIDDEN', '不能移除同级或更高权限成员');
+    if (member.role === 'owner' || (member.role === 'admin' && roleFor(db, circleId) !== 'owner') || member.actorId === DEMO_ACTOR) return bad('FORBIDDEN', '不能移除同级或更高权限成员');
     member.status = 'removed';
     const person = db.persons.find(x => x.id === member.personId && x.circleId === circleId);
     if (person) {
@@ -708,7 +756,12 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
 
 export async function invoke<T = any>(request: { action: string; payload?: any }): Promise<ApiResult<T>> {
   const payload = request.payload || {};
-  if (isDemoMode()) return mockInvoke(request.action, payload) as ApiResult<T>;
+  if (isDemoMode()) {
+    try { return mockInvoke(request.action, payload) as ApiResult<T>; }
+    catch (error: any) {
+      return bad(error instanceof DemoStorageError ? 'STORAGE_FULL' : 'DEMO_ERROR', error instanceof DemoStorageError ? error.message : '演示操作未完成，请重试');
+    }
+  }
   try {
     const result = await wx.cloud.callFunction({ name: 'api', data: { action: request.action, payload } });
     const envelope = result && result.result;
@@ -719,17 +772,47 @@ export async function invoke<T = any>(request: { action: string; payload?: any }
   }
 }
 
-/** Short-lived photo URLs are requested only for the people currently rendered. */
-export async function resolvePhotoUrls(circleId: string, persons: Person[]): Promise<Person[]> {
+/** Resolve visible photos in small batches so large circles can render before every URL arrives. */
+export async function resolvePhotoUrls(circleId: string, persons: Person[], onProgress?: (persons: Person[], checkOnly?: boolean) => boolean | void): Promise<Person[]> {
   const list = persons.slice();
-  const pending = list.map((p, i) => p.photoFileId && !p.photoUrl ? i : -1).filter(i => i >= 0);
-  // The graph initially requests a bounded number of links. Always include
-  // the member's own photo even when their card is late in a large class list.
-  const indexes = pending.sort((a, b) => Number(!!list[b].isSelf) - Number(!!list[a].isSelf)).slice(0, 20);
-  await Promise.all(indexes.map(async i => {
-    const result = await invoke<{ url: string }>({ action: 'photo.url', payload: { circleId, personId: list[i].id } });
-    if (result.ok) list[i] = { ...list[i], photoUrl: result.data.url };
-  }));
+  const pending = list.map((p, i) => p.hasPhoto && !p.photoUrl ? i : -1).filter(i => i >= 0);
+  // Prioritize the current member. The remaining photos are fetched after the
+  // first render rather than silently leaving later graph cards without photos.
+  const indexes = pending.sort((a, b) => Number(!!list[b].isSelf) - Number(!!list[a].isSelf));
+  const load = async (batch: number[]) => {
+    if (!batch.length) return;
+    const result = await invoke<{ urls: Record<string, string> }>({ action: 'photo.urls', payload: { circleId, personIds: batch.map(i => list[i].id) } });
+    if (result.ok) {
+      batch.forEach(i => {
+        const url = result.data.urls[list[i].id];
+        if (url) list[i] = { ...list[i], photoUrl: url };
+      });
+      return;
+    }
+    // An older deployed function may not have the batch action yet.
+    if (result.error.code !== 'UNKNOWN_ACTION') return;
+    for (let start = 0; start < batch.length; start += 6) {
+      await Promise.all(batch.slice(start, start + 6).map(async i => {
+        const single = await invoke<{ url: string }>({ action: 'photo.url', payload: { circleId, personId: list[i].id } });
+        if (single.ok && single.data.url) list[i] = { ...list[i], photoUrl: single.data.url };
+      }));
+    }
+  };
+  const first = indexes.slice(0, 20);
+  await load(first);
+  if (!onProgress) {
+    for (let start = first.length; start < indexes.length; start += 20) await load(indexes.slice(start, start + 20));
+  } else if (indexes.length > first.length) {
+    setTimeout(() => {
+      void (async () => {
+        for (let start = first.length; start < indexes.length; start += 20) {
+          if (onProgress(list, true) === false) return;
+          await load(indexes.slice(start, start + 20));
+          if (onProgress(list.slice()) === false) return;
+        }
+      })().catch(() => { /* A later visit can request fresh short-lived links. */ });
+    }, 0);
+  }
   return list;
 }
 

@@ -37,14 +37,14 @@ Page({
   onCreate() { go('/pages/create/index'); },
   async onReset(this: any) {
     if (!(await confirm('重置演示数据', '会清除你在演示模式中新增的圈子、人物和申请。确定重置吗？'))) return;
-    resetDemoData();
+    if (!resetDemoData()) return toast('演示资料存储空间不足，重置失败');
     toast('演示数据已恢复');
     this.onShow();
   },
   async onSwitchMode(this: any) {
     if (this.data.demoMode) {
       if (!(await confirm('切换到云端', '请先配置真实小程序 AppID、云环境，并部署 api 云函数。现在尝试切换吗？'))) return;
-      if (!setDemoMode(false)) { toast('当前环境没有云开发能力'); return; }
+      if (!setDemoMode(false)) { toast('切换失败，请检查云环境和本机存储'); return; }
     } else {
       setDemoMode(true);
     }

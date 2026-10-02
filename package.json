@@ -6,8 +6,9 @@
   "scripts": {
     "sync:kinship": "node scripts/sync-kinship.mjs",
     "build:backend": "tsc -p backend/tsconfig.json",
-    "build:cloud": "npm run build:backend && node backend/scripts/package-cloud-function.cjs",
-    "test:backend": "npm run build:backend && node --test backend/tests/*.test.cjs",
+    "build:cloud": "npm run build:backend && node backend/scripts/package-cloud-function.cjs && npm run check:cloud",
+    "check:cloud": "node scripts/check-cloud-package.mjs",
+    "test:backend": "npm run build:cloud && node --test backend/tests/*.test.cjs",
     "test:kinship": "node --experimental-strip-types --test packages/kinship/test/*.test.mjs",
     "test:star": "node --experimental-strip-types --test miniprogram/components/star-network/layout.test.mjs",
     "test:frontend": "node --test miniprogram/tests/*.test.cjs",

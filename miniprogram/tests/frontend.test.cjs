@@ -19,7 +19,7 @@ global.wx = {
 
 const { groupCities } = require('../utils/geography.ts');
 const { relationshipFor } = require('../utils/relationship.ts');
-const { invoke, resetDemoData, setDemoMode, isDemoMode } = require('../services/api.ts');
+const { invoke, resetDemoData, setDemoMode, isDemoMode, resolvePhotoUrls } = require('../services/api.ts');
 
 test('city grouping uses visible city data and keeps China/world totals aligned', () => {
   const people = [
@@ -53,6 +53,26 @@ test('demo API keeps family and class cards separate and redacts private fields'
   assert.equal(family.data.persons.find(person => person.id === 'f_dad').phone, undefined);
   assert.equal(family.data.persons.find(person => person.id === 'f_me').phone, '13800000000');
   assert.deepEqual([classmates.data.persons.find(person => person.id === 'c_wang').latitude, classmates.data.persons.find(person => person.id === 'c_wang').longitude], [51.5, -0.1]);
+});
+
+test('delegated admin can preview a private photo without receiving its storage ID', async () => {
+  resetDemoData();
+  const key = 'kin-network-demo-db-v2';
+  const db = storage.get(key);
+  const person = db.persons.find(item => item.id === 'f_mom');
+  person.photoFileId = 'demo-photo-f_mom';
+  person.photoUrl = '/demo-files/mom.jpg';
+  person.visibility.photoFileId = 'self';
+  db.delegations.push({id: 'photo-delegation', circleId: 'family_demo', personId: 'f_mom', adminMemberId: 'm_f_self', fields: ['photoFileId'], active: true});
+  storage.set(key, db);
+  const detail = await invoke({action: 'person.get', payload: {circleId: 'family_demo', personId: 'f_mom'}});
+  assert.equal(detail.ok, true);
+  assert.equal(detail.data.person.hasPhoto, true);
+  assert.equal(detail.data.person.photoFileId, undefined);
+  assert.equal(detail.data.person.photoUrl, '/demo-files/mom.jpg');
+  const urls = await invoke({action: 'photo.urls', payload: {circleId: 'family_demo', personIds: ['f_mom']}});
+  assert.equal(urls.data.urls.f_mom, '/demo-files/mom.jpg');
+  resetDemoData();
 });
 
 test('demo city points are coarse, paired, and removed with private location data', async () => {
@@ -117,6 +137,8 @@ test('one invite can approve only one application, including in demo mode', asyn
   assert.equal(first.ok, true); assert.equal(second.ok, true);
   const mine = await invoke({ action: 'join.mine' });
   assert.ok(mine.data.applications.some(application => application.id === first.data.application.id && application.status === 'pending' && application.circleName === '陈家的小圈子'));
+  const one = await invoke({action: 'join.mine', payload: {applicationId: first.data.application.id}});
+  assert.deepEqual(one.data.applications.map(application => application.id), [first.data.application.id]);
   const personCount = storage.get('kin-network-demo-db-v2').persons.length;
   const approved = await invoke({ action: 'join.approve', payload: { circleId: 'family_demo', applicationId: first.data.application.id } });
   assert.equal(approved.ok, true);
@@ -388,9 +410,9 @@ test('personal PNG photo is converted to JPEG, uploaded, and shared only by expl
     assert.equal(page.data.form.photoUrl, 'compressed.jpg');
     page.onPhotoVisibility({currentTarget: {dataset: {index: 1}}});
     await page.onSavePhoto();
-    assert.deepEqual(calls.map(call => call.action), ['photo.upload','person.update']);
+    assert.deepEqual(calls.map(call => call.action), ['photo.upload']);
     assert.equal(calls[0].payload.base64, '/9j/2Q==');
-    assert.deepEqual(calls[1].payload.visibility, {photoFileId: 'circle'});
+    assert.equal(calls[0].payload.visibility, 'circle');
     assert.match(route, /pages\/person\/index/);
   } finally {
     clearTimeout(selectionTimer);
@@ -437,5 +459,227 @@ test('existing photo visibility can be saved without choosing another image', as
     wx.cloud = previousCloud;
     global.Page = previousPage;
     if (previousRedirect === undefined) delete wx.redirectTo; else wx.redirectTo = previousRedirect;
+  }
+});
+
+test('photo URLs after the first 20 load progressively and include the late self card', async () => {
+  const config = require('../config.ts');
+  const previousEnv = config.CLOUD_ENV_ID;
+  const previousCloud = wx.cloud;
+  let calls = 0;
+  try {
+    config.CLOUD_ENV_ID = 'test-env';
+    wx.cloud = {init() {}, callFunction: async request => {
+      assert.equal(request.data.action, 'photo.urls');
+      assert.ok(request.data.payload.personIds.length <= 20);
+      calls++;
+      const urls = Object.fromEntries(request.data.payload.personIds.map(id => [id, `https://photos.example/${id}.jpg`]));
+      return {result: {ok: true, data: {urls}}};
+    }};
+    assert.equal(setDemoMode(false), true);
+    const people = Array.from({length: 27}, (_, index) => ({id: `p${index}`, name: `人${index}`, hasPhoto: true, isSelf: index === 26}));
+    let finish;
+    const completed = new Promise(resolve => { finish = resolve; });
+    const first = await resolvePhotoUrls('test-circle', people, updated => {
+      if (updated.every(person => !!person.photoUrl)) finish(updated);
+    });
+    assert.equal(first.filter(person => person.photoUrl).length, 20);
+    assert.match(first[26].photoUrl, /p26\.jpg$/, 'the member must be prioritized even when late in the list');
+    const all = await completed;
+    assert.equal(all.filter(person => person.photoUrl).length, 27);
+    assert.equal(calls, 2, '27 public photos should use two batched cloud calls');
+  } finally {
+    config.CLOUD_ENV_ID = previousEnv;
+    setDemoMode(true);
+    wx.cloud = previousCloud;
+  }
+});
+
+test('leaving a circle cancels later photo URL batches', async () => {
+  const config = require('../config.ts');
+  const previousEnv = config.CLOUD_ENV_ID;
+  const previousCloud = wx.cloud;
+  let calls = 0;
+  try {
+    config.CLOUD_ENV_ID = 'test-env';
+    wx.cloud = {init() {}, callFunction: async request => {
+      calls++;
+      const urls = Object.fromEntries(request.data.payload.personIds.map(id => [id, `https://photos.example/${id}.jpg`]));
+      return {result: {ok: true, data: {urls}}};
+    }};
+    assert.equal(setDemoMode(false), true);
+    const people = Array.from({length: 50}, (_, index) => ({id: `p${index}`, name: `人${index}`, hasPhoto: true}));
+    let stopped;
+    const progressStopped = new Promise(resolve => {stopped = resolve;});
+    await resolvePhotoUrls('test-circle', people, (_updated, checkOnly) => {
+      if (checkOnly) return true;
+      stopped();
+      return false;
+    });
+    await progressStopped;
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(calls, 2, 'only the first and in-flight second batch should run');
+  } finally {
+    config.CLOUD_ENV_ID = previousEnv;
+    setDemoMode(true);
+    wx.cloud = previousCloud;
+  }
+});
+
+test('new card stays editable after its profile update fails and retry does not create a duplicate', async () => {
+  const api = require('../services/api.ts');
+  const previousInvoke = api.invoke;
+  const previousPage = global.Page;
+  const previousModal = wx.showModal;
+  const previousRedirect = wx.redirectTo;
+  let createCount = 0;
+  let updateCount = 0;
+  let modalText = '';
+  let route = '';
+  try {
+    api.invoke = async request => {
+      if (request.action === 'person.create') { createCount++; return {ok: true, data: {person: {id: 'new-person', isSelf: false}}}; }
+      if (request.action === 'person.update') {
+        updateCount++;
+        return updateCount === 1 ? {ok: false, error: {code: 'NETWORK', message: '网络暂时不可用'}} : {ok: true, data: {person: {id: 'new-person'}}};
+      }
+      throw new Error(`unexpected action ${request.action}`);
+    };
+    wx.showModal = options => { modalText = options.content; };
+    wx.redirectTo = options => { route = options.url; };
+    global.Page = options => { global.__personEditDefinition = options; };
+    delete require.cache[require.resolve('../pages/person-edit/index.ts')];
+    require('../pages/person-edit/index.ts');
+    const definition = global.__personEditDefinition;
+    const page = {
+      ...definition, data: structuredClone(definition.data), circleId: 'family_demo', createMode: 'other', personId: '',
+      setData(patch) { Object.assign(this.data, patch); }
+    };
+    page.data.form.name = '新人物';
+    await page.onSave();
+    assert.equal(createCount, 1);
+    assert.equal(page.personId, 'new-person');
+    assert.equal(page.data.isNew, false);
+    assert.match(modalText, /人物卡已创建|详细资料暂未保存/);
+    await page.onSave();
+    assert.equal(createCount, 1);
+    assert.equal(updateCount, 2);
+    assert.match(route, /personId=new-person/);
+  } finally {
+    api.invoke = previousInvoke;
+    global.Page = previousPage;
+    wx.showModal = previousModal;
+    wx.redirectTo = previousRedirect;
+    delete global.__personEditDefinition;
+  }
+});
+
+test('person detail hides another claim action while an application is pending', async () => {
+  const api = require('../services/api.ts');
+  const previousInvoke = api.invoke;
+  const previousPage = global.Page;
+  const previousTitle = wx.setNavigationBarTitle;
+  let pending = true;
+  try {
+    api.invoke = async request => {
+      const action = request.action;
+      if (action === 'circle.detail') return {ok: true, data: {circle: {id: 'c', type: 'family'}, role: 'member'}};
+      if (action === 'person.get') return {ok: true, data: {person: {id: 'p1', name: '甲', isClaimed: false}}};
+      if (action === 'person.list') return {ok: true, data: {persons: [{id: 'p1', name: '甲', isClaimed: false}]}};
+      if (action === 'relation.list') return {ok: true, data: {relations: []}};
+      if (action === 'person.claimMine') return {ok: true, data: {claimRequests: pending ? [{status: 'pending'}] : []}};
+      throw new Error(`unexpected action ${action}`);
+    };
+    wx.setNavigationBarTitle = () => {};
+    global.Page = options => { global.__personDefinition = options; };
+    delete require.cache[require.resolve('../pages/person/index.ts')];
+    require('../pages/person/index.ts');
+    const definition = global.__personDefinition;
+    const page = {...definition, circleId: 'c', personId: 'p1', data: structuredClone(definition.data), setData(patch) { Object.assign(this.data, patch); }};
+    await page.loadData();
+    assert.equal(page.data.claimPending, true);
+    assert.equal(page.data.canClaim, false);
+    pending = false;
+    await page.loadData();
+    assert.equal(page.data.canClaim, true);
+  } finally {
+    api.invoke = previousInvoke;
+    global.Page = previousPage;
+    wx.setNavigationBarTitle = previousTitle;
+    delete global.__personDefinition;
+  }
+});
+
+test('demo photo stores a file path and reports storage failures without claiming success', async () => {
+  resetDemoData();
+  const previousEnv = wx.env;
+  const previousFs = wx.getFileSystemManager;
+  const previousSet = wx.setStorageSync;
+  let failStorage = true;
+  const written = [];
+  try {
+    wx.env = {USER_DATA_PATH: '/demo-files'};
+    wx.getFileSystemManager = () => ({writeFileSync(path, value, encoding) { written.push({path, value, encoding}); }, unlinkSync() {}});
+    wx.setStorageSync = (key, value) => {
+      if (key === 'kin-network-demo-db-v2' && failStorage) throw new Error('storage full');
+      storage.set(key, value);
+    };
+    const payload = {circleId: 'family_demo', personId: 'f_me', base64: '/9j/2Q==', visibility: 'circle'};
+    const failed = await invoke({action: 'photo.upload', payload});
+    assert.equal(failed.ok, false);
+    assert.equal(failed.error.code, 'STORAGE_FULL');
+    assert.equal(storage.get('kin-network-demo-db-v2').persons.find(person => person.id === 'f_me').photoUrl, undefined);
+    failStorage = false;
+    const saved = await invoke({action: 'photo.upload', payload});
+    assert.equal(saved.ok, true);
+    assert.equal(saved.data.person.hasPhoto, true);
+    assert.equal(saved.data.person.photoFileId, undefined);
+    assert.equal(written.length, 2);
+    assert.equal(written[1].encoding, 'base64');
+    assert.equal(storage.get('kin-network-demo-db-v2').persons.find(person => person.id === 'f_me').photoUrl, written[1].path);
+    assert.ok(!JSON.stringify(storage.get('kin-network-demo-db-v2')).includes(payload.base64));
+    failStorage = true;
+    const profileFailed = await invoke({action: 'person.update', payload: {circleId: 'family_demo', personId: 'f_me', patch: {bio: '没有保存的内容'}}});
+    assert.equal(profileFailed.ok, false);
+    assert.equal(profileFailed.error.code, 'STORAGE_FULL');
+    assert.notEqual(storage.get('kin-network-demo-db-v2').persons.find(person => person.id === 'f_me').bio, '没有保存的内容');
+  } finally {
+    wx.env = previousEnv;
+    wx.getFileSystemManager = previousFs;
+    wx.setStorageSync = previousSet;
+    resetDemoData();
+  }
+});
+
+test('demo owner can remove an admin as the cloud service allows', async () => {
+  resetDemoData();
+  const promoted = await invoke({action: 'member.setRole', payload: {circleId: 'family_demo', memberId: 'm_f_dad', role: 'admin'}});
+  assert.equal(promoted.ok, true);
+  const removed = await invoke({action: 'member.remove', payload: {circleId: 'family_demo', memberId: 'm_f_dad'}});
+  assert.equal(removed.ok, true);
+  assert.equal(storage.get('kin-network-demo-db-v2').members.find(member => member.id === 'm_f_dad').status, 'removed');
+  resetDemoData();
+});
+
+test('demo writes report storage failure for people and relations without changing stored data', async () => {
+  resetDemoData();
+  const previousSet = wx.setStorageSync;
+  const before = structuredClone(storage.get('kin-network-demo-db-v2'));
+  try {
+    wx.setStorageSync = key => {
+      if (key === 'kin-network-demo-db-v2') throw new Error('storage full');
+    };
+    const person = await invoke({action: 'person.create', payload: {circleId: 'family_demo', name: '无法保存的人物'}});
+    assert.equal(person.ok, false);
+    assert.equal(person.error.code, 'STORAGE_FULL');
+    const relation = await invoke({action: 'relation.create', payload: {circleId: 'family_demo', from: 'f_me', to: 'f_cousin', type: 'sibling'}});
+    assert.equal(relation.ok, false);
+    assert.equal(relation.error.code, 'STORAGE_FULL');
+    const after = storage.get('kin-network-demo-db-v2');
+    assert.deepEqual(after.persons, before.persons);
+    assert.deepEqual(after.relations, before.relations);
+  } finally {
+    wx.setStorageSync = previousSet;
+    resetDemoData();
   }
 });

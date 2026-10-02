@@ -42,7 +42,7 @@ Page({
   async loadMyStatus(this: any) {
     if (!this.applicationId) return;
     this.setData({ checking: true });
-    const result = await invoke<{ applications: MyApplication[] }>({ action: 'join.mine' });
+    const result = await invoke<{ applications: MyApplication[] }>({ action: 'join.mine', payload: { applicationId: this.applicationId } });
     this.setData({ checking: false });
     if (!result.ok) { this.setData({ error: result.error.message }); return; }
     const application = result.data.applications.find(a => a.id === this.applicationId);

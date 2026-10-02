@@ -14,7 +14,7 @@ npm test
 npm run build:cloud
 ```
 
-`npm test` 运行 74 项亲属规则、关系图布局、后端权限、邀请与前端演示测试，以及 TypeScript 和页面配置检查。`build:cloud` 编译云端服务并将产物放入 `cloudfunctions/api/lib`。执行结果及未验证部分见[测试报告](./docs/test-report.md)。
+`npm test` 运行 93 项亲属规则、关系图布局、后端权限、邀请与前端演示测试，以及 TypeScript、页面配置和云函数打包一致性检查。`build:cloud` 编译云端服务并将产物放入 `cloudfunctions/api/lib`。执行结果及未验证部分见[测试报告](./docs/test-report.md)。
 
 安装微信开发者工具后，以**项目根目录**（本目录）导入 `project.config.json`。其中 `appid` 为占位值 `touristappid`；在 2.02.2609231 版开发者工具中，直接导入会报“不存在此 AppID”。本地已在被 Git 忽略的 `project.private.config.json` 配置测试 AppID；在其他电脑使用时可用自己的 AppID 创建同名文件：
 

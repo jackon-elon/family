@@ -2,6 +2,8 @@
   <view class="eyebrow">CITY POINT</view>
   <view class="title">标记所在城市</view>
   <view class="subtitle intro">填写城市名称，再拖动地图，让十字落在城市附近。保存的是城市代表点。</view>
+  <view class="card empty" wx:if="{{!hasOpener}}">请从人物资料编辑页打开城市地图，选好的城市才能带回人物卡。<button class="btn secondary" bindtap="onBackHome">返回我的圈子</button></view>
+  <block wx:else>
   <view class="card name-card">
     <label class="field"><text class="field-label">城市 *</text><input class="field-control" value="{{city}}" placeholder="例如：奥斯陆" maxlength="40" data-field="city" bindinput="onInput" /></label>
     <label class="field"><text class="field-label">国家 / 地区 *</text><input class="field-control" value="{{country}}" placeholder="例如：挪威" maxlength="40" data-field="country" bindinput="onInput" /></label>
@@ -17,4 +19,5 @@
   <view class="map-caption">拖动或缩放地图，把十字移到城市中心附近</view>
   <view class="card privacy-note">不会读取你的实时位置。保存前会把地图位置取整到约 10 公里精度；请不要标记家庭住址。</view>
   <view class="sticky-bottom"><button class="btn" disabled="{{selecting}}" bindtap="onConfirm">{{selecting ? '正在确认…' : '确认这个城市'}}</button></view>
+  </block>
 </view>

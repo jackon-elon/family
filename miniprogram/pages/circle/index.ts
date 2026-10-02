@@ -20,9 +20,13 @@ Page({
   },
   onLoad(this: any, options: any) { this.circleId = options.circleId || wx.getStorageSync('kin-current-circle'); this.loadData(); },
   onShow(this: any) { if (this.circleId && !this.data.loading) this.loadData(); },
+  onHide(this: any) { if (!this.data.loading) this.photoLoadVersion = (this.photoLoadVersion || 0) + 1; },
+  onUnload(this: any) { this.photoLoadVersion = (this.photoLoadVersion || 0) + 1; },
   onPullDownRefresh(this: any) { this.loadData().finally(() => wx.stopPullDownRefresh()); },
   async loadData(this: any) {
     if (!this.circleId) { toast('请先选择圈子'); return; }
+    const photoLoadVersion = (this.photoLoadVersion || 0) + 1;
+    this.photoLoadVersion = photoLoadVersion;
     this.setData({ loading: true });
     const [detail, persons, relations, members, claims] = await Promise.all([
       invoke<{ circle: Circle; role: string }>({ action: 'circle.detail', payload: { circleId: this.circleId } }),
@@ -34,7 +38,15 @@ Page({
     if (!detail.ok) { showApiError(detail); this.setData({ loading: false }); return; }
     if (!persons.ok) { showApiError(persons); this.setData({ loading: false }); return; }
     const circle = detail.data.circle;
-    const list = await resolvePhotoUrls(this.circleId, persons.data.persons);
+    const list = await resolvePhotoUrls(this.circleId, persons.data.persons, (updated, checkOnly) => {
+      if (this.photoLoadVersion !== photoLoadVersion) return false;
+      if (checkOnly) return true;
+      const photos = new Map(updated.filter(person => person.photoUrl).map(person => [person.id, person.photoUrl]));
+      this.setData({ people: this.data.people.map((person: Person) => photos.has(person.id) ? { ...person, photoUrl: photos.get(person.id) } : person) });
+      this.rebuild();
+      return true;
+    });
+    if (this.photoLoadVersion !== photoLoadVersion) return;
     const self = list.find(p => p.isSelf);
     const ownMember = members.ok ? members.data.members.find(m => m.isSelf) : null;
     const ownClaims = claims.ok ? claims.data.claimRequests : [];
@@ -124,7 +136,7 @@ Page({
       if (this.data.selectedStarId === personId) wx.pageScrollTo({ selector: '#star-person-card', duration: 240 });
     });
     const person = this.data.people.find((item: Person) => item.id === personId);
-    if (!person?.photoFileId || person.photoUrl) return;
+    if (!person?.hasPhoto || person.photoUrl) return;
     const photo = await invoke<{ url: string }>({ action: 'photo.url', payload: { circleId: this.circleId, personId } });
     if (!photo.ok || !photo.data.url || this.data.selectedStarId !== personId) return;
     const people = this.data.people.map((item: Person) => item.id === personId ? { ...item, photoUrl: photo.data.url } : item);

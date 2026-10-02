@@ -32,17 +32,18 @@ function proposalText(data: any): string {
 }
 
 Page({
-  data: { circle: null as Circle | null, person: null as Person | null, initial: '人', relationLabel: '', relationPath: '', relationMissing: '', relationStatus: '', alternatives: '', isAdmin: false, canEdit: false, canClaim: false, rows: [] as { label: string; value: string }[], updated: '', loading: true,
+  data: { circle: null as Circle | null, person: null as Person | null, initial: '人', relationLabel: '', relationPath: '', relationMissing: '', relationStatus: '', alternatives: '', isAdmin: false, canEdit: false, canClaim: false, claimPending: false, rows: [] as { label: string; value: string }[], updated: '', loading: true,
     allPeople: [] as Person[], suggestionExisting: [] as Relation[], suggestionExistingNames: [] as string[], personNames: [] as string[], showRelationSuggestion: false, suggestionModeOptions: CORRECTION_MODES, suggestionModeIndex: 0, suggestionExistingIndex: 0, suggestionTypeOptions: RELATION_TYPES, suggestionTypeIndex: 0, suggestionFromIndex: 0, suggestionToIndex: 1, suggestionOlderOptions: ['暂不确定', '第一位较年长', '第二位较年长'], suggestionOlderIndex: 0, suggestionMessage: '', suggestionPreview: '', submittingSuggestion: false },
   onLoad(this: any, options: any) { this.circleId = options.circleId; this.personId = options.personId; this.loadData(); },
   onShow(this: any) { if (this.personId && !this.data.loading) this.loadData(); },
   async loadData(this: any) {
     this.setData({ loading: true });
-    const [detail, current, people, relations] = await Promise.all([
+    const [detail, current, people, relations, claims] = await Promise.all([
       invoke<{ circle: Circle; role: string }>({ action: 'circle.detail', payload: { circleId: this.circleId } }),
       invoke<{ person: Person }>({ action: 'person.get', payload: { circleId: this.circleId, personId: this.personId } }),
       invoke<{ persons: Person[] }>({ action: 'person.list', payload: { circleId: this.circleId } }),
-      invoke<{ relations: Relation[] }>({ action: 'relation.list', payload: { circleId: this.circleId } })
+      invoke<{ relations: Relation[] }>({ action: 'relation.list', payload: { circleId: this.circleId } }),
+      invoke<{ claimRequests: Array<{status: string}> }>({ action: 'person.claimMine', payload: { circleId: this.circleId } })
     ]);
     if (!detail.ok) { showApiError(detail); return; }
     if (!current.ok) { showApiError(current); return; }
@@ -59,10 +60,11 @@ Page({
       { label: '近况', value: person.bio }
     ].filter(x => !!x.value) as { label: string; value: string }[];
     const isAdmin = detail.data.role === 'owner' || detail.data.role === 'admin';
+    const claimPending = claims.ok && claims.data.claimRequests.some(request => request.status === 'pending');
     wx.setNavigationBarTitle({ title: person.name });
     const relevant = relationList.filter(r => r.from === person.id || r.to === person.id);
     const suggestedData = { ...this.data, allPeople: all, suggestionExisting: relevant, suggestionFromIndex: 0, suggestionToIndex: 0 };
-    this.setData({ circle, person, initial: person.name?.slice(-1) || '人', isAdmin, canEdit: !!person.isSelf || (isAdmin && !person.isClaimed) || !!(person as any).myDelegatedFields?.length, canClaim: !person.isClaimed && !all.some(p => p.isSelf), relationLabel: relation?.label || (circle.type === 'classmate' ? '同班同学' : '关系待补充'), relationPath: relation?.path || '', relationMissing: relation?.missing || '', relationStatus: relation?.status || 'unrelated', alternatives: relation?.alternatives || '', rows, updated: dateText(person.updatedAt), loading: false, allPeople: all, personNames: ['请选择人物', ...all.map(p => p.name)], suggestionExisting: relevant, suggestionExistingNames: relevant.map(r => relationText(r, all)), suggestionFromIndex: 0, suggestionToIndex: 0, suggestionPreview: proposalText(suggestedData) });
+    this.setData({ circle, person, initial: person.name?.slice(-1) || '人', isAdmin, canEdit: !!person.isSelf || (isAdmin && !person.isClaimed) || !!(person as any).myDelegatedFields?.length, canClaim: claims.ok && !claimPending && !person.isClaimed && !all.some(p => p.isSelf), claimPending, relationLabel: relation?.label || (circle.type === 'classmate' ? '同班同学' : '关系待补充'), relationPath: relation?.path || '', relationMissing: relation?.missing || '', relationStatus: relation?.status || 'unrelated', alternatives: relation?.alternatives || '', rows, updated: dateText(person.updatedAt), loading: false, allPeople: all, personNames: ['请选择人物', ...all.map(p => p.name)], suggestionExisting: relevant, suggestionExistingNames: relevant.map(r => relationText(r, all)), suggestionFromIndex: 0, suggestionToIndex: 0, suggestionPreview: proposalText(suggestedData) });
   },
   onEdit(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}&personId=${q(this.personId)}`); },
   onPhoto(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}&personId=${q(this.personId)}&focus=photo`); },

@@ -1,30 +1,39 @@
-.cosmos-wrap { overflow: hidden; border-radius: 32rpx; background: #10192f; color: #f5f7ff; box-shadow: 0 18rpx 42rpx rgba(12, 29, 57, .18); }
-.cosmos-header { height: 72rpx; padding: 0 28rpx; display: flex; align-items: center; justify-content: space-between; background: #10192f; border-bottom: 1rpx solid rgba(255, 255, 255, .11); }
-.cosmos-kicker { color: #a6b5da; font-size: 22rpx; font-weight: 700; letter-spacing: 1rpx; }
-.cosmos-counter { color: #c2d7ff; font-size: 21rpx; }
-.cosmos-vertical { height: 650rpx; width: 100%; }
+.cosmos-wrap { overflow: hidden; border-radius: 28rpx; color: #eef3f5; background: #101b28; box-shadow: 0 18rpx 42rpx rgba(20, 43, 51, .13); }
+.cosmos-header { height: 76rpx; padding: 0 26rpx; display: flex; align-items: center; justify-content: space-between; background: #14212d; border-bottom: 1rpx solid rgba(216, 232, 235, .09); }
+.cosmos-heading { display: flex; align-items: center; gap: 13rpx; }
+.cosmos-kicker { color: #e2ecec; font-size: 22rpx; font-weight: 650; letter-spacing: 1rpx; }
+.cosmos-heading-rule { width: 30rpx; height: 1rpx; background: rgba(203, 224, 228, .42); }
+.cosmos-counter { color: #a5b8bf; font-size: 21rpx; font-weight: 500; }
+.cosmos-vertical { width: 100%; }
 .cosmos-horizontal { width: 100%; }
-.cosmos-board { position: relative; overflow: hidden; background-color: #10192f; background-image: radial-gradient(circle at 14% 20%, rgba(143, 171, 235, .8) 1rpx, transparent 2rpx), radial-gradient(circle at 77% 68%, rgba(206, 219, 255, .76) 1rpx, transparent 2rpx), radial-gradient(circle at 42% 82%, rgba(226, 202, 255, .65) 1rpx, transparent 2rpx); background-size: 205rpx 173rpx, 279rpx 227rpx, 316rpx 281rpx; }
-.space-glow { position: absolute; border-radius: 50%; pointer-events: none; }
-.space-glow-a { left: 7%; top: 9%; width: 48%; height: 43%; background: radial-gradient(circle, rgba(70, 104, 172, .17), transparent 70%); }
-.space-glow-b { right: 4%; bottom: 7%; width: 53%; height: 48%; background: radial-gradient(circle, rgba(99, 73, 154, .13), transparent 72%); }
-.orbit { position: absolute; border-radius: 50%; border: 1rpx solid rgba(155, 181, 225, .14); pointer-events: none; }
-.relation-line { position: absolute; height: 2rpx; transform-origin: left center; background: rgba(112, 194, 224, .48); pointer-events: none; }
-.relation-spouse { height: 3rpx; background: rgba(245, 185, 181, .56); }
-.relation-sibling { background: rgba(186, 166, 242, .5); }
-.star-node { position: absolute; z-index: 2; width: 150rpx; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -50%); text-align: center; }
-.planet-shell { position: relative; width: 88rpx; height: 88rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 37rpx; font-weight: 740; color: #fff; background: radial-gradient(circle at 32% 28%, #b6dfef, #5074b4 73%); border: 4rpx solid rgba(255, 255, 255, .7); box-shadow: 0 0 0 10rpx rgba(99, 158, 227, .1), 0 9rpx 25rpx rgba(0, 0, 0, .25); }
-.planet-shell image { width: 100%; height: 100%; border-radius: 50%; }
-.tone-1 .planet-shell { background: radial-gradient(circle at 30% 27%, #d7c5ef, #846db3 74%); box-shadow: 0 0 0 10rpx rgba(169, 125, 215, .1), 0 9rpx 25rpx rgba(0, 0, 0, .25); }
-.tone-2 .planet-shell { background: radial-gradient(circle at 30% 27%, #c6e6d8, #569c8c 74%); box-shadow: 0 0 0 10rpx rgba(99, 195, 158, .1), 0 9rpx 25rpx rgba(0, 0, 0, .25); }
-.tone-3 .planet-shell { background: radial-gradient(circle at 30% 27%, #f5d8b9, #c08270 74%); box-shadow: 0 0 0 10rpx rgba(223, 154, 110, .1), 0 9rpx 25rpx rgba(0, 0, 0, .25); }
-.is-focus .planet-shell { width: 108rpx; height: 108rpx; font-size: 43rpx; border-color: #d7edff; box-shadow: 0 0 0 12rpx rgba(118, 188, 255, .19), 0 0 38rpx rgba(158, 218, 255, .51); }
-.is-self .planet-shell { background: radial-gradient(circle at 30% 25%, #fff6ce, #f6bc63 66%, #e38c70); border-color: #fff8dd; color: #5c3a2c; box-shadow: 0 0 0 12rpx rgba(255, 215, 135, .2), 0 0 42rpx rgba(255, 195, 92, .58); }
-.is-unlinked .planet-shell { opacity: .72; border-style: dashed; }
-.star-name { max-width: 150rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 9rpx; padding: 2rpx 8rpx; border-radius: 8rpx; background: rgba(11, 20, 42, .72); color: #fff; font-size: 27rpx; line-height: 1.25; font-weight: 750; text-shadow: 0 2rpx 8rpx rgba(3, 8, 22, .7); }
-.star-label { max-width: 150rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4rpx; padding: 4rpx 12rpx; border-radius: 999rpx; background: rgba(32, 51, 91, .94); border: 1rpx solid rgba(169, 197, 245, .36); color: #dce7ff; font-size: 21rpx; line-height: 1.25; }
-.is-self .star-label { color: #ffdf98; }
-.cosmos-footer { min-height: 63rpx; padding: 10rpx 22rpx 13rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4rpx; color: #9fb0d4; font-size: 19rpx; background: #10192f; border-top: 1rpx solid rgba(255, 255, 255, .1); }
-.cosmos-empty { height: 390rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #f1f5ff; font-size: 26rpx; }
-.empty-orbit { width: 100rpx; height: 100rpx; display: flex; align-items: center; justify-content: center; border: 1rpx solid rgba(210, 225, 255, .3); border-radius: 50%; font-size: 54rpx; color: #b7d4f7; margin-bottom: 20rpx; }
-.empty-sub { color: #9dadd3; font-size: 21rpx; margin-top: 12rpx; }
+.cosmos-board { position: relative; overflow: hidden; background-color: #101b28; background-image: radial-gradient(circle at 7% 8%, rgba(229, 239, 239, .32) 0, rgba(229, 239, 239, .32) 1rpx, transparent 2rpx), radial-gradient(circle at 64% 32%, rgba(196, 219, 228, .2) 0, rgba(196, 219, 228, .2) 1rpx, transparent 2rpx), radial-gradient(circle at 83% 87%, rgba(234, 217, 183, .22) 0, rgba(234, 217, 183, .22) 1rpx, transparent 2rpx), linear-gradient(152deg, #142331, #0e1826 62%, #152433); background-size: 307rpx 291rpx, 251rpx 247rpx, 359rpx 321rpx, 100% 100%; }
+.sky-grain { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; background: radial-gradient(circle at 79% 18%, rgba(87, 153, 160, .17), transparent 43%), radial-gradient(circle at 19% 78%, rgba(103, 134, 164, .12), transparent 48%); }
+.generation-band { position: absolute; box-sizing: border-box; border-top: 1rpx solid rgba(190, 213, 219, .14); pointer-events: none; }
+.generation-band.is-my-generation { background: linear-gradient(90deg, rgba(163, 197, 192, .06), rgba(163, 197, 192, .025) 50%, transparent); border-top-color: rgba(187, 217, 211, .23); }
+.generation-band.is-unlinked-generation { opacity: .68; }
+.generation-heading { position: absolute; display: flex; align-items: center; gap: 9rpx; white-space: nowrap; }
+.generation-dash { width: 13rpx; height: 2rpx; border-radius: 2rpx; background: #9eb9bc; }
+.generation-name { color: #d1e0e1; font-size: 26rpx; font-weight: 650; letter-spacing: 1rpx; }
+.generation-name.is-current-label { color: #f0d19b; }
+.relation-line { position: absolute; z-index: 1; height: 2rpx; transform-origin: left center; background: rgba(127, 165, 174, .37); pointer-events: none; }
+.relation-spouse { background: rgba(219, 178, 166, .48); }
+.relation-sibling { background: rgba(155, 173, 195, .39); }
+.person-node { position: absolute; z-index: 2; box-sizing: border-box; width: 154rpx; height: 154rpx; padding: 10rpx 8rpx 8rpx; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -50%); border: 1rpx solid rgba(210, 232, 232, .21); border-radius: 19rpx; background: rgba(31, 49, 63, .95); box-shadow: 0 11rpx 24rpx rgba(0, 9, 20, .23); text-align: center; }
+.person-node.is-focus { border-color: rgba(197, 226, 223, .62); box-shadow: 0 0 0 3rpx rgba(179, 215, 210, .13), 0 12rpx 26rpx rgba(0, 9, 20, .27); }
+.person-node.is-self { border-color: rgba(232, 197, 133, .87); background: #273a45; box-shadow: 0 0 0 4rpx rgba(228, 195, 134, .14), 0 0 29rpx rgba(224, 191, 127, .14), 0 12rpx 26rpx rgba(0, 9, 20, .23); }
+.person-node.is-unlinked { opacity: .7; border-style: dashed; }
+.person-node.is-conflicted { border-color: rgba(225, 182, 125, .64); border-style: dashed; }
+.person-node.is-dimmed { opacity: .36; }
+.portrait-frame { box-sizing: border-box; width: 62rpx; height: 62rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden; color: #e8f0f0; background: #56717a; border: 2rpx solid rgba(232, 245, 245, .32); font-size: 27rpx; font-weight: 600; }
+.portrait-frame image { display: block; width: 100%; height: 100%; border-radius: 50%; }
+.tone-1 .portrait-frame { background: #686c83; }
+.tone-2 .portrait-frame { background: #54766f; }
+.tone-3 .portrait-frame { background: #7d6b66; }
+.is-self .portrait-frame { color: #403b32; background: #e0be8e; border-color: rgba(255, 239, 211, .65); }
+.person-name { box-sizing: border-box; max-width: 140rpx; margin-top: 7rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f5f7f7; font-size: 27rpx; line-height: 32rpx; font-weight: 650; }
+.person-relation { box-sizing: border-box; max-width: 140rpx; margin-top: 1rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #b7cdd0; font-size: 22rpx; line-height: 28rpx; }
+.is-self .person-relation { color: #dfc595; }
+.cosmos-footer { min-height: 58rpx; padding: 9rpx 18rpx 11rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3rpx; color: #8da6b0; font-size: 19rpx; background: #14212d; border-top: 1rpx solid rgba(216, 232, 235, .08); }
+.cosmos-empty { height: 370rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #e1ebed; font-size: 26rpx; }
+.empty-star { width: 14rpx; height: 14rpx; margin-bottom: 26rpx; border-radius: 50%; background: #d7c39d; box-shadow: 0 0 0 15rpx rgba(218, 194, 153, .07), 0 0 30rpx rgba(227, 202, 155, .45); }
+.empty-sub { color: #92a9b0; font-size: 21rpx; margin-top: 11rpx; }

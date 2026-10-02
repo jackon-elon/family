@@ -3,7 +3,7 @@ import { confirm, dateText, go, q, toast } from '../../utils/navigation';
 import { relationshipFor } from '../../utils/relationship';
 
 Page({
-  data: { circle: null as Circle | null, person: null as Person | null, initial: '人', relationLabel: '', relationPath: '', relationMissing: '', alternatives: '', isAdmin: false, canEdit: false, canClaim: false, rows: [] as { label: string; value: string }[], updated: '', loading: true },
+  data: { circle: null as Circle | null, person: null as Person | null, initial: '人', relationLabel: '', relationPath: '', relationMissing: '', relationStatus: '', alternatives: '', isAdmin: false, canEdit: false, canClaim: false, rows: [] as { label: string; value: string }[], updated: '', loading: true },
   onLoad(this: any, options: any) { this.circleId = options.circleId; this.personId = options.personId; this.loadData(); },
   onShow(this: any) { if (this.personId && !this.data.loading) this.loadData(); },
   async loadData(this: any) {
@@ -29,7 +29,7 @@ Page({
     ].filter(x => !!x.value) as { label: string; value: string }[];
     const isAdmin = detail.data.role === 'owner' || detail.data.role === 'admin';
     wx.setNavigationBarTitle({ title: person.name });
-    this.setData({ circle, person, initial: person.name?.slice(-1) || '人', isAdmin, canEdit: !!person.isSelf || (isAdmin && !person.isClaimed) || !!(person as any).myDelegatedFields?.length, canClaim: !person.isClaimed && !all.some(p => p.isSelf), relationLabel: relation?.label || (circle.type === 'classmate' ? '同班同学' : '关系待补充'), relationPath: relation?.path || '', relationMissing: relation?.missing || '', alternatives: relation?.alternatives || '', rows, updated: dateText(person.updatedAt), loading: false });
+    this.setData({ circle, person, initial: person.name?.slice(-1) || '人', isAdmin, canEdit: !!person.isSelf || (isAdmin && !person.isClaimed) || !!(person as any).myDelegatedFields?.length, canClaim: !person.isClaimed && !all.some(p => p.isSelf), relationLabel: relation?.label || (circle.type === 'classmate' ? '同班同学' : '关系待补充'), relationPath: relation?.path || '', relationMissing: relation?.missing || '', relationStatus: relation?.status || 'unrelated', alternatives: relation?.alternatives || '', rows, updated: dateText(person.updatedAt), loading: false });
   },
   onEdit(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}&personId=${q(this.personId)}`); },
   onPrivacy(this: any) { go(`/pages/privacy/index?circleId=${q(this.circleId)}&personId=${q(this.personId)}`); },

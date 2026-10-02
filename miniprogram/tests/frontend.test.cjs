@@ -96,6 +96,11 @@ test('the shared kinship engine recalculates labels from each perspective', asyn
   assert.equal(brother.label, '哥哥');
   const aunt = relationshipFor(people, relations, 'f_me', 'f_aunt');
   assert.ok(['姨妈', '大姨'].includes(aunt.label));
+  const cousin = relationshipFor(people, relations, 'f_me', 'f_cousin');
+  assert.equal(cousin.status, 'pending');
+  assert.equal(cousin.label, '堂姐妹');
+  assert.match(cousin.path, /爸爸.*哥哥.*女儿/);
+  assert.match(cousin.missing, /双方的长幼/);
   const self = relationshipFor(people, relations, 'f_me', 'f_me');
   assert.equal(self.status, 'self');
 });

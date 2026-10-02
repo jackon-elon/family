@@ -22,7 +22,7 @@ export function relationshipFor(people: Person[], relations: Relation[], perspec
     perspectiveId,
     targetId
   });
-  const label = result.term || (result.status === 'unrelated' ? '关系待补充' : result.status === 'self' ? '我自己' : '称呼待补充');
+  const label = result.term || result.category || (result.status === 'unrelated' ? '关系待补充' : result.status === 'self' ? '我自己' : '称呼待补充');
   const path = result.path?.display || (result.status === 'self' ? '我' : result.status === 'unrelated' ? '暂无已记录的连接路径' : '关系路径待补充');
   const status = result.status === 'resolved' || result.status === 'self' || result.status === 'unrelated' ? result.status : 'pending';
   return { label, path, missing: result.missing.length ? result.missing.join('、') : undefined, alternatives: result.alternatives?.join(' / '), status };

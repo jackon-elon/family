@@ -84,6 +84,8 @@ export interface KinshipResult {
   term?: string;
   /** 自动计算出的首选叫法；有自定义叫法时仍保留。 */
   calculatedTerm?: string;
+  /** 确定的关系类别，并非可直接使用的称呼，例如长幼未明时的「堂姐妹」。 */
+  category?: string;
   /** 同一称谓的常用别称，或多路径产生的候选叫法。 */
   alternatives?: string[];
   path?: KinshipPath;
@@ -110,7 +112,7 @@ type Arc = {
 
 type Graph = Map<string, Arc[]>;
 type PathSearch = { paths: KinshipPath[]; truncated: boolean };
-type RuleAssessment = { term?: string; alternatives?: string[]; missing: string[]; reason?: string };
+type RuleAssessment = { term?: string; category?: string; alternatives?: string[]; missing: string[]; reason?: string };
 
 const MAX_PATHS = 32;
 const RELATION_PRIORITY: Record<Arc['relation'], number> = {
@@ -496,8 +498,9 @@ function assessPath(path: KinshipPath, byId: Map<string, Person>): RuleAssessmen
     const sibling = g(2, '父母的兄弟姐妹');
     const cousin = g(3, '堂表兄弟姐妹');
     const age = ageBetween(person(0), person(3), missing);
-    if (parent === 'unknown' || sibling === 'unknown' || cousin === 'unknown' || !age) return { missing };
+    if (parent === 'unknown' || sibling === 'unknown' || cousin === 'unknown') return { missing };
     const family = parent === 'male' && sibling === 'male' ? '堂' : '表';
+    if (!age) return { category: `${family}${cousin === 'male' ? '兄弟' : '姐妹'}`, missing };
     return { term: `${family}${cousin === 'male' ? (age === 'older' ? '哥' : '弟') : (age === 'older' ? '姐' : '妹')}`, missing };
   }
   if (pattern === 'child>spouse') {
@@ -573,6 +576,10 @@ export function resolveKinship(input: KinshipInput): KinshipResult {
       base.reason = '不同关系路径得到不同或无法确认的称呼，请核对关系';
     } else {
       base.status = 'pending';
+      const categories = [...new Set(assessments.map((item) => item.category).filter((item): item is string => !!item))];
+      if (categories.length === 1 && assessments.every((item) => item.category === categories[0])) {
+        base.category = categories[0];
+      }
       base.reason = assessments.map((item) => item.reason).find(Boolean) ??
         (base.missing.length ? '补充关键资料后可计算称呼' : '称呼待补充');
     }

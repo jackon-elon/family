@@ -9,7 +9,7 @@
 
   <view class="card relation-card" wx:if="{{circle.type === 'family'}}">
     <view class="eyebrow">HOW WE CONNECT</view>
-    <view class="section-title">{{person.isSelf ? '这就是你' : '你可以叫 TA：' + relationLabel}}</view>
+    <view class="section-title">{{person.isSelf ? '这就是你' : relationStatus === 'resolved' ? '你可以叫 TA：' + relationLabel : '关系：' + relationLabel}}</view>
     <view class="relation-path">{{relationPath || '暂无已记录的连接路径'}}</view>
     <view class="missing" wx:if="{{relationMissing}}">还需补充：{{relationMissing}}</view>
     <view class="small muted" wx:if="{{alternatives}}">也可称：{{alternatives}}</view>

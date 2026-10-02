@@ -1,21 +1,26 @@
 <view class="cosmos-wrap">
-  <view class="cosmos-header"><text class="cosmos-kicker">我们的关系星空</text><text class="cosmos-counter">{{nodes.length}} 颗星</text></view>
+  <view class="cosmos-header">
+    <view class="cosmos-heading"><text class="cosmos-kicker">按辈分排列</text><text class="cosmos-heading-rule"></text></view>
+    <text class="cosmos-counter">{{nodes.length}} 人</text>
+  </view>
   <block wx:if="{{nodes.length}}">
-    <scroll-view class="cosmos-vertical" scroll-y scroll-top="{{scrollTop}}" show-scrollbar="{{false}}">
-      <scroll-view class="cosmos-horizontal" scroll-x scroll-left="{{scrollLeft}}" show-scrollbar="{{false}}" style="height:{{boardSize}}rpx;">
+    <scroll-view class="cosmos-vertical" scroll-y scroll-top="{{scrollTop}}" show-scrollbar="{{false}}" style="height:{{viewportHeight}}rpx;">
+      <scroll-view class="cosmos-horizontal" scroll-x scroll-left="{{scrollLeft}}" show-scrollbar="{{false}}" style="height:{{boardHeight}}rpx;">
         <view class="cosmos-board" style="{{boardStyle}}">
-          <view class="space-glow space-glow-a"></view><view class="space-glow space-glow-b"></view>
-          <view class="orbit" wx:for="{{orbits}}" wx:key="id" style="{{item.style}}"></view>
+          <view class="sky-grain"></view>
+          <view class="generation-band {{item.isSelf ? 'is-my-generation' : ''}} {{item.isUnlinked ? 'is-unlinked-generation' : ''}}" wx:for="{{bands}}" wx:key="id" style="{{item.style}}">
+            <view class="generation-heading" wx:for="{{item.markers}}" wx:for-item="marker" wx:key="id" style="{{marker.style}}"><text class="generation-dash"></text><text class="generation-name {{item.isSelf ? 'is-current-label' : ''}}">{{item.label}}</text></view>
+          </view>
           <view class="relation-line relation-{{item.type}}" wx:for="{{edges}}" wx:key="id" style="{{item.style}}"></view>
-          <view class="star-node {{item.isFocus ? 'is-focus' : ''}} {{item.isSelf ? 'is-self' : ''}} {{item.connected ? '' : 'is-unlinked'}} tone-{{item.tone}}" wx:for="{{nodes}}" wx:key="id" style="{{item.style}}" data-id="{{item.id}}" bindtap="onPerson" aria-role="button" aria-label="{{item.name}}，{{item.label || '查看资料'}}">
-            <view class="planet-shell"><image wx:if="{{item.photoUrl}}" src="{{item.photoUrl}}" mode="aspectFill"/><text wx:else>{{item.initial}}</text></view>
-            <text class="star-name">{{item.name}}</text>
-            <text class="star-label" wx:if="{{item.label}}">{{item.label}}</text>
+          <view class="person-node {{item.isFocus ? 'is-focus' : ''}} {{item.isSelf ? 'is-self' : ''}} {{item.connected ? '' : 'is-unlinked'}} {{item.isConflicted ? 'is-conflicted' : ''}} {{item.isDimmed ? 'is-dimmed' : ''}} tone-{{item.tone}}" wx:for="{{nodes}}" wx:key="id" style="{{item.style}}" data-id="{{item.id}}" bindtap="onPerson" aria-role="button" aria-label="{{item.name}}，{{item.label || '查看资料'}}">
+            <view class="portrait-frame"><image wx:if="{{item.photoUrl}}" src="{{item.photoUrl}}" mode="aspectFill"/><text wx:else>{{item.initial}}</text></view>
+            <text class="person-name">{{item.name}}</text>
+            <text class="person-relation" wx:if="{{item.label}}">{{item.label}}</text>
           </view>
         </view>
       </scroll-view>
     </scroll-view>
-    <view class="cosmos-footer"><text>拖动星空探索更多 · 轻触星球查看资料</text><text wx:if="{{hiddenCount}}">另有 {{hiddenCount}} 人可在列表中查看</text></view>
+    <view class="cosmos-footer"><text>左右滑动查看更多 · 点人物查看关系</text><text wx:if="{{hiddenCount}}">另有 {{hiddenCount}} 人可在列表中查看</text></view>
   </block>
-  <view class="cosmos-empty" wx:else><text class="empty-orbit">✦</text><text>这里还没有人物星球</text><text class="empty-sub">添加人物后，关系会在这里连成星空</text></view>
+  <view class="cosmos-empty" wx:else><view class="empty-star"></view><text>还没有人物</text><text class="empty-sub">添加家人，再把他们的关系连起来</text></view>
 </view>

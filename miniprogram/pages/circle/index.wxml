@@ -17,18 +17,19 @@
   <view class="search-box"><text class="search-icon">⌕</text><input value="{{query}}" placeholder="搜索姓名、称呼或城市" confirm-type="search" bindinput="onSearch" /></view>
 
   <view wx:if="{{tab === 'network' && circle.type === 'family'}}">
-    <view class="network-heading"><view class="section-title">亲友星图</view><view class="small muted">亮起的是你 · 点一颗星看看你们的关系</view></view>
+    <view class="network-heading"><view class="section-title">亲友关系图</view><view class="small muted">同一行是同一辈 · 点人物看称呼和关系</view></view>
     <star-network wx:if="{{graphRows.length}}" persons="{{graphRows}}" relations="{{relations}}" focus-id="{{selfId}}" self-id="{{selfId}}" relation-labels="{{relationLabels}}" bindperson="onStarSelect" />
-    <view class="card empty" wx:else><text class="empty-icon">✦</text>还没有可显示的人物。先添加人物，再把关系连起来。</view>
+    <view class="small muted network-tip" wx:if="{{query}}">已高亮 {{filteredCount}} 位匹配人物，其余人物保留在关系图中。</view>
+    <view class="card empty" wx:if="{{!graphRows.length}}"><text class="empty-icon">✦</text>还没有可显示的人物。先添加人物，再把关系连起来。</view>
     <view class="card star-person-card" wx:if="{{selectedStar}}">
       <view class="row between"><view><view class="eyebrow">你们的连接</view><view class="section-title">{{selectedStar.name}}</view></view><text class="star-close" bindtap="onStarClear" aria-role="button" aria-label="收起人物标签">×</text></view>
-      <view class="star-term">{{selectedStar.isSelf ? '这就是你' : '你可以叫 TA：' + selectedStar.relationLabel}}</view>
+      <view class="star-term">{{selectedStar.isSelf ? '这就是你' : selectedStar.relationStatus === 'resolved' ? '你可以叫 TA：' + selectedStar.relationLabel : '关系：' + selectedStar.relationLabel}}</view>
       <view class="star-relation" wx:if="{{selectedStar.relationPath}}">{{selectedStar.relationPath}}</view>
       <view class="small muted" wx:if="{{selectedStar.relationMissing}}">还需补充：{{selectedStar.relationMissing}}</view>
       <view class="small muted" wx:if="{{selectedStar.city}}">所在城市：{{selectedStar.city}}</view>
       <button class="btn secondary star-open" bindtap="onStarOpen">查看资料</button>
     </view>
-    <view class="small muted network-tip" wx:if="{{!selfId}}">认领本人卡后，你的位置会在星图中亮起，并显示亲属称呼。</view>
+    <view class="small muted network-tip" wx:if="{{!selfId}}">认领本人卡后，你的位置会在关系图中高亮，并显示亲属称呼。</view>
   </view>
 
   <view wx:if="{{tab === 'list'}}">

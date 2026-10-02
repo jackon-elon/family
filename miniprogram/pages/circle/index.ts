@@ -3,7 +3,7 @@ import { CityGroup, groupCities } from '../../utils/geography';
 import { confirm, go, q, toast } from '../../utils/navigation';
 import { relationshipFor } from '../../utils/relationship';
 
-interface PersonRow extends Person { initial: string; relationLabel: string; relationPath: string; relationMissing?: string; detail: string; depth: number }
+interface PersonRow extends Person { initial: string; relationLabel: string; relationPath: string; relationMissing?: string; relationStatus: string; detail: string; depth: number; isDimmed?: boolean }
 
 Page({
   data: {
@@ -45,7 +45,7 @@ Page({
     const rows: PersonRow[] = d.people.map((person: Person) => {
       const rel = d.circle?.type === 'family' && d.selfId ? relationshipFor(d.people, d.relations, d.selfId, person.id) : null;
       const detail = [person.city, person.status, person.industry].filter(Boolean).join(' · ');
-      return { ...person, initial: person.name ? person.name.slice(-1) : '人', relationLabel: rel ? rel.label : d.circle?.type === 'family' ? '关系待补充' : '同班同学', relationPath: rel ? rel.path : '', relationMissing: rel ? rel.missing : '', detail: detail || '资料待完善', depth: rel ? (rel.path.match(/→/g) || []).length : 0 };
+      return { ...person, initial: person.name ? person.name.slice(-1) : '人', relationLabel: rel ? rel.label : d.circle?.type === 'family' ? '关系待补充' : '同班同学', relationPath: rel ? rel.path : '', relationMissing: rel ? rel.missing : '', relationStatus: rel?.status || 'unrelated', detail: detail || '资料待完善', depth: rel ? (rel.path.match(/→/g) || []).length : 0 };
     });
     const statusOptions = ['全部状态'].concat(Array.from(new Set(rows.map(r => r.status).filter(Boolean))) as string[]);
     const industryOptions = ['全部行业'].concat(Array.from(new Set(rows.map(r => r.industry).filter(Boolean))) as string[]);
@@ -60,8 +60,12 @@ Page({
       if (cityIndex && row.city !== cityOptions[cityIndex]) return false;
       return true;
     });
-    const selfRow = rows.find(r => r.id === d.selfId);
-    const graphRows = d.circle?.type === 'family' ? (selfRow && !filtered.some(r => r.id === d.selfId) ? [selfRow, ...filtered] : filtered) : [];
+    // Keep the full relation chain while searching; removing an intermediate
+    // parent would make the next generation appear disconnected or misaligned.
+    const matchingIds = new Set(filtered.map(row => row.id));
+    const graphRows = d.circle?.type === 'family'
+      ? rows.map(row => ({ ...row, isDimmed: Boolean(query) && !matchingIds.has(row.id) }))
+      : [];
     const relationLabels: Record<string, string> = {};
     rows.forEach(row => { relationLabels[row.id] = row.relationLabel; });
     const mapped = groupCities(filtered, d.mapScope);

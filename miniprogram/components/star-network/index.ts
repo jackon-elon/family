@@ -13,9 +13,11 @@ Component({
   data: {
     nodes: [] as ReturnType<typeof buildStarLayout>['nodes'],
     edges: [] as ReturnType<typeof buildStarLayout>['edges'],
-    orbits: [] as ReturnType<typeof buildStarLayout>['orbits'],
+    bands: [] as ReturnType<typeof buildStarLayout>['bands'],
     hiddenCount: 0,
-    boardSize: 730,
+    boardWidth: 730,
+    boardHeight: 730,
+    viewportHeight: 730,
     boardStyle: 'width:730rpx;height:730rpx;',
     scrollLeft: 0,
     scrollTop: 0
@@ -42,15 +44,25 @@ Component({
         const width = wx.getSystemInfoSync().windowWidth;
         if (Number.isFinite(width) && width > 0) pxPerRpx = width / 750;
       } catch (_) { /* layout remains usable in tests */ }
+      const viewportWidth = 690;
+      const viewportHeight = Math.min(graph.height, 860);
+      const anchor = graph.nodes.find(node => node.isSelf) || graph.nodes.find(node => node.isFocus) || graph.nodes[0];
+      const targetLeft = graph.width <= 1100
+        ? (graph.width - viewportWidth) / 2
+        : (anchor?.x || 0) - viewportWidth / 2;
+      const scrollLeftRpx = Math.max(0, Math.min(graph.width - viewportWidth, targetLeft));
+      const scrollTopRpx = Math.max(0, Math.min(graph.height - viewportHeight, (anchor?.y || 0) - viewportHeight / 2));
       this.setData({
         nodes: graph.nodes,
         edges: graph.edges,
-        orbits: graph.orbits,
+        bands: graph.bands,
         hiddenCount: graph.hiddenCount,
-        boardSize: graph.size,
-        boardStyle: `width:${graph.size}rpx;height:${graph.size}rpx;`,
-        scrollLeft: Math.max(0, (graph.size - 690) / 2) * pxPerRpx,
-        scrollTop: Math.max(0, (graph.size - 690) / 2) * pxPerRpx
+        boardWidth: graph.width,
+        boardHeight: graph.height,
+        viewportHeight,
+        boardStyle: `width:${graph.width}rpx;height:${graph.height}rpx;`,
+        scrollLeft: scrollLeftRpx * pxPerRpx,
+        scrollTop: scrollTopRpx * pxPerRpx
       });
     },
     onPerson(this: any, event: any) {

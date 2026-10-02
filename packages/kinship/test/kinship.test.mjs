@@ -105,8 +105,16 @@ test('伯叔家的孩子为堂亲，母系孩子为表亲；长幼未知则待�
   const withoutMyYear = people.map((p) => p.id === 'me' ? { id: p.id, gender: p.gender } : p);
   const pending = resolveKinship({ people: withoutMyYear, relations, perspectiveId: 'me', targetId: 'olderCousin' });
   assert.equal(pending.status, 'pending');
+  assert.equal(pending.term, undefined);
+  assert.equal(pending.category, '堂兄弟');
   assert.match(pending.path.display, /爸爸的哥哥的儿子/);
   assert.ok(pending.missing.some((item) => item.includes('双方的长幼')));
+  const maternal = resolveKinship({ people: withoutMyYear, relations, perspectiveId: 'me', targetId: 'youngerCousin' });
+  assert.equal(maternal.status, 'pending');
+  assert.equal(maternal.term, undefined);
+  assert.equal(maternal.category, '表姐妹');
+  const unknownGender = resolveKinship({ people: withoutMyYear.map((p) => p.id === 'olderCousin' ? {...p, gender: 'unknown'} : p), relations, perspectiveId: 'me', targetId: 'olderCousin' });
+  assert.equal(unknownGender.category, undefined);
 });
 
 test('收养、继亲与前配偶展示路径但不套用普通规则', () => {

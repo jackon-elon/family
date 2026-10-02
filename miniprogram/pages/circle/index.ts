@@ -71,7 +71,7 @@ Page({
     toast('认领申请已送出，等待管理员核对');
     await this.loadData();
   },
-  rebuild(this: any) {
+  rebuild(this: any, onRendered?: () => void) {
     const d = this.data;
     const query = d.query.trim().toLowerCase();
     const status = d.statusOptions[d.statusIndex];
@@ -106,7 +106,7 @@ Page({
     const mapped = groupCities(filtered, d.mapScope);
     const chosen = mapped.groups.find(g => g.key === d.selectedCity);
     const selectedStar = rows.find(row => row.id === d.selectedStarId) || null;
-    this.setData({ rows: filtered, graphRows, relationLabels, selectedStar, statusOptions, statusIndex, industryOptions, industryIndex, cityOptions, cityIndex, mapGroups: mapped.groups, overseas: mapped.overseas, unmapped: mapped.unmapped, selectedCityRows: chosen ? chosen.persons.map(p => filtered.find(r => r.id === p.id)!) : [], selectedCity: chosen ? chosen.key : '', filteredCount: filtered.length });
+    this.setData({ rows: filtered, graphRows, relationLabels, selectedStar, statusOptions, statusIndex, industryOptions, industryIndex, cityOptions, cityIndex, mapGroups: mapped.groups, overseas: mapped.overseas, unmapped: mapped.unmapped, selectedCityRows: chosen ? chosen.persons.map(p => filtered.find(r => r.id === p.id)!) : [], selectedCity: chosen ? chosen.key : '', filteredCount: filtered.length }, onRendered);
   },
   onTab(this: any, e: any) { this.setData({ tab: e.currentTarget.dataset.tab, selectedCity: '', selectedCityRows: [], selectedStarId: '', selectedStar: null }); this.rebuild(); },
   onSearch(this: any, e: any) { this.setData({ query: e.detail.value }); this.rebuild(); },
@@ -115,7 +115,22 @@ Page({
   onCity(this: any, e: any) { this.setData({ selectedCity: e.currentTarget.dataset.key }); this.rebuild(); },
   onMapCity(this: any, e: any) { this.setData({ selectedCity: e.detail.key }); this.rebuild(); },
   clearCity(this: any) { this.setData({ selectedCity: '', selectedCityRows: [] }); },
-  onStarSelect(this: any, e: any) { this.setData({ selectedStarId: e.detail.personId }); this.rebuild(); },
+  async onStarSelect(this: any, e: any) {
+    const personId = e.detail.personId;
+    this.setData({ selectedStarId: personId });
+    // The detail stays in the page flow, so it cannot cover names in the graph.
+    // Scroll only after setData has rendered the newly inserted card.
+    this.rebuild(() => {
+      if (this.data.selectedStarId === personId) wx.pageScrollTo({ selector: '#star-person-card', duration: 240 });
+    });
+    const person = this.data.people.find((item: Person) => item.id === personId);
+    if (!person?.photoFileId || person.photoUrl) return;
+    const photo = await invoke<{ url: string }>({ action: 'photo.url', payload: { circleId: this.circleId, personId } });
+    if (!photo.ok || !photo.data.url || this.data.selectedStarId !== personId) return;
+    const people = this.data.people.map((item: Person) => item.id === personId ? { ...item, photoUrl: photo.data.url } : item);
+    this.setData({ people });
+    this.rebuild();
+  },
   onStarClear(this: any) { this.setData({ selectedStarId: '', selectedStar: null }); },
   onStarOpen(this: any) { if (this.data.selectedStar) go(`/pages/person/index?circleId=${q(this.circleId)}&personId=${q(this.data.selectedStar.id)}`); },
   onPerson(this: any, e: any) { go(`/pages/person/index?circleId=${q(this.circleId)}&personId=${q(e.currentTarget.dataset.id)}`); },

@@ -36,8 +36,8 @@
     <star-network wx:if="{{graphRows.length}}" persons="{{graphRows}}" relations="{{relations}}" focus-id="{{selfId}}" self-id="{{selfId}}" relation-labels="{{relationLabels}}" bindperson="onStarSelect" />
     <view class="small muted network-tip" wx:if="{{query}}">已高亮 {{filteredCount}} 位匹配人物，其余人物保留在关系图中。</view>
     <view class="card empty" wx:if="{{!graphRows.length}}"><text class="empty-icon">✦</text>还没有可显示的人物。先添加人物，再把关系连起来。</view>
-    <view class="card star-person-card" wx:if="{{selectedStar}}">
-      <view class="row between"><view><view class="eyebrow">你们的连接</view><view class="section-title">{{selectedStar.name}}</view></view><text class="star-close" bindtap="onStarClear" aria-role="button" aria-label="收起人物标签">×</text></view>
+    <view id="star-person-card" class="card star-person-card" wx:if="{{selectedStar}}">
+      <view class="row between"><view class="row gap star-person-heading"><view class="avatar"><image wx:if="{{selectedStar.photoUrl}}" src="{{selectedStar.photoUrl}}" mode="aspectFill"/><text wx:else>{{selectedStar.initial}}</text></view><view class="star-person-title"><view class="eyebrow">你们的连接</view><view class="section-title">{{selectedStar.name}}</view></view></view><text class="star-close" bindtap="onStarClear" aria-role="button" aria-label="收起人物标签">×</text></view>
       <view class="star-term">{{selectedStar.isSelf ? '这就是你' : selectedStar.relationStatus === 'resolved' ? '你可以叫 TA：' + selectedStar.relationLabel : '关系：' + selectedStar.relationLabel}}</view>
       <view class="star-relation" wx:if="{{selectedStar.relationPath}}">{{selectedStar.relationPath}}</view>
       <view class="small muted" wx:if="{{selectedStar.relationMissing}}">还需补充：{{selectedStar.relationMissing}}</view>

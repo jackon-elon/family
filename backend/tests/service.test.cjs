@@ -229,6 +229,13 @@ test('照片临时链接只对获准查看的成员签发', async () => {
   const application = (await call('helper', 'invite.apply', {token:invite.token, name:'代维护人'})).data.application;
   await call('owner', 'join.approve', {circleId:circle.id, applicationId:application.id});
   const helper = (await call('owner', 'member.list', {circleId:circle.id})).data.members.find(m => m.name === '代维护人');
+  // Uploading a portrait does not silently publish it. The owner can share it
+  // with this circle, and can withdraw that choice without losing the photo.
+  assert.equal((await call('helper', 'photo.url', {circleId:circle.id, personId:person.id})).error.code, 'FORBIDDEN');
+  await call('owner', 'person.update', {circleId:circle.id, personId:person.id, patch:{}, visibility:{photoFileId:'circle'}});
+  assert.equal((await call('helper', 'photo.url', {circleId:circle.id, personId:person.id})).ok, true);
+  await call('owner', 'person.update', {circleId:circle.id, personId:person.id, patch:{}, visibility:{photoFileId:'self'}});
+  assert.equal((await call('helper', 'photo.url', {circleId:circle.id, personId:person.id})).error.code, 'FORBIDDEN');
   await call('owner', 'member.setRole', {circleId:circle.id, memberId:helper.id, role:'admin'});
   assert.equal((await call('helper', 'photo.url', {circleId:circle.id, personId:person.id})).error.code, 'FORBIDDEN');
   const delegation = (await call('owner', 'delegation.grant', {circleId:circle.id, personId:person.id, adminMemberId:helper.id, fields:['photoFileId']})).data.delegation;

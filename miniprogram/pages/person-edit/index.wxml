@@ -3,6 +3,16 @@
   <view class="card self-create-guide" wx:if="{{isNew && createMode === 'self'}}"><view class="strong">已有卡请先认领</view><view class="small muted">管理员或家人可能已经把你放进关系网。认领已有卡后，原来的关系就能接到你身上。</view><button class="btn secondary" bindtap="onReviewExisting">查看已有卡</button><view wx:if="{{pendingClaim}}" class="pending-warning">你的认领申请还在审核中，暂时不能新建本人卡。</view></view>
   <view class="card self-create-guide" wx:if="{{isNew && createMode === 'other'}}"><view class="strong">这是一张未加入的人物卡</view><view class="small muted">添加人物不会邀请 TA 加入。本人以后可通过邀请申请加入并认领。</view></view>
   <view class="card similar-warning" wx:if="{{isNew && createMode === 'self' && similarCards.length}}"><view class="strong">找到可能是你的已有卡</view><view class="small muted" wx:for="{{similarCards}}" wx:key="id">{{item.name}}{{item.nickname ? '（' + item.nickname + '）' : ''}}</view><button class="btn secondary" bindtap="onReviewExisting">先去核对并认领</button></view>
+  <view class="card photo-card" wx:if="{{editable.photoFileId}}">
+    <view class="section-title">{{isSelf || claimSelf ? '我的照片' : '人物照片'}}</view>
+    <view class="row gap photo-row">
+      <view class="avatar large photo-preview"><image wx:if="{{form.photoUrl}}" src="{{form.photoUrl}}" mode="aspectFill"/><text wx:else>{{initial}}</text></view>
+      <view class="photo-controls"><button class="btn secondary small-btn" disabled="{{photoChecking || saving}}" bindtap="onChoosePhoto">{{photoChecking ? '正在处理照片…' : form.photoUrl ? '更换照片' : '从相册或相机选择'}}</button><text class="hint">支持 JPG、PNG；会自动压缩为适合上传的照片。</text></view>
+    </view>
+    <view class="photo-visibility" wx:if="{{isSelf || claimSelf}}"><text class="field-label">谁能看到照片</text><view class="segmented"><view class="segment {{photoVisibilityIndex === 0 ? 'active' : ''}}" data-index="0" bindtap="onPhotoVisibility">仅自己可见</view><view class="segment {{photoVisibilityIndex === 1 ? 'active' : ''}}" data-index="1" bindtap="onPhotoVisibility">本圈成员可见</view></view><text class="hint">选“本圈成员可见”后，照片会显示在他们看到的人物卡和关系网中；你可以随时改回仅自己可见。</text></view>
+    <button class="btn photo-save" wx:if="{{!isNew && (photoSelected || photoVisibilityDirty)}}" disabled="{{saving || photoChecking}}" bindtap="onSavePhoto">{{saving ? '正在保存…' : photoSelected ? '单独保存这张照片' : '保存照片可见范围'}}</button>
+    <text class="hint" wx:if="{{isNew && photoSelected}}">创建人物卡时，照片和可见范围会一并保存。</text>
+  </view>
   <view class="card form-card">
     <label class="field" wx:if="{{editable.name}}"><text class="field-label">姓名或圈内称呼 *</text><input class="field-control" value="{{form.name}}" placeholder="TA 叫什么？" maxlength="30" data-field="name" bindinput="onInput" /></label>
     <label class="field" wx:if="{{editable.gender}}"><text class="field-label">性别（用于计算称呼）</text><picker mode="selector" range="{{genderOptions}}" value="{{genderIndex}}" bindchange="onGender"><view class="field-control {{genderIndex ? '' : 'placeholder'}}">{{genderOptions[genderIndex]}} ▾</view></picker></label>
@@ -10,7 +20,6 @@
     <view wx:if="{{!canPrivate}}" class="hint">未认领的人物卡先只填维持关系所需的信息；照片、电话和城市由本人认领后填写。</view>
     <block wx:if="{{canPrivate}}">
       <label class="field" wx:if="{{editable.nickname}}"><text class="field-label">昵称</text><input class="field-control" value="{{form.nickname}}" placeholder="例如：满满" maxlength="30" data-field="nickname" bindinput="onInput" /></label>
-      <view class="field" wx:if="{{editable.photoFileId}}"><text class="field-label">照片</text><view class="row gap"><view class="avatar large"><image wx:if="{{form.photoUrl}}" src="{{form.photoUrl}}" mode="aspectFill"/><text wx:else>{{initial}}</text></view><button class="btn secondary small-btn" bindtap="onChoosePhoto">选择照片</button></view></view>
       <view class="field" wx:if="{{editable.city}}"><text class="field-label">所在城市</text><picker mode="selector" range="{{cityLabels}}" value="{{cityIndex}}" bindchange="onCity"><view class="field-control {{cityIndex ? '' : 'placeholder'}}">{{cityIndex ? cityLabels[cityIndex] : '选择常见城市（可选）'}} ▾</view></picker><text class="hint">也可以直接填写下面的城市；只记录城市，不采集实时位置或住址。</text></view>
       <label class="field" wx:if="{{editable.country}}"><text class="field-label">国家 / 地区</text><input class="field-control" value="{{form.country}}" placeholder="例如：中国、加拿大" maxlength="40" data-field="country" bindinput="onInput" /></label>
       <label class="field" wx:if="{{editable.province}}"><text class="field-label">省 / 州</text><input class="field-control" value="{{form.province}}" placeholder="可选" maxlength="40" data-field="province" bindinput="onInput" /></label>
@@ -26,4 +35,5 @@
     </block>
   </view>
   <view class="sticky-bottom"><button class="btn" disabled="{{saving}}" bindtap="onSave">{{saving ? '正在保存…' : '保存人物卡'}}</button></view>
+  <canvas type="2d" id="photoCanvas" class="photo-canvas"></canvas>
 </view>

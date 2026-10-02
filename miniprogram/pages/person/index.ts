@@ -65,6 +65,7 @@ Page({
     this.setData({ circle, person, initial: person.name?.slice(-1) || '人', isAdmin, canEdit: !!person.isSelf || (isAdmin && !person.isClaimed) || !!(person as any).myDelegatedFields?.length, canClaim: !person.isClaimed && !all.some(p => p.isSelf), relationLabel: relation?.label || (circle.type === 'classmate' ? '同班同学' : '关系待补充'), relationPath: relation?.path || '', relationMissing: relation?.missing || '', relationStatus: relation?.status || 'unrelated', alternatives: relation?.alternatives || '', rows, updated: dateText(person.updatedAt), loading: false, allPeople: all, personNames: ['请选择人物', ...all.map(p => p.name)], suggestionExisting: relevant, suggestionExistingNames: relevant.map(r => relationText(r, all)), suggestionFromIndex: 0, suggestionToIndex: 0, suggestionPreview: proposalText(suggestedData) });
   },
   onEdit(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}&personId=${q(this.personId)}`); },
+  onPhoto(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}&personId=${q(this.personId)}&focus=photo`); },
   onPrivacy(this: any) { go(`/pages/privacy/index?circleId=${q(this.circleId)}&personId=${q(this.personId)}`); },
   onCopyWechat(this: any) { wx.setClipboardData({ data: this.data.person.wechatId }); },
   onCall(this: any) { wx.makePhoneCall({ phoneNumber: this.data.person.phone }); },

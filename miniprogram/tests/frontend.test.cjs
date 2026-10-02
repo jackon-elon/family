@@ -316,3 +316,126 @@ test('removing a member also revokes their active delegations', async () => {
   assert.equal(saved.delegations.find(d => d.id === 'removed_delegation').active, false);
   resetDemoData();
 });
+
+test('personal PNG photo is converted to JPEG, uploaded, and shared only by explicit choice', async () => {
+  const config = require('../config.ts');
+  const previousEnv = config.CLOUD_ENV_ID;
+  const previousPage = global.Page;
+  const previousCloud = wx.cloud;
+  const previousWx = {};
+  const changedWx = ['chooseImage','getImageInfo','getFileInfo','createSelectorQuery','canvasToTempFilePath','getFileSystemManager','redirectTo'];
+  changedWx.forEach(key => { previousWx[key] = wx[key]; });
+  const calls = [];
+  let route = '';
+  let selectionTimer;
+  const canvas = {
+    width: 0, height: 0,
+    createImage() {
+      const picture = {};
+      Object.defineProperty(picture, 'src', {set() { queueMicrotask(() => picture.onload()); }});
+      return picture;
+    },
+    getContext() { return {fillRect() {}, drawImage() {}, fillStyle: ''}; }
+  };
+  try {
+    config.CLOUD_ENV_ID = 'test-env';
+    wx.cloud = {init() {}, callFunction: async request => {
+      calls.push(request.data);
+      return {result: {ok: true, data: {person: {id: 'f_me', name: '我'}}}};
+    }};
+    assert.equal(setDemoMode(false), true);
+    wx.chooseImage = options => options.success({tempFilePaths: ['album.png']});
+    wx.getImageInfo = options => options.success(options.src === 'album.png'
+      ? {type: 'png', width: 1800, height: 1200}
+      : {type: 'jpeg', width: 1280, height: 853});
+    wx.getFileInfo = options => options.success({size: options.filePath === 'album.png' ? 2200000 : 510000});
+    wx.createSelectorQuery = () => ({
+      in() { return this; }, select() { return this; }, fields() { return this; },
+      exec(callback) { callback([{node: canvas}]); }
+    });
+    wx.canvasToTempFilePath = options => {
+      assert.equal(options.fileType, 'jpg');
+      assert.ok(options.width <= 1280 && options.height <= 1280);
+      options.success({tempFilePath: 'compressed.jpg'});
+    };
+    wx.getFileSystemManager = () => ({readFile: options => options.success({data: '/9j/2Q=='})});
+    wx.redirectTo = options => { route = options.url; };
+    let definition;
+    global.Page = options => { definition = options; };
+    require('../pages/person-edit/index.ts');
+    let selected;
+    const selectedPromise = new Promise((resolve, reject) => {
+      selected = () => { clearTimeout(selectionTimer); resolve(); };
+      selectionTimer = setTimeout(() => reject(new Error('photo selection did not complete')), 2000);
+    });
+    const page = {
+      ...definition, data: structuredClone(definition.data), circleId: 'family_demo', personId: 'f_me',
+      setData(patch) {
+        for (const [key, value] of Object.entries(patch)) {
+          if (key.includes('.')) {
+            const [parent, child] = key.split('.');
+            this.data[parent][child] = value;
+          } else this.data[key] = value;
+        }
+        if (patch.photoSelected) selected();
+      }
+    };
+    page.data.isNew = false;
+    page.data.isSelf = true;
+    page.onChoosePhoto();
+    await selectedPromise;
+    assert.equal(page.photoPath, 'compressed.jpg');
+    assert.equal(page.data.form.photoUrl, 'compressed.jpg');
+    page.onPhotoVisibility({currentTarget: {dataset: {index: 1}}});
+    await page.onSavePhoto();
+    assert.deepEqual(calls.map(call => call.action), ['photo.upload','person.update']);
+    assert.equal(calls[0].payload.base64, '/9j/2Q==');
+    assert.deepEqual(calls[1].payload.visibility, {photoFileId: 'circle'});
+    assert.match(route, /pages\/person\/index/);
+  } finally {
+    clearTimeout(selectionTimer);
+    config.CLOUD_ENV_ID = previousEnv;
+    setDemoMode(true);
+    global.Page = previousPage;
+    wx.cloud = previousCloud;
+    changedWx.forEach(key => { if (previousWx[key] === undefined) delete wx[key]; else wx[key] = previousWx[key]; });
+  }
+});
+
+test('existing photo visibility can be saved without choosing another image', async () => {
+  const config = require('../config.ts');
+  const previousEnv = config.CLOUD_ENV_ID;
+  const previousCloud = wx.cloud;
+  const previousPage = global.Page;
+  const previousRedirect = wx.redirectTo;
+  const calls = [];
+  try {
+    config.CLOUD_ENV_ID = 'test-env';
+    wx.cloud = {init() {}, callFunction: async request => {
+      calls.push(request.data);
+      return {result: {ok: true, data: {person: {id: 'f_me'}}}};
+    }};
+    wx.redirectTo = () => {};
+    assert.equal(setDemoMode(false), true);
+    let definition;
+    global.Page = options => { definition = options; };
+    delete require.cache[require.resolve('../pages/person-edit/index.ts')];
+    require('../pages/person-edit/index.ts');
+    const page = {
+      ...definition, data: {...definition.data, isNew: false, isSelf: true, photoVisibilityIndex: 0, photoVisibilitySavedIndex: 0},
+      circleId: 'family_demo', personId: 'f_me',
+      setData(patch) { Object.assign(this.data, patch); }
+    };
+    page.onPhotoVisibility({currentTarget: {dataset: {index: 1}}});
+    assert.equal(page.data.photoVisibilityDirty, true);
+    await page.onSavePhoto();
+    assert.deepEqual(calls.map(call => call.action), ['person.update']);
+    assert.deepEqual(calls[0].payload.visibility, {photoFileId: 'circle'});
+  } finally {
+    config.CLOUD_ENV_ID = previousEnv;
+    setDemoMode(true);
+    wx.cloud = previousCloud;
+    global.Page = previousPage;
+    if (previousRedirect === undefined) delete wx.redirectTo; else wx.redirectTo = previousRedirect;
+  }
+});

@@ -21,8 +21,8 @@ export interface StarLayout {
 
 const MAX_VISIBLE = 160;
 const COLUMN_GAP = 175;
-const ROW_GAP = 230;
-const FIRST_ROW_Y = 165;
+const ROW_GAP = 250;
+const FIRST_ROW_Y = 180;
 const SIDE_PADDING = 210; // Leave a gutter for generation labels.
 const MIN_WIDTH = 690;
 
@@ -205,7 +205,7 @@ export function buildStarLayout(
   const rowCount = levels.length + (unknown.length ? 1 : 0);
   const maxRowLength = Math.max(1, ...[...rows.values()].map(row => row.length), unknown.length);
   const width = Math.max(MIN_WIDTH, (maxRowLength - 1) * COLUMN_GAP + SIDE_PADDING * 2);
-  const height = FIRST_ROW_Y + Math.max(0, rowCount - 1) * ROW_GAP + 150;
+  const height = FIRST_ROW_Y + Math.max(0, rowCount - 1) * ROW_GAP + 180;
   const positions = new Map<string, {x: number; y: number; level: number | null}>();
   const placedX = new Map<string, number>();
   const bands: StarBand[] = [];
@@ -224,7 +224,9 @@ export function buildStarLayout(
     }
     bands.push({
       id: level === null ? 'unknown' : `generation-${level}`, label, y,
-      style: `left:0;top:${y - 110}rpx;width:${width}rpx;height:220rpx;`,
+      // Keep the generation heading in the gap above the person's card.
+      // The heading is about 34rpx tall and the card starts at y - 87rpx.
+      style: `left:0;top:${y - 145}rpx;width:${width}rpx;height:235rpx;`,
       isSelf: level === 0 && !!selfId && byId.has(selfId), isUnlinked: level === null,
       markers
     });

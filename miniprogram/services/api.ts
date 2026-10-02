@@ -722,7 +722,10 @@ export async function invoke<T = any>(request: { action: string; payload?: any }
 /** Short-lived photo URLs are requested only for the people currently rendered. */
 export async function resolvePhotoUrls(circleId: string, persons: Person[]): Promise<Person[]> {
   const list = persons.slice();
-  const indexes = list.map((p, i) => p.photoFileId && !p.photoUrl ? i : -1).filter(i => i >= 0).slice(0, 20);
+  const pending = list.map((p, i) => p.photoFileId && !p.photoUrl ? i : -1).filter(i => i >= 0);
+  // The graph initially requests a bounded number of links. Always include
+  // the member's own photo even when their card is late in a large class list.
+  const indexes = pending.sort((a, b) => Number(!!list[b].isSelf) - Number(!!list[a].isSelf)).slice(0, 20);
   await Promise.all(indexes.map(async i => {
     const result = await invoke<{ url: string }>({ action: 'photo.url', payload: { circleId, personId: list[i].id } });
     if (result.ok) list[i] = { ...list[i], photoUrl: result.data.url };

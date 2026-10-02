@@ -67,6 +67,23 @@ test('generation and coordinates do not depend on input order', () => {
   assert.deepEqual(a.bands, b.bands);
 });
 
+test('generation headings have a clear row above cards and stay inside the board', () => {
+  const graph = buildStarLayout([...demoPeople, {id: 'other', name: '远亲'}], demoRelations, 'me', 'me');
+  const cardHalfHeight = 87; // .person-node is 174rpx high.
+  const headingHeight = 34; // .generation-heading is 34rpx high.
+  for (const band of graph.bands) {
+    const bandTop = Number(band.style.match(/top:(\d+)rpx/)?.[1]);
+    const markerTop = Number(band.markers[0]?.style.match(/top:(\d+)rpx/)?.[1]);
+    const headingTop = bandTop + markerTop;
+    const cardTop = band.y - cardHalfHeight;
+    assert.ok(headingTop >= 0, `${band.label} heading clipped above board`);
+    assert.ok(headingTop + headingHeight <= cardTop - 6, `${band.label} heading overlaps a card`);
+    const rowNodes = graph.nodes.filter(node => node.y === band.y);
+    assert.ok(rowNodes.length > 0);
+    assert.ok(rowNodes.every(node => node.y + cardHalfHeight <= graph.height), `${band.label} card clipped below board`);
+  }
+});
+
 test('unlinked people have a separate unknown row; no claim has no fake self focus', () => {
   const graph = buildStarLayout([...demoPeople, {id: 'friend', name: '老同学'}], demoRelations, 'me', 'me');
   const n = byId(graph);

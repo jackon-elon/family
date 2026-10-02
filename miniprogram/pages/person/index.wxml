@@ -1,6 +1,7 @@
 <view class="page profile-page" wx:if="{{person}}">
   <view class="profile-hero">
     <view class="avatar large profile-avatar"><image wx:if="{{person.photoUrl}}" src="{{person.photoUrl}}" mode="aspectFill"/><text wx:else>{{initial}}</text></view>
+    <button class="profile-photo-action" wx:if="{{person.isSelf}}" bindtap="onPhoto">{{person.photoFileId ? '更换我的照片' : '上传我的照片'}}</button>
     <view class="profile-name">{{person.name}}</view>
     <view class="profile-nickname" wx:if="{{person.nickname}}">也叫 {{person.nickname}}</view>
     <view class="pill {{circle.type === 'family' ? '' : 'class-pill'}}">{{relationLabel}}</view>

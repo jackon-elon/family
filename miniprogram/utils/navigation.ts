@@ -1,4 +1,8 @@
 export function q(value: string): string { return encodeURIComponent(value); }
+export function newRequestId(): string {
+  const randomPart = () => Math.random().toString(36).slice(2, 12).padEnd(10, '0');
+  return `r_${Date.now().toString(36)}_${randomPart()}_${randomPart()}`;
+}
 export function go(path: string): void { wx.navigateTo({ url: path }); }
 export function toast(message: string): void { wx.showToast({ title: message, icon: 'none', duration: 2300 }); }
 export function confirm(title: string, content: string): Promise<boolean> {

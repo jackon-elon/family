@@ -1,8 +1,27 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { ApiService } = require('../dist/service.js');
 const { MemoryRepository } = require('../dist/memory-repository.js');
-const { handlePhotoUpload } = require('../../cloudfunctions/api/photo-upload.js');
+const { handlePhotoUpload, stripJpegMetadata } = require('../../cloudfunctions/api/photo-upload.js');
+const TEST_JPEG = fs.readFileSync(path.join(__dirname, 'fixtures', 'tiny.jpg'));
+
+function jpegSegment(marker, payload) {
+  const length = Buffer.alloc(2);
+  length.writeUInt16BE(payload.length + 2);
+  return Buffer.concat([Buffer.from([0xff, marker]), length, payload]);
+}
+
+async function stagePhoto(api, actor, circleId, personId, visibility, bucket = 'env.bucket') {
+  const reserved = await api.reservePhotoUpload({circleId, personId}, actor);
+  assert.equal(reserved.ok, true, JSON.stringify(reserved));
+  const {cloudPath} = reserved.data;
+  const fileID = `cloud://${bucket}/${cloudPath}`;
+  const bound = await api.bindUploadedPhoto({circleId, personId, fileID, ...(visibility ? {visibility} : {})}, actor);
+  assert.equal(bound.ok, true, JSON.stringify(bound));
+  return {cloudPath, fileID};
+}
 
 function fixture() {
   let clock = 1_800_000_000_000;
@@ -62,6 +81,75 @@ test('有效圈数超过事务读取上限时列表明确拒绝', async () => {
   await f.denied('owner', 'circle.list', {}, 'DATA_LIMIT');
 });
 
+test('创建圈子达到列表容量前就拒绝继续创建', async () => {
+  const f = fixture();
+  await f.repo.atomic(async tx => {
+    for (let i = 0; i < 80; i++) await tx.put('members', {
+      id: `joined-${i}`, circleId: `circle-${i}`, userId: 'owner',
+      name: '成员', role: 'member', status: 'active', joinedAt: i
+    });
+  });
+  await f.denied('owner', 'circle.create', {type: 'family', name: '再建一个'}, 'DATA_LIMIT');
+});
+
+test('创建圈子请求重试和并发只生成一个圈，同 key 改参数拒绝', async () => {
+  const f = fixture();
+  const payload = {name: '我的家', type: 'family', mode: 'shared', requestId: 'circle_create_retry_0001'};
+  const [first, duplicate] = await Promise.all([f.call('owner', 'circle.create', payload), f.call('owner', 'circle.create', payload)]);
+  assert.equal(first.ok, true);
+  assert.equal(duplicate.ok, true);
+  assert.equal(first.data.circle.id, duplicate.data.circle.id);
+  assert.equal((await f.ok('owner', 'circle.list')).circles.length, 1);
+  assert.equal(first.data.circle.createPayloadHash, undefined);
+  assert.equal(first.data.circle.createdBy, undefined);
+  await f.denied('owner', 'circle.create', {...payload, name: '另一个圈'}, 'IDEMPOTENCY_CONFLICT');
+  const retry = await f.ok('owner', 'circle.create', payload);
+  assert.equal(retry.circle.id, first.data.circle.id);
+  const joined = await f.join('owner', 'newOwner', retry.circle.id);
+  await f.ok('owner', 'circle.transferOwner', {circleId: retry.circle.id, memberId: joined.id});
+  const afterTransfer = await f.ok('owner', 'circle.create', payload);
+  assert.equal(afterTransfer.circle.id, retry.circle.id);
+  assert.equal(afterTransfer.circle.role, 'admin');
+  await f.ok('owner', 'member.leave', {circleId: retry.circle.id});
+  await f.denied('owner', 'circle.create', payload, 'FORBIDDEN');
+  const audit = (await f.ok('newOwner', 'audit.list', {circleId: retry.circle.id})).events;
+  assert.equal(audit.filter(item => item.type === 'circle.create').length, 1);
+  await f.denied('owner', 'circle.create', {...payload, requestId: '短'}, 'INVALID_INPUT');
+});
+
+test('本人和管理员建人物卡重试只保留一张，改参数冲突', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const placeholder = {circleId: circle.id, name: '外婆', requestId: 'admin_person_retry_0001'};
+  const [first, duplicate] = await Promise.all([f.call('owner', 'person.create', placeholder), f.call('owner', 'person.create', placeholder)]);
+  assert.equal(first.ok, true);
+  assert.equal(duplicate.ok, true);
+  assert.equal(first.data.person.id, duplicate.data.person.id);
+  assert.equal(first.data.person.createPayloadHash, undefined);
+  await f.denied('owner', 'person.create', {...placeholder, name: '外公'}, 'IDEMPOTENCY_CONFLICT');
+  await f.join('owner', 'member', circle.id);
+  const selfPayload = {circleId: circle.id, name: '我', claimSelf: true, requestId: 'self_person_retry_0001'};
+  const [selfFirst, selfRetry] = await Promise.all([f.call('member', 'person.create', selfPayload), f.call('member', 'person.create', selfPayload)]);
+  assert.equal(selfFirst.ok, true);
+  assert.equal(selfRetry.ok, true);
+  assert.equal(selfFirst.data.person.id, selfRetry.data.person.id);
+  assert.equal((await f.ok('owner', 'member.list', {circleId: circle.id})).members.find(m => m.name === '我').personId, selfFirst.data.person.id);
+  await f.denied('member', 'person.create', {...selfPayload, name: '别人'}, 'IDEMPOTENCY_CONFLICT');
+  await f.ok('owner', 'person.unclaim', {circleId: circle.id, personId: selfFirst.data.person.id});
+  await f.denied('member', 'person.create', selfPayload, 'IDEMPOTENCY_STATE_CHANGED');
+  const persons = (await f.ok('owner', 'person.list', {circleId: circle.id})).persons;
+  assert.equal(persons.length, 2);
+});
+
+test('人物姓名不能被空字符串或 null 清空', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const person = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '张三', claimSelf: true})).person;
+  await f.denied('owner', 'person.update', {circleId: circle.id, personId: person.id, patch: {name: ''}}, 'INVALID_INPUT');
+  await f.denied('owner', 'person.update', {circleId: circle.id, personId: person.id, patch: {name: null}}, 'INVALID_INPUT');
+  assert.equal((await f.ok('owner', 'person.get', {circleId: circle.id, personId: person.id})).person.name, '张三');
+});
+
 test('转发邀请只可申请，一次审批有效，含并发审批', async () => {
   const f = fixture();
   const circle = await f.create();
@@ -97,6 +185,21 @@ test('撤销和过期邀请不可申请或审批', async () => {
   const application = (await f.ok('a', 'invite.apply', {token: expiring.token, name: 'A'})).application;
   f.advance(72 * 60 * 60 * 1000);
   await f.denied('owner', 'join.approve', {circleId: circle.id, applicationId: application.id}, 'INVITE_INACTIVE');
+});
+
+test('批准同一用户入圈后，同圈其他待审邀请自动失效', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const first = (await f.ok('owner', 'invite.create', {circleId: circle.id})).invite;
+  const second = (await f.ok('owner', 'invite.create', {circleId: circle.id})).invite;
+  const firstApplication = (await f.ok('member', 'invite.apply', {token: first.token, name: '成员'})).application;
+  const secondApplication = (await f.ok('member', 'invite.apply', {token: second.token, name: '成员'})).application;
+  await f.ok('owner', 'join.approve', {circleId: circle.id, applicationId: firstApplication.id});
+  const pending = (await f.ok('owner', 'join.list', {circleId: circle.id})).applications;
+  assert.equal(pending.some(item => item.id === secondApplication.id), false);
+  const mine = (await f.ok('member', 'join.mine', {applicationId: secondApplication.id})).applications[0];
+  assert.equal(mine.status, 'expired');
+  await f.denied('owner', 'join.approve', {circleId: circle.id, applicationId: secondApplication.id}, 'ALREADY_REVIEWED');
 });
 
 test('管理员待审列表标明邀请临期、过期、撤销和缺失状态', async () => {
@@ -166,8 +269,8 @@ test('联系方式与城市由本人逐字段公开，管理员不能绕过', as
   const circle = await f.create();
   const self = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '圈主', claimSelf: true})).person;
   await f.join('owner', 'member', circle.id);
-  const {cloudPath} = await f.ok('owner', 'photo.uploadPath', {circleId: circle.id, personId: self.id});
-  await f.ok('owner', 'person.update', {circleId: circle.id, personId: self.id, patch: {phone: '13800000000', wechatId: 'wx_owner', city: '北京', country: '中国', photoFileId: `cloud://env.bucket/${cloudPath}`}});
+  await stagePhoto(f.api, 'owner', circle.id, self.id);
+  await f.ok('owner', 'person.update', {circleId: circle.id, personId: self.id, patch: {phone: '13800000000', wechatId: 'wx_owner', city: '北京', country: '中国'}});
   let view = (await f.ok('member', 'person.get', {circleId: circle.id, personId: self.id})).person;
   for (const key of ['phone', 'wechatId', 'city', 'country', 'photoFileId']) assert.equal(view[key], undefined, key);
   await f.ok('owner', 'person.update', {circleId: circle.id, personId: self.id, patch: {}, visibility: {city: 'circle', phone: 'circle'}});
@@ -225,13 +328,13 @@ test('照片临时链接只对获准查看的成员签发', async () => {
   const call = async (user, action, payload) => api.invoke({action, payload}, user);
   const circle = (await call('owner', 'circle.create', {type:'family', name:'家', mode:'shared'})).data.circle;
   const person = (await call('owner', 'person.create', {circleId:circle.id, name:'我', claimSelf:true})).data.person;
-  const path = (await call('owner', 'photo.uploadPath', {circleId:circle.id, personId:person.id})).data.cloudPath;
-  assert.match(path, /^photos\/[0-9a-f]{40}\/[0-9a-f-]{36}\.jpg$/);
-  assert.equal(path.includes('/owner/'), false);
-  const photoFileId = `cloud://long-production-env-12345678901234567890.very-long-bucket-12345678901234567890/${path}`;
+  const staged = await stagePhoto(api, 'owner', circle.id, person.id, undefined, 'long-production-env-12345678901234567890.very-long-bucket-12345678901234567890');
+  assert.match(staged.cloudPath, /^photos\/[0-9a-f]{40}\/[0-9a-f-]{36}\.jpg$/);
+  assert.equal(staged.cloudPath.includes('/owner/'), false);
+  const photoFileId = staged.fileID;
   assert.ok(photoFileId.length > 120);
-  assert.equal((await call('owner', 'person.update', {circleId:circle.id, personId:person.id, patch:{photoFileId:'cloud://other/elsewhere.jpg'}})).error.code, 'INVALID_INPUT');
-  await call('owner', 'person.update', {circleId:circle.id, personId:person.id, patch:{photoFileId}});
+  assert.equal((await call('owner', 'person.update', {circleId:circle.id, personId:person.id, patch:{photoFileId}})).error.code, 'FORBIDDEN');
+  assert.equal((await call('owner', 'photo.uploadPath', {circleId:circle.id, personId:person.id})).error.code, 'UNKNOWN_ACTION');
   const ownView = (await call('owner', 'person.get', {circleId:circle.id, personId:person.id})).data.person;
   assert.equal(ownView.hasPhoto, true);
   assert.equal(ownView.photoFileId, undefined);
@@ -284,8 +387,7 @@ test('照片临时链接在权限事务提交后签发', async () => {
   const call = async (actor, action, payload) => api.invoke({action, payload}, actor);
   const circle = (await call('owner', 'circle.create', {type: 'family', name: '家', mode: 'shared'})).data.circle;
   const person = (await call('owner', 'person.create', {circleId: circle.id, name: '我', claimSelf: true})).data.person;
-  const cloudPath = (await call('owner', 'photo.uploadPath', {circleId: circle.id, personId: person.id})).data.cloudPath;
-  await call('owner', 'person.update', {circleId: circle.id, personId: person.id, patch: {photoFileId: `cloud://env.bucket/${cloudPath}`}});
+  await stagePhoto(api, 'owner', circle.id, person.id);
   const signed = await call('owner', 'photo.url', {circleId: circle.id, personId: person.id});
   assert.equal(signed.ok, true);
   assert.equal(signed.data.url, 'https://signed.example/photo');
@@ -298,10 +400,7 @@ test('批量照片签发只返回有权人物 URL，限 20 人且不返回文件
   const viewer = await f.join('owner', 'viewer', circle.id);
   const other = (await f.ok('viewer', 'person.create', {circleId: circle.id, name: '成员', claimSelf: true})).person;
   const makePhoto = async (actor, personId, visibility) => {
-    const path = (await f.ok(actor, 'photo.uploadPath', {circleId: circle.id, personId})).cloudPath;
-    const fileId = `cloud://env.bucket/${path}`;
-    await f.ok(actor, 'person.update', {circleId: circle.id, personId, patch: {photoFileId: fileId}, visibility: {photoFileId: visibility}});
-    return fileId;
+    return (await stagePhoto(f.api, actor, circle.id, personId, visibility)).fileID;
   };
   const ownFile = await makePhoto('owner', own.id, 'self');
   const otherFile = await makePhoto('viewer', other.id, 'circle');
@@ -338,7 +437,7 @@ test('照片上传先校验权限和大小，服务端上传后绑定人物', as
     uploadFile: async ({cloudPath, fileContent}) => {uploads++; assert.ok(fileContent.length < 1024 * 1024); return {fileID: `cloud://env.bucket/${cloudPath}`};},
     deleteFile: async () => ({})
   };
-  const base64 = Buffer.from([0xff, 0xd8, 0x00, 0x00, 0xff, 0xd9]).toString('base64');
+  const base64 = TEST_JPEG.toString('base64');
   let response = await handlePhotoUpload({payload:{circleId:circle.id, personId:person.id, base64}}, 'stranger', f.api, storage);
   assert.equal(response.error.code, 'FORBIDDEN');
   assert.equal(uploads, 0);
@@ -352,29 +451,85 @@ test('照片上传先校验权限和大小，服务端上传后绑定人物', as
   assert.equal(response.data.person.photoFileId, undefined);
 });
 
+test('服务端剥离 JPEG 的 EXIF、位置、时间、ICC、注释，普通 JPEG 保留图像段', async () => {
+  const exif = jpegSegment(0xe1, Buffer.from('Exif\0\0GPSLatitude=31.2;DateTimeOriginal=2026:01:01'));
+  const xmp = jpegSegment(0xe1, Buffer.from('XMP GPSLongitude=121.5'));
+  const icc = jpegSegment(0xe2, Buffer.from('ICC_PROFILE\0sensitive-profile'));
+  const comment = jpegSegment(0xfe, Buffer.from('Comment home address'));
+  const contaminated = Buffer.concat([
+    TEST_JPEG.subarray(0, 2), exif, xmp, icc, comment,
+    TEST_JPEG.subarray(2, -2), comment, TEST_JPEG.subarray(-2)
+  ]);
+  const expected = stripJpegMetadata(TEST_JPEG);
+  assert.deepEqual(stripJpegMetadata(contaminated), expected);
+  assert.equal(expected[0], 0xff);
+  assert.equal(expected[1], 0xd8);
+  assert.deepEqual(expected.subarray(-2), Buffer.from([0xff, 0xd9]));
+  for (const sensitive of ['GPSLatitude', 'DateTimeOriginal', 'GPSLongitude', 'ICC_PROFILE', 'home address']) {
+    assert.equal(expected.includes(Buffer.from(sensitive)), false);
+  }
+  const f = fixture();
+  const circle = await f.create();
+  const person = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '我', claimSelf: true})).person;
+  let uploadedBytes;
+  const storage = {
+    uploadFile: async ({cloudPath, fileContent}) => {
+      uploadedBytes = fileContent;
+      return {fileID: `cloud://env.bucket/${cloudPath}`};
+    },
+    deleteFile: async () => ({})
+  };
+  const result = await handlePhotoUpload({payload: {circleId: circle.id, personId: person.id, base64: contaminated.toString('base64')}}, 'owner', f.api, storage);
+  assert.equal(result.ok, true);
+  assert.deepEqual(uploadedBytes, expected);
+});
+
+test('伪 JPEG 与超大像素尺寸上传在占用额度前拒绝', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const person = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '我', claimSelf: true})).person;
+  let uploads = 0;
+  const storage = {uploadFile: async () => {uploads++; return {};}, deleteFile: async () => ({})};
+  const fake = Buffer.from([0xff, 0xd8, 0xff, 0xda, 0x00, 0x02, 0x01, 0x02, 0xff, 0xd9]);
+  const malformed = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff]), TEST_JPEG.subarray(2)]);
+  const oversized = Buffer.from(TEST_JPEG);
+  const frame = oversized.indexOf(Buffer.from([0xff, 0xc0]));
+  assert.ok(frame > 0);
+  oversized.writeUInt16BE(8192, frame + 5);
+  oversized.writeUInt16BE(8192, frame + 7);
+  for (const bytes of [fake, malformed, oversized]) {
+    const result = await handlePhotoUpload({payload: {circleId: circle.id, personId: person.id, base64: bytes.toString('base64')}}, 'owner', f.api, storage);
+    assert.equal(result.error.code, 'INVALID_IMAGE');
+  }
+  assert.equal(uploads, 0);
+  assert.equal((await f.repo.atomic(tx => tx.find('photoUploadBudgets', {}))).length, 0);
+});
+
 test('更换照片时同一事务保存可见范围，旧客户端默认仅本人可见', async () => {
   const f = fixture();
   const circle = await f.create();
   const person = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '我', claimSelf: true})).person;
   await f.join('owner', 'viewer', circle.id);
-  const oldPath = (await f.ok('owner', 'photo.uploadPath', {circleId: circle.id, personId: person.id})).cloudPath;
-  await f.ok('owner', 'person.update', {circleId: circle.id, personId: person.id,
-    patch: {photoFileId: `cloud://env.bucket/${oldPath}`}, visibility: {photoFileId: 'circle'}});
+  await stagePhoto(f.api, 'owner', circle.id, person.id, 'circle');
   assert.equal((await f.ok('viewer', 'person.get', {circleId: circle.id, personId: person.id})).person.hasPhoto, true);
-  const base64 = Buffer.from([0xff, 0xd8, 0x00, 0x00, 0xff, 0xd9]).toString('base64');
+  const base64 = TEST_JPEG.toString('base64');
   const storage = {
     uploadFile: async ({cloudPath}) => ({fileID: `cloud://env.bucket/${cloudPath}`}),
     deleteFile: async () => ({})
   };
   const calls = [];
-  const trackedApi = {invoke: async (request, actor) => {
-    calls.push(request);
-    return f.api.invoke(request, actor);
-  }};
+  const trackedApi = {
+    reservePhotoUpload: (...args) => f.api.reservePhotoUpload(...args),
+    refundPhotoUpload: (...args) => f.api.refundPhotoUpload(...args),
+    bindUploadedPhoto: async (payload, actor) => {
+      calls.push(payload);
+      return f.api.bindUploadedPhoto(payload, actor);
+    }
+  };
   const payload = {circleId: circle.id, personId: person.id, base64};
   let response = await handlePhotoUpload({payload: {...payload, visibility: 'self'}}, 'owner', trackedApi, storage);
   assert.equal(response.ok, true);
-  assert.deepEqual(calls.filter(call => call.action === 'person.update').map(call => call.payload.visibility), [{photoFileId: 'self'}]);
+  assert.deepEqual(calls.map(call => call.visibility), ['self']);
   assert.equal((await f.ok('viewer', 'person.get', {circleId: circle.id, personId: person.id})).person.photoFileId, undefined);
   assert.equal((await f.ok('owner', 'person.get', {circleId: circle.id, personId: person.id})).person.visibility.photoFileId, 'self');
   await f.ok('owner', 'person.update', {circleId: circle.id, personId: person.id, patch: {}, visibility: {photoFileId: 'circle'}});
@@ -397,7 +552,7 @@ test('照片代维护上传沿用原可见范围且不能指定新范围', async
     uploadFile: async ({cloudPath}) => {uploads++; return {fileID: `cloud://env.bucket/${cloudPath}`};},
     deleteFile: async () => ({})
   };
-  const payload = {circleId: circle.id, personId: person.id, base64: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64')};
+  const payload = {circleId: circle.id, personId: person.id, base64: TEST_JPEG.toString('base64')};
   let response = await handlePhotoUpload({payload: {...payload, visibility: 'circle'}}, 'helper', f.api, storage);
   assert.equal(response.error.code, 'FORBIDDEN');
   assert.equal(uploads, 0);
@@ -405,6 +560,28 @@ test('照片代维护上传沿用原可见范围且不能指定新范围', async
   assert.equal(response.ok, true);
   assert.equal(uploads, 1);
   assert.equal((await f.ok('owner', 'person.get', {circleId: circle.id, personId: person.id})).person.visibility.photoFileId, 'self');
+});
+
+test('照片上传期间撤销授权会阻止绑定，清理云文件并返还额度', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const person = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '长辈', claimSelf: true})).person;
+  const helper = await f.join('owner', 'helper', circle.id);
+  await f.ok('owner', 'member.setRole', {circleId: circle.id, memberId: helper.id, role: 'admin'});
+  const delegation = (await f.ok('owner', 'delegation.grant', {circleId: circle.id, personId: person.id, adminMemberId: helper.id, fields: ['photoFileId']})).delegation;
+  let deleted = 0;
+  const storage = {
+    uploadFile: async ({cloudPath}) => {
+      await f.ok('owner', 'delegation.revoke', {circleId: circle.id, delegationId: delegation.id});
+      return {fileID: `cloud://env.bucket/${cloudPath}`};
+    },
+    deleteFile: async ({fileList}) => {deleted++; return {fileList: [{fileID: fileList[0], status: 0, errMsg: 'ok'}]};}
+  };
+  const response = await handlePhotoUpload({payload: {circleId: circle.id, personId: person.id, base64: TEST_JPEG.toString('base64')}}, 'helper', f.api, storage);
+  assert.equal(response.error.code, 'FORBIDDEN');
+  assert.equal(deleted, 1);
+  assert.equal((await f.ok('owner', 'person.get', {circleId: circle.id, personId: person.id})).person.hasPhoto, false);
+  assert.equal((await f.repo.atomic(tx => tx.find('photoUploadBudgets', {})))[0].count, 0);
 });
 
 test('旧认领人遗留的照片授权不能发放上传路径或占用云存储', async () => {
@@ -419,13 +596,74 @@ test('旧认领人遗留的照片授权不能发放上传路径或占用云存�
     stale.ownerUserId = 'former-owner';
     await tx.put('delegations', stale);
   });
-  await f.denied('helper', 'photo.uploadPath', {circleId: circle.id, personId: person.id}, 'FORBIDDEN');
+  const reserved = await f.api.reservePhotoUpload({circleId: circle.id, personId: person.id}, 'helper');
+  assert.equal(reserved.error.code, 'FORBIDDEN');
   let uploaded = false;
   const storage = {uploadFile: async () => {uploaded = true; return {};}, deleteFile: async () => ({})};
-  const base64 = Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64');
+  const base64 = TEST_JPEG.toString('base64');
   const result = await handlePhotoUpload({payload: {circleId: circle.id, personId: person.id, base64}}, 'helper', f.api, storage);
   assert.equal(result.error.code, 'FORBIDDEN');
   assert.equal(uploaded, false);
+});
+
+test('照片上传按微信账号持久限制 24 小时 20 次，并发也不会超额', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const person = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '我', claimSelf: true})).person;
+  // Public path preview does not reserve the server-side upload budget.
+  // Public API cannot reserve a budget without actually running photo.upload.
+  await f.denied('owner', 'photo.uploadPath', {circleId: circle.id, personId: person.id}, 'UNKNOWN_ACTION');
+  assert.equal((await f.repo.atomic(tx => tx.find('photoUploadBudgets', {}))).length, 0);
+  let uploads = 0;
+  const storage = {
+    uploadFile: async ({cloudPath}) => {uploads++; return {fileID: `cloud://env.bucket/${cloudPath}`};},
+    deleteFile: async () => ({})
+  };
+  const payload = {circleId: circle.id, personId: person.id, base64: TEST_JPEG.toString('base64')};
+  const results = await Promise.all(Array.from({length: 22}, () => handlePhotoUpload({payload}, 'owner', f.api, storage)));
+  assert.equal(results.filter(result => result.ok).length, 20);
+  assert.equal(results.filter(result => result.error?.code === 'PHOTO_UPLOAD_LIMIT').length, 2);
+  assert.equal(uploads, 20);
+  const budget = (await f.repo.atomic(tx => tx.find('photoUploadBudgets', {})))[0];
+  assert.equal(budget.count, 20);
+  f.advance(24 * 60 * 60 * 1000);
+  assert.equal((await handlePhotoUpload({payload}, 'owner', f.api, storage)).ok, true);
+});
+
+test('照片绑定失败且云文件已清理时返还额度，未知上传结果保留额度', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const person = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '我', claimSelf: true})).person;
+  const payload = {circleId: circle.id, personId: person.id, base64: TEST_JPEG.toString('base64')};
+  let deleted = 0;
+  const storage = {
+    uploadFile: async ({cloudPath}) => ({fileID: `cloud://env.bucket/${cloudPath}`}),
+    deleteFile: async ({fileList}) => {deleted++; return {fileList: [{fileID: fileList[0], status: 0, errMsg: 'ok'}]};}
+  };
+  const failingApi = {
+    reservePhotoUpload: (...args) => f.api.reservePhotoUpload(...args),
+    refundPhotoUpload: (...args) => f.api.refundPhotoUpload(...args),
+    bindUploadedPhoto: () => Promise.resolve({ok: false, error: {code: 'FORBIDDEN', message: '权限已改变'}})
+  };
+  const failed = await handlePhotoUpload({payload}, 'owner', failingApi, storage);
+  assert.equal(failed.error.code, 'FORBIDDEN');
+  assert.equal(deleted, 1);
+  let budget = (await f.repo.atomic(tx => tx.find('photoUploadBudgets', {})))[0];
+  assert.equal(budget.count, 0);
+  const notDeleted = await handlePhotoUpload({payload}, 'owner', failingApi, {
+    uploadFile: storage.uploadFile,
+    deleteFile: async ({fileList}) => ({fileList: [{fileID: fileList[0], status: -1, errMsg: 'permission denied'}]})
+  });
+  assert.equal(notDeleted.error.code, 'FORBIDDEN');
+  budget = (await f.repo.atomic(tx => tx.find('photoUploadBudgets', {})))[0];
+  assert.equal(budget.count, 1, 'resolved delete with a per-file failure must retain the upload charge');
+  const uncertain = await handlePhotoUpload({payload}, 'owner', f.api, {
+    uploadFile: async () => {throw new Error('network lost after possible upload');},
+    deleteFile: async () => ({})
+  });
+  assert.equal(uncertain.error.code, 'UPLOAD_FAILED');
+  budget = (await f.repo.atomic(tx => tx.find('photoUploadBudgets', {})))[0];
+  assert.equal(budget.count, 2);
 });
 
 test('移除成员立即失去访问，人物节点保留但私人资料清空', async () => {
@@ -514,6 +752,21 @@ test('普通成员认领须管理员批准，关联人物删除被阻止', async
   await f.denied('owner', 'person.delete', {circleId: circle.id, personId: b.id}, 'RELATION_CONNECTED');
 });
 
+test('历史关系计数漂移时仍不能删除被实际关系引用的人物', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const a = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '甲'})).person;
+  const b = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '乙'})).person;
+  await f.ok('owner', 'relation.create', {circleId: circle.id, from: a.id, to: b.id, type: 'sibling'});
+  await f.repo.atomic(async tx => {
+    const person = await tx.get('persons', a.id);
+    person.relationCount = 0;
+    await tx.put('persons', person);
+  });
+  await f.denied('owner', 'person.delete', {circleId: circle.id, personId: a.id}, 'RELATION_CONNECTED');
+  assert.equal((await f.ok('owner', 'person.list', {circleId: circle.id})).persons.some(person => person.id === a.id), true);
+});
+
 test('认领申请待审核时不能新建本人卡或同时申请另一张卡', async () => {
   const f = fixture();
   const circle = await f.create();
@@ -529,6 +782,22 @@ test('认领申请待审核时不能新建本人卡或同时申请另一张卡',
   const own = (await f.ok('member','person.create',{circleId:circle.id,name:'确实没有我的卡',claimSelf:true})).person;
   assert.equal(own.isSelf,true);
   await f.denied('member','person.claim',{circleId:circle.id,personId:second.id},'ALREADY_CLAIMED');
+});
+
+test('退出圈子使待审认领失效，重新加入后可以重新申请', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const card = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '待认领'})).person;
+  await f.join('owner', 'member', circle.id);
+  const claim = (await f.ok('member', 'person.claim', {circleId: circle.id, personId: card.id})).claimRequest;
+  await f.ok('member', 'member.leave', {circleId: circle.id});
+  const pending = (await f.ok('owner', 'person.claimList', {circleId: circle.id})).claimRequests;
+  assert.equal(pending.length, 0);
+  await f.denied('owner', 'person.claimApprove', {circleId: circle.id, claimRequestId: claim.id}, 'ALREADY_REVIEWED');
+  await f.join('owner', 'member', circle.id);
+  const retry = (await f.ok('member', 'person.claim', {circleId: circle.id, personId: card.id})).claimRequest;
+  assert.equal(retry.id, claim.id);
+  assert.equal(retry.status, 'pending');
 });
 
 test('认领申请与新建本人卡并发时只允许一条路径成功', async () => {
@@ -829,4 +1098,19 @@ test('入圈申请列表限制关联读取，旧申请可用本人 ID 精确查�
   assert.equal(old.applications.length, 1);
   assert.equal(old.applications[0].id, ids[0]);
   await f.denied('other', 'join.mine', {applicationId: ids[0]}, 'NOT_FOUND');
+});
+
+test('历史审核通过不等于当前仍可入圈，退出后入口状态会撤回', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const invite = (await f.ok('owner', 'invite.create', {circleId: circle.id})).invite;
+  const application = (await f.ok('member', 'invite.apply', {token: invite.token, name: '成员'})).application;
+  await f.ok('owner', 'join.approve', {circleId: circle.id, applicationId: application.id});
+  let status = (await f.ok('member', 'join.mine', {applicationId: application.id})).applications[0];
+  assert.equal(status.status, 'approved');
+  assert.equal(status.canEnter, true);
+  await f.ok('member', 'member.leave', {circleId: circle.id});
+  status = (await f.ok('member', 'join.mine', {applicationId: application.id})).applications[0];
+  assert.equal(status.status, 'approved');
+  assert.equal(status.canEnter, false);
 });

@@ -1,7 +1,7 @@
 import type { CollectionName, EntityMap } from './model';
 import type { Repository, UnitOfWork } from './repository';
 
-const names: CollectionName[] = ['circles', 'members', 'persons', 'relations', 'invites', 'applications', 'delegations', 'suggestions', 'claimRequests', 'audit'];
+const names: CollectionName[] = ['circles', 'members', 'persons', 'relations', 'invites', 'applications', 'delegations', 'suggestions', 'claimRequests', 'audit', 'photoUploadBudgets'];
 
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
 

@@ -1,4 +1,4 @@
-<view class="page circle-page" wx:if="{{circle}}">
+<view class="page circle-page" wx:if="{{circle && !loadError && !loading}}">
   <view class="circle-head">
     <view class="row between"><view class="eyebrow">{{circle.type === 'family' ? 'FAMILY CIRCLE' : 'CLASS CIRCLE'}}</view><text class="pill {{circle.type === 'family' ? '' : 'class-pill'}}">{{circle.type === 'family' ? '家庭圈' : '同学圈'}}</text></view>
     <view class="title">{{circle.name}}</view>
@@ -75,3 +75,4 @@
   <view class="bottom-actions"><button wx:if="{{isAdmin}}" class="btn secondary" bindtap="onAddPerson">＋ 添加未加入的人物卡</button><button wx:if="{{isAdmin}}" class="btn ghost" bindtap="onManage">管理圈子</button></view>
   <view class="leave-link" wx:if="{{role !== 'owner'}}" bindtap="onLeave">退出这个圈子</view>
 </view>
+<view class="page circle-page" wx:else><view class="card empty"><view>{{loading ? '正在读取圈子和关系…' : '暂时无法打开圈子：' + loadError}}</view><button class="btn secondary" wx:if="{{!loading}}" bindtap="onRetry">重试</button><button class="btn ghost" bindtap="onHome">返回我的圈子</button></view></view>

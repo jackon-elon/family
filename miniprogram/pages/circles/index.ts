@@ -4,34 +4,40 @@ import { confirm, dateText, go, q, toast } from '../../utils/navigation';
 type ApplicationRow = JoinApplication & { circleName?: string; circleType?: string; statusText: string; date: string };
 
 Page({
-  data: { familyCircles: [] as Circle[], classCircles: [] as Circle[], applicationRows: [] as ApplicationRow[], applicationError: '', demoMode: true, loading: true },
+  data: { familyCircles: [] as Circle[], classCircles: [] as Circle[], applicationRows: [] as ApplicationRow[], allApplicationRows: [] as ApplicationRow[], showAllApplications: false, hasMoreApplications: false, applicationError: '', loadError: '', demoMode: true, loading: true },
   async onShow(this: any) {
-    this.setData({ demoMode: isDemoMode(), loading: true });
+    this.setData({ demoMode: isDemoMode(), loading: true, loadError: '' });
     const [result, mine] = await Promise.all([
       invoke<{ circles: Circle[] }>({ action: 'circle.list' }),
-      invoke<{ applications: Array<JoinApplication & {circleName?: string; circleType?: string}> }>({ action: 'join.mine' })
+      invoke<{ applications: Array<JoinApplication & {circleName?: string; circleType?: string}>; hasMore?: boolean }>({ action: 'join.mine' })
     ]);
-    if (!result.ok) { showApiError(result); this.setData({ loading: false }); return; }
+    if (!result.ok) { this.setData({ familyCircles: [], classCircles: [], applicationRows: [], allApplicationRows: [], loadError: result.error.message, loading: false }); return; }
     const applicationRows: ApplicationRow[] = mine.ok ? mine.data.applications
-      .slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, 5)
+      .slice().sort((a, b) => b.createdAt - a.createdAt)
       .map(application => ({
         ...application,
         date: dateText(application.createdAt),
-        statusText: application.status === 'approved' ? '已通过' : application.status === 'rejected' ? '未通过' : application.status === 'invalid' || application.status === 'expired' ? '已失效' : '审核中'
+        statusText: application.status === 'approved' ? application.canEnter === false ? '已退出或无访问权' : '已通过' : application.status === 'rejected' ? '未通过' : application.status === 'invalid' || application.status === 'expired' ? '已失效' : '审核中'
       })) : [];
     this.setData({
       familyCircles: result.data.circles.filter(c => c.type === 'family'),
       classCircles: result.data.circles.filter(c => c.type === 'classmate'),
-      applicationRows,
+      allApplicationRows: applicationRows,
+      applicationRows: this.data.showAllApplications ? applicationRows : applicationRows.slice(0, 5),
+      hasMoreApplications: mine.ok && !!mine.data.hasMore,
       applicationError: mine.ok ? '' : '加入申请暂时无法加载，点此重试',
       loading: false
     });
   },
-  onRetryApplications(this: any) { this.onShow(); },
+  onRetryApplications(this: any) { if (!this.data.loading) this.onShow(); },
+  onToggleApplications(this: any) {
+    const showAllApplications = !this.data.showAllApplications;
+    this.setData({ showAllApplications, applicationRows: showAllApplications ? this.data.allApplicationRows : this.data.allApplicationRows.slice(0, 5) });
+  },
   onOpenApplication(this: any, event: any) { go(`/pages/apply/index?applicationId=${q(event.currentTarget.dataset.id)}`); },
   onOpenCircle(this: any, event: any) {
     const id = event.currentTarget.dataset.id;
-    wx.setStorageSync('kin-current-circle', id);
+    try { wx.setStorageSync('kin-current-circle', id); } catch (_) { /* The URL still identifies this circle. */ }
     go(`/pages/circle/index?circleId=${q(id)}`);
   },
   onCreate() { go('/pages/create/index'); },
@@ -46,7 +52,7 @@ Page({
       if (!(await confirm('切换到云端', '请先配置真实小程序 AppID、云环境，并部署 api 云函数。现在尝试切换吗？'))) return;
       if (!setDemoMode(false)) { toast('切换失败，请检查云环境和本机存储'); return; }
     } else {
-      setDemoMode(true);
+      if (!setDemoMode(true)) { toast('切换失败，请检查本机存储'); return; }
     }
     this.onShow();
   }

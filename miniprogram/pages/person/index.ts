@@ -32,12 +32,13 @@ function proposalText(data: any): string {
 }
 
 Page({
-  data: { circle: null as Circle | null, person: null as Person | null, initial: '人', relationLabel: '', relationPath: '', relationMissing: '', relationStatus: '', alternatives: '', isAdmin: false, canEdit: false, canClaim: false, claimPending: false, rows: [] as { label: string; value: string }[], updated: '', loading: true,
+  data: { circle: null as Circle | null, person: null as Person | null, initial: '人', relationLabel: '', relationPath: '', relationMissing: '', relationStatus: '', alternatives: '', isAdmin: false, canEdit: false, canClaim: false, claimPending: false, claimBusy: false, rows: [] as { label: string; value: string }[], updated: '', updatedLabel: '', loading: true, loadError: '',
     allPeople: [] as Person[], suggestionExisting: [] as Relation[], suggestionExistingNames: [] as string[], personNames: [] as string[], showRelationSuggestion: false, suggestionModeOptions: CORRECTION_MODES, suggestionModeIndex: 0, suggestionExistingIndex: 0, suggestionTypeOptions: RELATION_TYPES, suggestionTypeIndex: 0, suggestionFromIndex: 0, suggestionToIndex: 1, suggestionOlderOptions: ['暂不确定', '第一位较年长', '第二位较年长'], suggestionOlderIndex: 0, suggestionMessage: '', suggestionPreview: '', submittingSuggestion: false },
   onLoad(this: any, options: any) { this.circleId = options.circleId; this.personId = options.personId; this.loadData(); },
   onShow(this: any) { if (this.personId && !this.data.loading) this.loadData(); },
   async loadData(this: any) {
-    this.setData({ loading: true });
+    if (!this.circleId || !this.personId) { this.setData({ loading: false, loadError: '缺少人物信息，请返回圈子重新打开' }); return; }
+    this.setData({ loading: true, loadError: '' });
     const [detail, current, people, relations, claims] = await Promise.all([
       invoke<{ circle: Circle; role: string }>({ action: 'circle.detail', payload: { circleId: this.circleId } }),
       invoke<{ person: Person }>({ action: 'person.get', payload: { circleId: this.circleId, personId: this.personId } }),
@@ -45,12 +46,14 @@ Page({
       invoke<{ relations: Relation[] }>({ action: 'relation.list', payload: { circleId: this.circleId } }),
       invoke<{ claimRequests: Array<{status: string}> }>({ action: 'person.claimMine', payload: { circleId: this.circleId } })
     ]);
-    if (!detail.ok) { showApiError(detail); return; }
-    if (!current.ok) { showApiError(current); return; }
+    if (!detail.ok || !current.ok || !people.ok || !relations.ok || !claims.ok) {
+      const failed = [detail, current, people, relations, claims].find(result => !result.ok);
+      this.setData({ loading: false, loadError: failed && !failed.ok ? failed.error.message : '加载失败，请重试' }); return;
+    }
     const person = (await resolvePhotoUrls(this.circleId, [current.data.person]))[0];
     const circle = detail.data.circle;
-    const all = people.ok ? people.data.persons : [person];
-    const relationList = relations.ok ? relations.data.relations : [];
+    const all = people.data.persons;
+    const relationList = relations.data.relations;
     const selfId = all.find(p => p.isSelf)?.id || '';
     const relation = circle.type === 'family' && selfId ? relationshipFor(all, relationList, selfId, person.id) : null;
     const rows = [
@@ -64,16 +67,21 @@ Page({
     wx.setNavigationBarTitle({ title: person.name });
     const relevant = relationList.filter(r => r.from === person.id || r.to === person.id);
     const suggestedData = { ...this.data, allPeople: all, suggestionExisting: relevant, suggestionFromIndex: 0, suggestionToIndex: 0 };
-    this.setData({ circle, person, initial: person.name?.slice(-1) || '人', isAdmin, canEdit: !!person.isSelf || (isAdmin && !person.isClaimed) || !!(person as any).myDelegatedFields?.length, canClaim: claims.ok && !claimPending && !person.isClaimed && !all.some(p => p.isSelf), claimPending, relationLabel: relation?.label || (circle.type === 'classmate' ? '同班同学' : '关系待补充'), relationPath: relation?.path || '', relationMissing: relation?.missing || '', relationStatus: relation?.status || 'unrelated', alternatives: relation?.alternatives || '', rows, updated: dateText(person.updatedAt), loading: false, allPeople: all, personNames: ['请选择人物', ...all.map(p => p.name)], suggestionExisting: relevant, suggestionExistingNames: relevant.map(r => relationText(r, all)), suggestionFromIndex: 0, suggestionToIndex: 0, suggestionPreview: proposalText(suggestedData) });
+    this.setData({ circle, person, initial: person.name?.slice(-1) || '人', isAdmin, canEdit: !!person.isSelf || (isAdmin && !person.isClaimed) || !!(person as any).myDelegatedFields?.length, canClaim: !claimPending && !person.isClaimed && !all.some(p => p.isSelf), claimPending, relationLabel: relation?.label || (circle.type === 'classmate' ? '同班同学' : '关系待补充'), relationPath: relation?.path || '', relationMissing: relation?.missing || '', relationStatus: relation?.status || 'unrelated', alternatives: relation?.alternatives || '', rows, updated: person.lastConfirmedAt ? dateText(person.lastConfirmedAt) : person.updatedAt ? dateText(person.updatedAt) : '', updatedLabel: person.lastConfirmedAt ? '本人最近更新' : '资料最近更新', loading: false, allPeople: all, personNames: ['请选择人物', ...all.map(p => p.name)], suggestionExisting: relevant, suggestionExistingNames: relevant.map(r => relationText(r, all)), suggestionFromIndex: 0, suggestionToIndex: 0, suggestionPreview: proposalText(suggestedData) });
   },
+  onRetry(this: any) { if (!this.data.loading) return this.loadData(); },
+  onHome() { wx.reLaunch({ url: '/pages/circles/index' }); },
   onEdit(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}&personId=${q(this.personId)}`); },
   onPhoto(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}&personId=${q(this.personId)}&focus=photo`); },
   onPrivacy(this: any) { go(`/pages/privacy/index?circleId=${q(this.circleId)}&personId=${q(this.personId)}`); },
   onCopyWechat(this: any) { wx.setClipboardData({ data: this.data.person.wechatId }); },
   onCall(this: any) { wx.makePhoneCall({ phoneNumber: this.data.person.phone }); },
   async onClaim(this: any) {
-    if (!(await confirm('申请认领', `确认申请认领「${this.data.person.name}」吗？管理员需要核对身份。`))) return;
+    if (!this.data.canClaim || this.data.claimBusy) return;
+    this.setData({claimBusy: true});
+    if (!(await confirm('申请认领', `确认申请认领「${this.data.person.name}」吗？管理员需要核对身份。`))) { this.setData({claimBusy: false}); return; }
     const result = await invoke({ action: 'person.claim', payload: { circleId: this.circleId, personId: this.personId } });
+    this.setData({claimBusy: false});
     if (!result.ok) return showApiError(result);
     toast('认领申请已提交，等待管理员核对');
     this.loadData();
@@ -117,13 +125,13 @@ Page({
   onSuggestionInput(this: any, e: any) { this.setData({ suggestionMessage: e.detail.value }); },
   onCancelRelationSuggestion(this: any) { this.setData({ showRelationSuggestion: false, suggestionMessage: '' }); },
   async onSubmitRelationSuggestion(this: any) {
+    if (this.data.submittingSuggestion) return;
     const change = proposalFrom(this.data);
     if (!change) return toast('请核对关系中的人物');
     const message = this.data.suggestionMessage.trim();
     if (!message) return toast('请说明为什么要更正');
-    if (!(await confirm('提交关系更正', `${proposalText(this.data)}\n\n管理员审核前，关系网不会变化。`))) return;
-    if (this.data.submittingSuggestion) return;
     this.setData({ submittingSuggestion: true });
+    if (!(await confirm('提交关系更正', `${proposalText(this.data)}\n\n管理员审核前，关系网不会变化。`))) { this.setData({submittingSuggestion: false}); return; }
     const result = await invoke({ action: 'suggestion.create', payload: { circleId: this.circleId, type: 'relation', personId: this.personId, message, relationChange: change } });
     this.setData({ submittingSuggestion: false });
     if (!result.ok) return showApiError(result);
@@ -131,12 +139,15 @@ Page({
     toast('关系建议已提交给管理员');
   },
   async onDelete(this: any) {
+    if (this.deleteBusy) return;
+    this.deleteBusy = true;
     const relations = await invoke<{ relations: Relation[] }>({ action: 'relation.list', payload: { circleId: this.circleId } });
-    const links = relations.ok ? relations.data.relations.filter(r => r.from === this.personId || r.to === this.personId).length : 0;
-    if (links) return wx.showModal({ title: '暂不能删除', content: `这张卡连接着 ${links} 条家庭关系。先在管理页调整关系，再删除人物卡；否则会让其他人的关系路径断开。`, showCancel: false });
-    if (!(await confirm('删除人物卡', `确定删除「${this.data.person.name}」吗？此操作不能撤回。`))) return;
+    if (!relations.ok) { this.deleteBusy = false; return showApiError(relations); }
+    const links = relations.data.relations.filter(r => r.from === this.personId || r.to === this.personId).length;
+    if (links) { this.deleteBusy = false; return wx.showModal({ title: '暂不能删除', content: `这张卡连接着 ${links} 条家庭关系。先在管理页调整关系，再删除人物卡；否则会让其他人的关系路径断开。`, showCancel: false }); }
+    if (!(await confirm('删除人物卡', `确定删除「${this.data.person.name}」吗？此操作不能撤回。`))) { this.deleteBusy = false; return; }
     const result = await invoke({ action: 'person.delete', payload: { circleId: this.circleId, personId: this.personId } });
-    if (!result.ok) return showApiError(result);
+    if (!result.ok) { this.deleteBusy = false; return showApiError(result); }
     toast('已删除人物卡'); wx.navigateBack();
   }
 });

@@ -19,29 +19,41 @@ const DELEGABLE = [
 ];
 
 Page({
-  data: { person: null as Person | null, initial: '人', settings: [] as any[], visibility: {} as Record<string, Visibility>, admins: [] as Member[], adminNames: [] as string[], adminIndex: 0, delegationFields: [] as string[], delegable: DELEGABLE, delegations: [] as any[], saving: false },
+  data: { person: null as Person | null, initial: '人', settings: [] as any[], visibility: {} as Record<string, Visibility>, admins: [] as Member[], adminNames: [] as string[], adminIndex: 0, delegationFields: [] as string[], delegable: DELEGABLE, delegations: [] as any[], saving: false, loading: true, loadError: '' },
   onLoad(this: any, options: any) { this.circleId = options.circleId; this.personId = options.personId; this.loadData(); },
-  onShow(this: any) { if (this.personId) this.loadData(); },
+  onShow(this: any) { if (this.personId && !this.data.loading) this.loadData(); },
   async loadData(this: any) {
-    const [person, members, people] = await Promise.all([
+    if (!this.circleId || !this.personId) { this.setData({ loading: false, loadError: '未指定人物卡，请从我的圈子重新进入' }); return; }
+    const loadVersion = (this.loadVersion || 0) + 1;
+    this.loadVersion = loadVersion;
+    this.setData({ loading: true, loadError: '' });
+    let results;
+    try { results = await Promise.all([
       invoke<{ person: Person }>({ action: 'person.get', payload: { circleId: this.circleId, personId: this.personId } }),
       invoke<{ members: Member[] }>({ action: 'member.list', payload: { circleId: this.circleId } }),
       invoke<{ persons: Person[] }>({ action: 'person.list', payload: { circleId: this.circleId } })
-    ]);
-    if (!person.ok) return showApiError(person);
-    if (!person.data.person.isSelf) { toast('只能设置本人资料的可见范围'); wx.navigateBack(); return; }
+    ]); }
+    catch (_) { if (this.loadVersion === loadVersion) this.setData({ loading: false, loadError: '资料暂时无法加载，请重试' }); return; }
+    if (this.loadVersion !== loadVersion) return;
+    const [person, members, people] = results;
+    const failed = results.find(result => !result.ok);
+    if (failed && !failed.ok) { this.setData({ loading: false, loadError: failed.error.message }); return; }
+    if (!person.data.person.isSelf) { this.setData({ loading: false, loadError: '只能设置本人资料的可见范围' }); return; }
     const visibility = person.data.person.visibility || {};
-    const allPeople = people.ok ? people.data.persons : [];
-    const admins = members.ok ? members.data.members.filter(m => (m.role === 'owner' || m.role === 'admin') && m.personId !== this.personId && !m.isSelf).map(m => ({ ...m, name: allPeople.find(p => p.id === m.personId)?.name || m.name || '未认领管理员' })) : [];
+    const allPeople = people.data.persons;
+    const admins = members.data.members.filter(m => (m.role === 'owner' || m.role === 'admin') && m.personId !== this.personId && !m.isSelf).map(m => ({ ...m, name: allPeople.find(p => p.id === m.personId)?.name || m.name || '未认领管理员' }));
     const delegations = (person.data.person.delegations || []).filter(d => d.active !== false && !d.revokedAt).map(d => ({ ...d, adminName: admins.find(a => a.id === d.adminMemberId)?.name || '管理员', fieldNames: d.fields.map(f => DELEGABLE.find(x => x.value === f)?.label || f).join('、') }));
-    this.setData({ person: person.data.person, initial: person.data.person.name?.slice(-1) || '人', visibility, settings: FIELDS.map(f => ({ ...f, shared: visibility[f.key] === 'circle' })), admins, adminNames: admins.map(a => a.name), delegations });
+    this.setData({ person: person.data.person, initial: person.data.person.name?.slice(-1) || '人', visibility, settings: FIELDS.map(f => ({ ...f, shared: visibility[f.key] === 'circle' })), admins, adminNames: admins.map(a => a.name), delegations, loading: false, loadError: '' });
   },
+  onRetry(this: any) { if (!this.data.loading) return this.loadData(); },
+  onHome() { wx.reLaunch({ url: '/pages/circles/index' }); },
   onToggle(this: any, e: any) {
     const key = e.currentTarget.dataset.key;
     const visibility = { ...this.data.visibility, [key]: e.detail.value ? 'circle' : 'self' };
     this.setData({ visibility, settings: FIELDS.map(f => ({ ...f, shared: visibility[f.key] === 'circle' })) });
   },
   async onSave(this: any) {
+    if (this.data.saving || this.data.loading || this.data.loadError) return;
     this.setData({ saving: true });
     const result = await invoke({ action: 'person.update', payload: { circleId: this.circleId, personId: this.personId, patch: {}, visibility: this.data.visibility } });
     this.setData({ saving: false });
@@ -51,17 +63,25 @@ Page({
   onAdmin(this: any, e: any) { this.setData({ adminIndex: Number(e.detail.value) }); },
   onDelegable(this: any, e: any) { this.setData({ delegationFields: e.detail.value }); },
   async onGrant(this: any) {
+    if (this.data.saving || this.data.loading || this.data.loadError) return;
     const admin = this.data.admins[this.data.adminIndex];
     if (!admin) return toast('圈内还没有可授权的其他管理员');
     if (!this.data.delegationFields.length) return toast('请选择允许代维护的字段');
     if (!(await confirm('授权代维护', `允许「${admin.name}」长期代你更新所选资料？你可以随时撤销，管理员不能更改可见范围。`))) return;
+    if (this.data.saving) return;
+    this.setData({ saving: true });
     const result = await invoke({ action: 'delegation.grant', payload: { circleId: this.circleId, personId: this.personId, adminMemberId: admin.id, fields: this.data.delegationFields } });
+    this.setData({ saving: false });
     if (!result.ok) return showApiError(result);
     toast('授权已生效'); this.loadData();
   },
   async onRevoke(this: any, e: any) {
+    if (this.data.saving || this.data.loading || this.data.loadError) return;
     if (!(await confirm('撤销代维护', '撤销后该管理员将无法再替你更新资料。确定吗？'))) return;
+    if (this.data.saving) return;
+    this.setData({ saving: true });
     const result = await invoke({ action: 'delegation.revoke', payload: { circleId: this.circleId, delegationId: e.currentTarget.dataset.id } });
+    this.setData({ saving: false });
     if (!result.ok) return showApiError(result);
     toast('授权已撤销'); this.loadData();
   }

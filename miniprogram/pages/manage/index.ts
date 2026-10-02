@@ -74,14 +74,19 @@ Page({
     auditEvents: [] as AuditEvent[], auditRows: [] as any[], showAllAudit: false,
     personNames: [] as string[], canCreateRelation: false, fromIndex: 0, toIndex: 0, relationIndex: 0, olderIndex: 0, olderOptions: ['暂不确定', '第一位较年长', '第二位较年长'], relationTypes: RELATION_TYPES,
     editingRelationId: '', relationPreview: '', relationImpact: '',
-    busy: false
+    busy: false, loading: true, loadError: ''
   },
   onLoad(this: any, options: any) { this.circleId = options.circleId; this.loadData(); },
-  onShow(this: any) { if (this.circleId) this.loadData(); },
+  onShow(this: any) { if (this.circleId && !this.data.loading) this.loadData(); },
   onPullDownRefresh(this: any) { this.loadData().finally(() => wx.stopPullDownRefresh()); },
   async loadData(this: any) {
+    if (!this.circleId) { this.setData({ loading: false, loadError: '未指定圈子，请从我的圈子重新进入管理页' }); return; }
+    const loadVersion = (this.loadVersion || 0) + 1;
+    this.loadVersion = loadVersion;
+    this.setData({ loading: true, loadError: '' });
     const payload = { circleId: this.circleId };
-    const [detail, people, members, joins, claims, suggestions, relations, audits] = await Promise.all([
+    let results;
+    try { results = await Promise.all([
       invoke<{ circle: Circle; role: string }>({ action: 'circle.detail', payload }),
       invoke<{ persons: Person[] }>({ action: 'person.list', payload }),
       invoke<{ members: Member[] }>({ action: 'member.list', payload }),
@@ -90,9 +95,13 @@ Page({
       invoke<{ suggestions: Suggestion[] }>({ action: 'suggestion.list', payload }),
       invoke<{ relations: Relation[] }>({ action: 'relation.list', payload }),
       invoke<{ events: AuditEvent[] }>({ action: 'audit.list', payload })
-    ]);
-    if (!detail.ok) return showApiError(detail);
-    if (detail.data.role !== 'owner' && detail.data.role !== 'admin') { toast('只有管理员可以进入管理页'); wx.navigateBack(); return; }
+    ]); }
+    catch (_) { if (this.loadVersion === loadVersion) this.setData({ loading: false, loadError: '管理资料暂时无法加载，请重试' }); return; }
+    if (this.loadVersion !== loadVersion) return;
+    const [detail, people, members, joins, claims, suggestions, relations, audits] = results;
+    const failed = results.find(result => !result.ok);
+    if (failed && !failed.ok) { this.setData({ loading: false, loadError: failed.error.message }); return; }
+    if (detail.data.role !== 'owner' && detail.data.role !== 'admin') { this.setData({ loading: false, loadError: '只有管理员可以进入管理页' }); return; }
     const list = people.ok ? people.data.persons : [];
     const relationList = relations.ok ? relations.data.relations : [];
     const name = (id: string) => list.find(p => p.id === id)?.name || '已删除的人物';
@@ -117,8 +126,10 @@ Page({
       const inviteStatusText = unavailable ? '邀请已失效，无法批准；请重新发送邀请' : expiringSoon ? `邀请即将于 ${timeText(expiresAt)} 失效` : expiresAt ? `邀请有效至 ${timeText(expiresAt)}` : '';
       return { ...a, createdText: dateText(a.createdAt), inviteUnavailable: unavailable, inviteStatusText, inviteExpiringSoon: expiringSoon };
     }) : [];
-    this.setData({ circle: detail.data.circle, isOwner, people: list, unclaimedPeople: list.filter(p => !p.isClaimed).map(p => ({ ...p, initial: p.name.slice(-1) })), personNames: ['请选择人物', ...list.map(p => p.name)], canCreateRelation: list.length >= 2, members: memberRows, applications: applicationRows, claimRequests: claimRows, suggestions: suggestionRows, relations: relationList, relationRows, auditEvents, auditRows, relationPreview: currentDraft ? describeRelation(currentDraft, name) : '', relationImpact: currentDraft ? impactText(list, relationList, this.data.editingRelationId, currentDraft) : '' });
+    this.setData({ circle: detail.data.circle, isOwner, people: list, unclaimedPeople: list.filter(p => !p.isClaimed).map(p => ({ ...p, initial: p.name.slice(-1) })), personNames: ['请选择人物', ...list.map(p => p.name)], canCreateRelation: list.length >= 2, members: memberRows, applications: applicationRows, claimRequests: claimRows, suggestions: suggestionRows, relations: relationList, relationRows, auditEvents, auditRows, relationPreview: currentDraft ? describeRelation(currentDraft, name) : '', relationImpact: currentDraft ? impactText(list, relationList, this.data.editingRelationId, currentDraft) : '', loading: false, loadError: '' });
   },
+  onRetry(this: any) { if (!this.data.loading) return this.loadData(); },
+  onHome() { wx.reLaunch({ url: '/pages/circles/index' }); },
   onInvite(this: any) { go(`/pages/invite/index?circleId=${q(this.circleId)}`); },
   onAddPerson(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}`); },
   onPerson(this: any, e: any) { go(`/pages/person/index?circleId=${q(this.circleId)}&personId=${q(e.currentTarget.dataset.id)}`); },

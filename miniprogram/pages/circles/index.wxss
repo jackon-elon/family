@@ -6,20 +6,20 @@
 .hero-ornament { position: absolute; border-radius: 50%; background: #c4e1ce; }
 .ornament-one { width: 280rpx; height: 280rpx; right: -105rpx; top: -70rpx; }
 .ornament-two { width: 170rpx; height: 170rpx; right: 25rpx; bottom: -98rpx; background: #add8be; }
-.mode-banner { display: flex; align-items: center; gap: 12rpx; margin: 10rpx 0 42rpx; font-size: 22rpx; color: #687c72; }
+.mode-banner { display: flex; align-items: center; gap: 12rpx; margin: 10rpx 0 42rpx; font-size: 13px; color: #5f7068; }
 .mode-dot { width: 13rpx; height: 13rpx; border-radius: 50%; background: #6faf7a; }
 .mode-dot.cloud { background: #49a8d2; }
 .mode-link { color: #2d7859; font-weight: 650; }
 .group-heading { margin: 31rpx 3rpx 14rpx; align-items: end; }
 .group-heading .section-title { margin: 7rpx 0 0; }
-.group-count { font-size: 23rpx; color: #91a097; padding-bottom: 5rpx; }
+.group-count { font-size: 13px; color: #5f7068; padding-bottom: 5rpx; }
 .circle-card { display: flex; align-items: center; gap: 22rpx; padding: 24rpx; background: #fff; border-radius: 28rpx; margin: 13rpx 0; box-shadow: 0 10rpx 27rpx rgba(14, 49, 34, .04); }
 .circle-mark { width: 90rpx; height: 90rpx; display: flex; align-items: center; justify-content: center; border-radius: 26rpx; font-weight: 750; font-size: 36rpx; background: #e0f0e5; color: #337857; }
 .class .circle-mark { color: #5366a6; background: #e6ebfb; }
 .circle-name { font-weight: 730; font-size: 30rpx; }
-.circle-meta { font-size: 23rpx; color: #84948b; margin-top: 8rpx; }
+.circle-meta { font-size: 13px; color: #5f7068; margin-top: 8rpx; }
 .empty.compact { padding: 36rpx; font-size: 24rpx; text-align: left; }
 .sticky-bottom { margin-top: 35rpx; }
-.demo-footer { text-align: center; margin-top: 20rpx; font-size: 21rpx; color: #9aaa9f; }
+.demo-footer { text-align: center; margin-top: 20rpx; font-size: 12px; color: #61736b; }
 .application-section { margin-bottom: 24rpx; }.application-card { display: flex; align-items: center; gap: 14rpx; padding: 22rpx 24rpx; border-radius: 22rpx; background: #fff; margin: 12rpx 0; box-shadow: 0 7rpx 22rpx rgba(14, 49, 34, .04); }.application-name { font-size: 27rpx; font-weight: 690; }.application-date { margin-top: 7rpx; color: #839288; font-size: 21rpx; }.application-card .pill { flex-shrink: 0; }
 .application-error { margin: 3rpx 0 20rpx; padding: 18rpx; background: #fff7eb; color: #946c39; border-radius: 15rpx; text-align: center; font-size: 22rpx; }

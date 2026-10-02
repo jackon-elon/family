@@ -1,4 +1,4 @@
-import { Circle, Invite, Person, invoke, isDemoMode, showApiError } from '../../services/api';
+import { Circle, Invite, InviteSummary, Person, invoke, isDemoMode, showApiError } from '../../services/api';
 import { confirm, dateText, go, q, toast } from '../../utils/navigation';
 function expiryText(at: number): string {
   const date = new Date(at);
@@ -6,21 +6,33 @@ function expiryText(at: number): string {
 }
 
 Page({
-  data: { circle: null as Circle | null, invite: null as Invite | null, expiryText: '', demoMode: true, sharedPeople: 0, visibleCities: 0, visiblePhones: 0, qrPath: '', qrError: '', qrLoading: false, creating: false },
+  data: { circle: null as Circle | null, invite: null as Invite | null, expiryText: '', demoMode: true, sharedPeople: 0, visibleCities: 0, visiblePhones: 0, qrPath: '', qrError: '', qrLoading: false, creating: false, loading: true, loadError: '', busyInviteId: '', activeInvites: [] as Array<InviteSummary & { expiryText: string }>, olderInvites: [] as Array<InviteSummary & { expiryText: string }> },
   onLoad(this: any, options: any) { this.circleId = options.circleId; this.loadData(); wx.showShareMenu({ withShareTicket: false }); },
+  onShow(this: any) { if (this.circleId && !this.data.loading) this.loadData(); },
   async loadData(this: any) {
-    const [detail, people] = await Promise.all([
+    if (!this.circleId) { this.setData({loading: false, loadError: '缺少圈子信息，请从圈子页面重新进入'}); return; }
+    this.setData({loading: true, loadError: ''});
+    const [detail, people, invitations] = await Promise.all([
       invoke<{ circle: Circle; role: string }>({ action: 'circle.detail', payload: { circleId: this.circleId } }),
-      invoke<{ persons: Person[] }>({ action: 'person.list', payload: { circleId: this.circleId } })
+      invoke<{ persons: Person[] }>({ action: 'person.list', payload: { circleId: this.circleId } }),
+      invoke<{ invites: InviteSummary[] }>({ action: 'invite.list', payload: { circleId: this.circleId } })
     ]);
-    if (!detail.ok) return showApiError(detail);
-    if (detail.data.role !== 'owner' && detail.data.role !== 'admin') { toast('只有管理员可以发送邀请'); wx.navigateBack(); return; }
-    const list = people.ok ? people.data.persons : [];
-    this.setData({ circle: detail.data.circle, demoMode: isDemoMode(), sharedPeople: list.length, visibleCities: list.filter(p => !!p.city).length, visiblePhones: list.filter(p => !!p.phone && !p.isSelf).length });
+    if (!detail.ok || !people.ok || !invitations.ok) {
+      const failed = [detail, people, invitations].find(result => !result.ok);
+      this.setData({loading: false, loadError: failed && !failed.ok ? failed.error.message : '加载失败，请重试'}); return;
+    }
+    if (detail.data.role !== 'owner' && detail.data.role !== 'admin') { this.setData({loading: false, loadError: '只有管理员可以发送邀请'}); return; }
+    const list = people.data.persons;
+    const activeInvites = invitations.data.invites.filter(invite => invite.status === 'active').map(invite => ({...invite, expiryText: expiryText(invite.expiresAt)}));
+    const current = this.data.invite && activeInvites.find(invite => invite.id === this.data.invite.id);
+    this.setData({ circle: detail.data.circle, invite: current ? this.data.invite : null, qrPath: current ? this.data.qrPath : '', activeInvites, olderInvites: activeInvites.filter(invite => invite.id !== current?.id), demoMode: isDemoMode(), sharedPeople: list.length, visibleCities: list.filter(p => !!p.city).length, visiblePhones: list.filter(p => !!p.phone && !p.isSelf).length, loading: false });
   },
+  onRetry(this: any) { if (!this.data.loading) return this.loadData(); },
+  onHome() { wx.reLaunch({url: '/pages/circles/index'}); },
   async onGenerate(this: any) {
-    if (!(await confirm('分享前检查', `新成员获批准后可看到本圈人物和关系。当前有 ${this.data.sharedPeople} 张人物卡、${this.data.visibleCities} 个可见城市。请先确认历史填写的资料适合分享。`))) return;
+    if (this.data.creating || this.data.loading || this.data.loadError || !this.data.circle) return;
     this.setData({ creating: true });
+    if (!(await confirm('分享前检查', `新成员获批准后可看到本圈人物和关系。当前有 ${this.data.sharedPeople} 张人物卡、${this.data.visibleCities} 个可见城市。请先确认历史填写的资料适合分享。`))) { this.setData({creating: false}); return; }
     if (this.data.circle.mode === 'private') {
       const upgraded = await invoke<{ circle: Circle }>({ action: 'circle.upgrade', payload: { circleId: this.circleId, privacyReviewed: true } });
       if (!upgraded.ok) { this.setData({ creating: false }); return showApiError(upgraded); }
@@ -31,6 +43,7 @@ Page({
     if (!result.ok) return showApiError(result);
     const invite = result.data.invite;
     this.setData({ invite, expiryText: expiryText(invite.expiresAt), qrPath: '', qrError: this.data.demoMode ? '本地演示无法生成可供其他微信扫码的真实小程序码。配置云环境后可在这里生成。' : '', qrLoading: false });
+    await this.loadData();
     if (!this.data.demoMode) await this.loadQr(invite);
   },
   async loadQr(this: any, invite: Invite) {
@@ -56,10 +69,18 @@ Page({
   },
   onPreview(this: any) { if (this.data.invite) go(`/pages/apply/index?token=${q(this.data.invite.token)}${this.data.demoMode ? '&demoPreview=1' : ''}`); },
   async onRevoke(this: any) {
-    if (!this.data.invite || !(await confirm('撤销邀请', '撤销后，微信分享卡片和此邀请口令都会失效。确定撤销吗？'))) return;
-    const result = await invoke({ action: 'invite.revoke', payload: { circleId: this.circleId, inviteId: this.data.invite.id } });
+    if (this.data.invite) await this.revokeInvite(this.data.invite.id);
+  },
+  async onRevokeListed(this: any, event: any) { await this.revokeInvite(event.currentTarget.dataset.id); },
+  async revokeInvite(this: any, inviteId: string) {
+    if (!inviteId || this.data.busyInviteId || this.data.creating || this.data.loading) return;
+    this.setData({busyInviteId: inviteId});
+    if (!(await confirm('撤销邀请', '撤销后，原微信分享、小程序码和口令都会失效。确定撤销吗？'))) { this.setData({busyInviteId: ''}); return; }
+    const result = await invoke({ action: 'invite.revoke', payload: { circleId: this.circleId, inviteId } });
+    this.setData({busyInviteId: ''});
     if (!result.ok) return showApiError(result);
-    this.setData({ invite: null, qrPath: '', qrError: '' }); toast('邀请已撤销');
+    if (this.data.invite?.id === inviteId) this.setData({ invite: null, qrPath: '', qrError: '' });
+    await this.loadData(); toast('邀请已撤销');
   },
   onShareAppMessage(this: any) {
     if (!this.data.invite) return { title: '加入我的亲友圈', path: '/pages/circles/index' };

@@ -16,18 +16,18 @@ Page({
     query: '', statusOptions: ['全部状态'], statusIndex: 0, industryOptions: ['全部行业'], industryIndex: 0,
     cityOptions: ['全部城市'], cityIndex: 0,
     mapScope: 'china', mapGroups: [] as CityGroup[], overseas: 0, unmapped: 0,
-    selectedCity: '', selectedCityRows: [] as PersonRow[], filteredCount: 0, loading: true
+    selectedCity: '', selectedCityRows: [] as PersonRow[], filteredCount: 0, loading: true, loadError: ''
   },
-  onLoad(this: any, options: any) { this.circleId = options.circleId || wx.getStorageSync('kin-current-circle'); this.loadData(); },
+  onLoad(this: any, options: any) { let remembered = ''; try { remembered = wx.getStorageSync('kin-current-circle'); } catch (_) {} this.circleId = options.circleId || remembered; this.loadData(); },
   onShow(this: any) { if (this.circleId && !this.data.loading) this.loadData(); },
   onHide(this: any) { if (!this.data.loading) this.photoLoadVersion = (this.photoLoadVersion || 0) + 1; },
   onUnload(this: any) { this.photoLoadVersion = (this.photoLoadVersion || 0) + 1; },
   onPullDownRefresh(this: any) { this.loadData().finally(() => wx.stopPullDownRefresh()); },
   async loadData(this: any) {
-    if (!this.circleId) { toast('请先选择圈子'); return; }
+    if (!this.circleId) { this.setData({ loadError: '未指定圈子，请返回首页重新选择', loading: false }); return; }
     const photoLoadVersion = (this.photoLoadVersion || 0) + 1;
     this.photoLoadVersion = photoLoadVersion;
-    this.setData({ loading: true });
+    this.setData({ loading: true, loadError: '' });
     const [detail, persons, relations, members, claims] = await Promise.all([
       invoke<{ circle: Circle; role: string }>({ action: 'circle.detail', payload: { circleId: this.circleId } }),
       invoke<{ persons: Person[] }>({ action: 'person.list', payload: { circleId: this.circleId } }),
@@ -35,8 +35,10 @@ Page({
       invoke<{ members: Member[] }>({ action: 'member.list', payload: { circleId: this.circleId } }),
       invoke<{ claimRequests: ClaimRequest[] }>({ action: 'person.claimMine', payload: { circleId: this.circleId } })
     ]);
-    if (!detail.ok) { showApiError(detail); this.setData({ loading: false }); return; }
-    if (!persons.ok) { showApiError(persons); this.setData({ loading: false }); return; }
+    if (!detail.ok || !persons.ok || !relations.ok || !members.ok || !claims.ok) {
+      const failed = [detail, persons, relations, members, claims].find(result => !result.ok);
+      this.setData({ loadError: failed && !failed.ok ? failed.error.message : '加载失败，请重试', loading: false }); return;
+    }
     const circle = detail.data.circle;
     const list = await resolvePhotoUrls(this.circleId, persons.data.persons, (updated, checkOnly) => {
       if (this.photoLoadVersion !== photoLoadVersion) return false;
@@ -48,18 +50,20 @@ Page({
     });
     if (this.photoLoadVersion !== photoLoadVersion) return;
     const self = list.find(p => p.isSelf);
-    const ownMember = members.ok ? members.data.members.find(m => m.isSelf) : null;
-    const ownClaims = claims.ok ? claims.data.claimRequests : [];
-    const pendingClaim = ownClaims.find(request => request.status === 'pending') || (!claims.ok ? this.data.pendingClaim : null);
+    const ownMember = members.data.members.find(m => m.isSelf);
+    const ownClaims = claims.data.claimRequests;
+    const pendingClaim = ownClaims.find(request => request.status === 'pending') || null;
     const lastRejectedClaim = ownClaims.slice().sort((a, b) => b.createdAt - a.createdAt).find(request => request.status === 'rejected') || null;
     const unclaimedPeople = list.filter(p => !p.isClaimed && !p.isSelf);
     const pendingClaimName = pendingClaim ? (list.find(p => p.id === pendingClaim.personId)?.name || '这张人物卡') : '';
     const tab = circle.type === 'family' ? (this.data.circle?.id === circle.id ? this.data.tab : 'network') : (this.data.circle?.id === circle.id && this.data.tab !== 'network' ? this.data.tab : 'list');
     wx.setNavigationBarTitle({ title: circle.name });
-    this.setData({ circle, circleId: circle.id, role: detail.data.role, isAdmin: detail.data.role === 'owner' || detail.data.role === 'admin', people: list, relations: relations.ok ? relations.data.relations : [], selfId: self ? self.id : '', myName: ownMember?.name || '', unclaimedPeople, pendingClaim, pendingClaimName, lastRejectedClaim, tab, loading: false });
+    this.setData({ circle, circleId: circle.id, role: detail.data.role, isAdmin: detail.data.role === 'owner' || detail.data.role === 'admin', people: list, relations: relations.data.relations, selfId: self ? self.id : '', myName: ownMember?.name || '', unclaimedPeople, pendingClaim, pendingClaimName, lastRejectedClaim, tab, loading: false });
     this.rebuild();
     this.rebuildClaimCandidates();
   },
+  onRetry(this: any) { if (!this.data.loading) return this.loadData(); },
+  onHome() { wx.reLaunch({ url: '/pages/circles/index' }); },
   rebuildClaimCandidates(this: any) {
     const query = this.data.claimQuery.trim().toLowerCase();
     const ownName = this.data.myName.trim().toLowerCase();
@@ -74,8 +78,8 @@ Page({
     if (this.data.selfId || this.data.pendingClaim || this.data.claimBusy) return;
     const person = this.data.unclaimedPeople.find((p: Person) => p.id === event.currentTarget.dataset.id);
     if (!person) return toast('这张人物卡已不可认领，请刷新页面');
-    if (!(await confirm('确认这是你吗？', `你选择的是「${person.name}」。管理员核对后才会绑定；如果资料不对，请先联系管理员更正。`))) return;
     this.setData({ claimBusy: person.id });
+    if (!(await confirm('确认这是你吗？', `你选择的是「${person.name}」。管理员核对后才会绑定；如果资料不对，请先联系管理员更正。`))) { this.setData({claimBusy: ''}); return; }
     const result = await invoke<{ claimRequest: ClaimRequest }>({ action: 'person.claim', payload: { circleId: this.circleId, personId: person.id } });
     this.setData({ claimBusy: '' });
     if (!result.ok) return showApiError(result);
@@ -151,11 +155,13 @@ Page({
   onManage(this: any) { go(`/pages/manage/index?circleId=${q(this.circleId)}`); },
   onInvite(this: any) { go(`/pages/invite/index?circleId=${q(this.circleId)}`); },
   async onLeave(this: any) {
+    if (this.leaveBusy) return;
     if (this.data.role === 'owner') return toast('请先移交圈主，再退出圈子');
-    if (!(await confirm('退出这个圈子', '退出后会立即失去访问权，本人私人资料会从圈内隐藏或删除；家庭关系节点会保留最少信息。重新加入需要管理员邀请和审核。'))) return;
+    this.leaveBusy = true;
+    if (!(await confirm('退出这个圈子', '退出后会立即失去访问权，本人私人资料会从圈内隐藏或删除；家庭关系节点会保留最少信息。重新加入需要管理员邀请和审核。'))) { this.leaveBusy = false; return; }
     const result = await invoke({ action: 'member.leave', payload: { circleId: this.circleId } });
-    if (!result.ok) return showApiError(result);
-    wx.removeStorageSync('kin-current-circle');
+    if (!result.ok) { this.leaveBusy = false; return showApiError(result); }
+    try { wx.removeStorageSync('kin-current-circle'); } catch (_) { /* Membership is already removed. */ }
     wx.reLaunch({ url: '/pages/circles/index' });
   }
 });

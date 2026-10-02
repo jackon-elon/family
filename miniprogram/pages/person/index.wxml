@@ -1,4 +1,4 @@
-<view class="page profile-page" wx:if="{{person}}">
+<view class="page profile-page" wx:if="{{person && !loadError && !loading}}">
   <view class="profile-hero">
     <view class="avatar large profile-avatar"><image wx:if="{{person.photoUrl}}" src="{{person.photoUrl}}" mode="aspectFill"/><text wx:else>{{initial}}</text></view>
     <button class="profile-photo-action" wx:if="{{person.isSelf}}" bindtap="onPhoto">{{person.hasPhoto ? '更换我的照片' : '上传我的照片'}}</button>
@@ -20,12 +20,12 @@
     <view class="section-title">现在的 TA</view>
     <view class="detail-row" wx:for="{{rows}}" wx:key="label"><text class="detail-label">{{item.label}}</text><text class="detail-value">{{item.value}}</text></view>
     <view class="empty-details" wx:if="{{!rows.length}}">还没有填写更多资料。</view>
-    <view class="update-time">最近确认：{{updated}}</view>
+    <view class="update-time" wx:if="{{updated}}">{{updatedLabel}}：{{updated}}</view>
   </view>
 
   <view class="card contact-card" wx:if="{{person.phone || person.wechatId}}"><view class="section-title">联系 TA</view><view class="detail-row" wx:if="{{person.phone}}"><text class="detail-label">手机号</text><text class="detail-value">{{person.phone}}</text><text class="text-action" bindtap="onCall">拨打</text></view><view class="detail-row" wx:if="{{person.wechatId}}"><text class="detail-label">微信号</text><text class="detail-value">{{person.wechatId}}</text><text class="text-action" bindtap="onCopyWechat">复制</text></view></view>
 
-  <view class="profile-actions"><button class="btn" wx:if="{{canEdit}}" bindtap="onEdit">{{person.isSelf ? '编辑我的资料' : '编辑人物卡'}}</button><button class="btn secondary" wx:if="{{person.isSelf}}" bindtap="onPrivacy">资料可见范围</button><button class="btn secondary" wx:if="{{canClaim}}" bindtap="onClaim">申请认领这张卡</button><button class="btn ghost" bindtap="onSuggest">{{circle.type === 'family' ? '建议更正资料或关系' : '建议更正资料'}}</button><button class="btn danger" wx:if="{{isAdmin && !person.isClaimed}}" bindtap="onDelete">删除这张人物卡</button></view>
+  <view class="profile-actions"><button class="btn" wx:if="{{canEdit}}" bindtap="onEdit">{{person.isSelf ? '编辑我的资料' : '编辑人物卡'}}</button><button class="btn secondary" wx:if="{{person.isSelf}}" bindtap="onPrivacy">资料可见范围</button><button class="btn secondary" wx:if="{{canClaim}}" disabled="{{claimBusy}}" bindtap="onClaim">{{claimBusy ? '正在提交…' : '申请认领这张卡'}}</button><button class="btn ghost" bindtap="onSuggest">{{circle.type === 'family' ? '建议更正资料或关系' : '建议更正资料'}}</button><button class="btn danger" wx:if="{{isAdmin && !person.isClaimed}}" bindtap="onDelete">删除这张人物卡</button></view>
   <view class="small muted" wx:if="{{claimPending && !person.isClaimed}}">你已有一份认领申请在审核中，请等待管理员处理。</view>
   <view class="card suggestion-form" wx:if="{{showRelationSuggestion}}">
     <view class="section-title">提出关系更正</view>
@@ -44,3 +44,4 @@
     <button class="btn ghost" bindtap="onCancelRelationSuggestion">取消</button>
   </view>
 </view>
+<view class="page profile-page" wx:else><view class="card empty"><view>{{loading ? '正在读取人物资料…' : '暂时无法打开人物卡：' + loadError}}</view><button class="btn secondary" wx:if="{{!loading}}" bindtap="onRetry">重试</button><button class="btn ghost" bindtap="onHome">返回我的圈子</button></view></view>

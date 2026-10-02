@@ -15,12 +15,18 @@
     <text class="mode-link" bindtap="onSwitchMode">回到演示 ›</text>
   </view>
 
+  <view class="card empty compact" wx:if="{{loading}}">正在读取你的圈子和申请…</view>
+  <view class="card empty compact" wx:elif="{{loadError}}"><view>暂时无法读取圈子：{{loadError}}</view><button class="btn secondary" bindtap="onRetryApplications">重试</button></view>
+  <block wx:else>
+
   <view class="application-section" wx:if="{{applicationRows.length}}">
-    <view class="row between group-heading"><view><view class="eyebrow">JOIN REQUESTS</view><view class="section-title">我的加入申请</view></view><text class="group-count">{{applicationRows.length}} 条</text></view>
+    <view class="row between group-heading"><view><view class="eyebrow">JOIN REQUESTS</view><view class="section-title">我的加入申请</view></view><text class="group-count">最近 {{allApplicationRows.length}} 条</text></view>
     <view class="application-card" wx:for="{{applicationRows}}" wx:key="id" data-id="{{item.id}}" bindtap="onOpenApplication">
       <view class="grow"><view class="application-name">{{item.circleName || (item.circleType === 'classmate' ? '同学圈申请' : '受邀圈子申请')}}</view><view class="application-date">{{item.date}} 提交 · 点开查看</view></view><text class="pill {{item.status === 'approved' ? '' : 'grey'}}">{{item.statusText}}</text><text class="chevron">›</text>
     </view>
   </view>
+  <view class="application-error" wx:if="{{allApplicationRows.length > 5}}" bindtap="onToggleApplications">{{showAllApplications ? '收起申请' : '展开最近 ' + allApplicationRows.length + ' 条申请'}}</view>
+  <view class="small muted" wx:if="{{hasMoreApplications}}">这里只显示最近 20 条申请。更早的记录暂不在此列表；如需核对，请联系圈子管理员。</view>
   <view class="application-error" wx:if="{{applicationError}}" bindtap="onRetryApplications">{{applicationError}}</view>
 
   <view class="row between group-heading"><view><view class="eyebrow">FAMILY</view><view class="section-title">家庭圈</view></view><text class="group-count">{{familyCircles.length}} 个圈子</text></view>
@@ -40,5 +46,6 @@
   <view class="card empty compact" wx:else>不同班级分开建圈，找同学更清楚。</view>
 
   <view class="sticky-bottom"><button class="btn" bindtap="onCreate">＋ 新建一个圈子</button></view>
+  </block>
   <view class="demo-footer" wx:if="{{demoMode}}"><text bindtap="onReset">恢复演示数据</text><text> · </text><text>地图只展示成员自愿填写的城市</text></view>
 </view>

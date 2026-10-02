@@ -244,6 +244,12 @@ test('a shared invite opens in cloud mode while an admin demo preview stays loca
   assert.equal(isDemoMode(), true);
   assert.equal(cloudCalls, 2);
   assert.equal(preview.data.circle.name, '陈家的小圈子');
+  const missingPreview = page();
+  await missingPreview.onLoad({token: 'missing-demo-invite', demoPreview: '1'});
+  assert.ok(missingPreview.data.error);
+  await missingPreview.onRetry();
+  assert.equal(isDemoMode(), true, 'retrying a demo preview must stay in demo mode');
+  assert.equal(cloudCalls, 2);
   config.CLOUD_ENV_ID = '';
   delete wx.cloud;
 });
@@ -339,7 +345,7 @@ test('removing a member also revokes their active delegations', async () => {
   resetDemoData();
 });
 
-test('personal PNG photo is converted to JPEG, uploaded, and shared only by explicit choice', async () => {
+test('personal PNG and small JPEG photos are re-encoded before upload, with chosen visibility', async () => {
   const config = require('../config.ts');
   const previousEnv = config.CLOUD_ENV_ID;
   const previousPage = global.Page;
@@ -349,6 +355,7 @@ test('personal PNG photo is converted to JPEG, uploaded, and shared only by expl
   changedWx.forEach(key => { previousWx[key] = wx[key]; });
   const calls = [];
   let route = '';
+  let canvasWrites = 0;
   let selectionTimer;
   const canvas = {
     width: 0, height: 0,
@@ -376,6 +383,7 @@ test('personal PNG photo is converted to JPEG, uploaded, and shared only by expl
       exec(callback) { callback([{node: canvas}]); }
     });
     wx.canvasToTempFilePath = options => {
+      canvasWrites++;
       assert.equal(options.fileType, 'jpg');
       assert.ok(options.width <= 1280 && options.height <= 1280);
       options.success({tempFilePath: 'compressed.jpg'});
@@ -408,6 +416,8 @@ test('personal PNG photo is converted to JPEG, uploaded, and shared only by expl
     await selectedPromise;
     assert.equal(page.photoPath, 'compressed.jpg');
     assert.equal(page.data.form.photoUrl, 'compressed.jpg');
+    assert.equal(await page.preparePhoto('small-original.jpg'), 'compressed.jpg', 'small JPEG must also pass through the metadata-stripping canvas');
+    assert.equal(canvasWrites, 2);
     page.onPhotoVisibility({currentTarget: {dataset: {index: 1}}});
     await page.onSavePhoto();
     assert.deepEqual(calls.map(call => call.action), ['photo.upload']);
@@ -555,6 +565,7 @@ test('new card stays editable after its profile update fails and retry does not 
       ...definition, data: structuredClone(definition.data), circleId: 'family_demo', createMode: 'other', personId: '',
       setData(patch) { Object.assign(this.data, patch); }
     };
+    page.data.loading = false;
     page.data.form.name = '新人物';
     await page.onSave();
     assert.equal(createCount, 1);
@@ -607,6 +618,72 @@ test('person detail hides another claim action while an application is pending',
     global.Page = previousPage;
     wx.setNavigationBarTitle = previousTitle;
     delete global.__personDefinition;
+  }
+});
+
+test('demo photo choices stay temporary and a failed save removes its new file', async () => {
+  const api = require('../services/api.ts');
+  const previousInvoke = api.invoke;
+  const previousPage = global.Page;
+  const previousChoose = wx.chooseImage;
+  const previousSave = wx.saveFile;
+  const previousRemove = wx.removeSavedFile;
+  const previousRedirect = wx.redirectTo;
+  let saveCount = 0;
+  let updateCount = 0;
+  let redirect = '';
+  const removed = [];
+  const patches = [];
+  try {
+    assert.equal(setDemoMode(true), true);
+    api.invoke = async request => {
+      patches.push(request.payload.patch);
+      updateCount++;
+      return updateCount === 1
+        ? {ok: false, error: {code: 'STORAGE_FULL', message: '本地存储空间不足'}}
+        : {ok: true, data: {person: {id: 'f_me'}}};
+    };
+    wx.chooseImage = options => options.success({tempFilePaths: ['album.png']});
+    wx.saveFile = options => options.success({savedFilePath: `/saved/${++saveCount}.jpg`});
+    wx.removeSavedFile = options => { removed.push(options.filePath); options.success({}); };
+    wx.redirectTo = options => { redirect = options.url; };
+    let definition;
+    global.Page = options => { definition = options; };
+    delete require.cache[require.resolve('../pages/person-edit/index.ts')];
+    require('../pages/person-edit/index.ts');
+    const page = {
+      ...definition, data: structuredClone(definition.data), circleId: 'family_demo', personId: 'f_me', originalPhotoPath: '/saved/old.jpg',
+      setData(patch) {
+        for (const [key, value] of Object.entries(patch)) {
+          if (key.includes('.')) { const [parent, child] = key.split('.'); this.data[parent][child] = value; }
+          else this.data[key] = value;
+        }
+      },
+      preparePhoto: async () => 'converted.jpg'
+    };
+    page.data.isNew = false;
+    page.data.isSelf = true;
+    page.onChoosePhoto();
+    await new Promise(resolve => setImmediate(resolve));
+    page.onChoosePhoto();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(page.photoPath, 'converted.jpg');
+    assert.equal(saveCount, 0, 'choosing or replacing a preview must not persist a file');
+    await page.onSavePhoto();
+    assert.equal(saveCount, 1);
+    assert.deepEqual(removed, ['/saved/1.jpg']);
+    assert.equal(page.photoPath, 'converted.jpg', 'failed save must keep the preview for retry');
+    await page.onSavePhoto();
+    assert.equal(saveCount, 2);
+    assert.deepEqual(patches.map(patch => patch.photoUrl), ['/saved/1.jpg', '/saved/2.jpg']);
+    assert.deepEqual(removed, ['/saved/1.jpg', '/saved/old.jpg']);
+    assert.match(redirect, /pages\/person\/index/);
+  } finally {
+    api.invoke = previousInvoke;
+    global.Page = previousPage;
+    for (const [key, value] of Object.entries({chooseImage: previousChoose, saveFile: previousSave, removeSavedFile: previousRemove, redirectTo: previousRedirect})) {
+      if (value === undefined) delete wx[key]; else wx[key] = value;
+    }
   }
 });
 
@@ -681,5 +758,178 @@ test('demo writes report storage failure for people and relations without changi
   } finally {
     wx.setStorageSync = previousSet;
     resetDemoData();
+  }
+});
+
+test('demo creation request IDs replay the original circle and card without duplicates', async () => {
+  resetDemoData();
+  const circlePayload = {type: 'family', name: '新家庭', mode: 'private', requestId: 'request-circle-123456789'};
+  const first = await invoke({action: 'circle.create', payload: circlePayload});
+  const replay = await invoke({action: 'circle.create', payload: circlePayload});
+  assert.equal(first.ok, true); assert.equal(replay.ok, true);
+  assert.equal(replay.data.circle.id, first.data.circle.id);
+  assert.equal(storage.get('kin-network-demo-db-v2').circles.filter(circle => circle.name === '新家庭').length, 1);
+  const conflict = await invoke({action: 'circle.create', payload: {...circlePayload, name: '改名了'}});
+  assert.equal(conflict.error.code, 'IDEMPOTENCY_CONFLICT');
+  const cardPayload = {circleId: first.data.circle.id, name: '新成员', requestId: 'request-person-123456789'};
+  const card = await invoke({action: 'person.create', payload: cardPayload});
+  const cardReplay = await invoke({action: 'person.create', payload: cardPayload});
+  assert.equal(cardReplay.data.person.id, card.data.person.id);
+  assert.equal(storage.get('kin-network-demo-db-v2').persons.filter(person => person.name === '新成员').length, 1);
+  resetDemoData();
+});
+
+test('create page reuses its request ID after a lost response', async () => {
+  resetDemoData();
+  const api = require('../services/api.ts');
+  const previousInvoke = api.invoke;
+  const previousPage = global.Page;
+  const previousRedirect = wx.redirectTo;
+  let calls = 0;
+  const ids = [];
+  try {
+    api.invoke = async request => {
+      if (request.action !== 'circle.create') return previousInvoke(request);
+      calls++;
+      ids.push(request.payload.requestId);
+      const result = await previousInvoke(request);
+      return calls === 1 ? {ok: false, error: {code: 'NETWORK', message: '连接中断'}} : result;
+    };
+    wx.redirectTo = () => {};
+    let definition;
+    global.Page = options => {definition = options;};
+    delete require.cache[require.resolve('../pages/create/index.ts')];
+    require('../pages/create/index.ts');
+    const page = {...definition, data: {...definition.data, name: '重试家庭'}, setData(patch) {Object.assign(this.data, patch);}};
+    page.onLoad();
+    await page.onSubmit();
+    await page.onSubmit();
+    assert.equal(calls, 2);
+    assert.equal(ids[0], ids[1]);
+    assert.equal(storage.get('kin-network-demo-db-v2').circles.filter(circle => circle.name === '重试家庭').length, 1);
+  } finally {
+    api.invoke = previousInvoke; global.Page = previousPage; wx.redirectTo = previousRedirect;
+    resetDemoData();
+  }
+});
+
+test('invite page lists an older active invitation and can revoke it after reopening', async () => {
+  resetDemoData();
+  const created = await invoke({action: 'invite.create', payload: {circleId: 'family_demo'}});
+  const api = require('../services/api.ts');
+  const previousPage = global.Page;
+  const previousModal = wx.showModal;
+  try {
+    wx.showModal = options => options.success({confirm: true});
+    let definition;
+    global.Page = options => {definition = options;};
+    delete require.cache[require.resolve('../pages/invite/index.ts')];
+    require('../pages/invite/index.ts');
+    const page = {...definition, circleId: 'family_demo', data: structuredClone(definition.data), setData(patch) {Object.assign(this.data, patch);}};
+    await page.loadData();
+    assert.equal(page.data.activeInvites.some(item => item.id === created.data.invite.id), true);
+    assert.equal(page.data.invite, null, 'old token is never re-exposed by invite.list');
+    await page.onRevokeListed({currentTarget: {dataset: {id: created.data.invite.id}}});
+    assert.equal(page.data.activeInvites.length, 0);
+    const listed = await api.invoke({action: 'invite.list', payload: {circleId: 'family_demo'}});
+    assert.equal(listed.data.invites.find(item => item.id === created.data.invite.id).status, 'revoked');
+  } finally {
+    global.Page = previousPage; wx.showModal = previousModal; resetDemoData();
+  }
+});
+
+test('application status hides enter action when membership is gone and recovers on refresh', async () => {
+  const api = require('../services/api.ts');
+  const previousInvoke = api.invoke;
+  const previousPage = global.Page;
+  const previousRedirect = wx.redirectTo;
+  let canEnter = false;
+  let redirects = 0;
+  try {
+    api.invoke = async request => {
+      assert.equal(request.action, 'join.mine');
+      assert.equal(request.payload.applicationId, 'application-1');
+      return {ok: true, data: {applications: [{id: 'application-1', circleId: 'family_demo', status: 'approved', createdAt: Date.now(), canEnter}]}};
+    };
+    wx.redirectTo = () => {redirects++;};
+    let definition;
+    global.Page = options => {definition = options;};
+    delete require.cache[require.resolve('../pages/apply/index.ts')];
+    require('../pages/apply/index.ts');
+    const page = {...definition, data: structuredClone(definition.data), setData(patch) {Object.assign(this.data, patch);}};
+    await page.onLoad({applicationId: 'application-1'});
+    assert.equal(page.data.application.canEnter, false);
+    assert.match(page.data.applicationMessage, /失去.*访问权/);
+    page.onOpenCircle();
+    assert.equal(redirects, 0);
+    canEnter = true;
+    await page.loadMyStatus();
+    page.onOpenCircle();
+    assert.equal(redirects, 1);
+  } finally {
+    api.invoke = previousInvoke; global.Page = previousPage; wx.redirectTo = previousRedirect;
+  }
+});
+
+test('application submit ignores a second tap while the first request is pending', async () => {
+  const api = require('../services/api.ts');
+  const previousInvoke = api.invoke;
+  const previousPage = global.Page;
+  let finishSubmit;
+  let submitCalls = 0;
+  try {
+    api.invoke = request => {
+      if (request.action === 'invite.apply') {
+        submitCalls++;
+        return new Promise(resolve => {finishSubmit = resolve;});
+      }
+      if (request.action === 'join.mine') return Promise.resolve({ok: true, data: {applications: [{id: 'a1', circleId: 'family_demo', status: 'pending', createdAt: Date.now()}]}});
+      throw new Error(`unexpected ${request.action}`);
+    };
+    let definition;
+    global.Page = options => {definition = options;};
+    delete require.cache[require.resolve('../pages/apply/index.ts')];
+    require('../pages/apply/index.ts');
+    const page = {...definition, token: 'token-1', data: {...definition.data, circle: {type: 'family'}, status: 'active', name: '甲'}, setData(patch) {Object.assign(this.data, patch);}};
+    const first = page.onSubmit();
+    await page.onSubmit();
+    assert.equal(submitCalls, 1);
+    finishSubmit({ok: true, data: {application: {id: 'a1', circleId: 'family_demo', status: 'pending', createdAt: Date.now()}}});
+    await first;
+    assert.equal(page.data.submitted, true);
+  } finally {
+    api.invoke = previousInvoke; global.Page = previousPage;
+  }
+});
+
+test('person detail shows a retry state after relation loading fails', async () => {
+  const api = require('../services/api.ts');
+  const previousInvoke = api.invoke;
+  const previousPage = global.Page;
+  const previousTitle = wx.setNavigationBarTitle;
+  let fail = true;
+  try {
+    api.invoke = async request => {
+      if (request.action === 'circle.detail') return {ok: true, data: {circle: {id: 'family_demo', type: 'family'}, role: 'member'}};
+      if (request.action === 'person.get') return {ok: true, data: {person: {id: 'p1', name: '甲'}}};
+      if (request.action === 'person.list') return {ok: true, data: {persons: [{id: 'p1', name: '甲', isSelf: true}]}};
+      if (request.action === 'relation.list') return fail ? {ok: false, error: {code: 'NETWORK', message: '关系读取失败'}} : {ok: true, data: {relations: []}};
+      if (request.action === 'person.claimMine') return {ok: true, data: {claimRequests: []}};
+      throw new Error(`unexpected ${request.action}`);
+    };
+    wx.setNavigationBarTitle = () => {};
+    let definition;
+    global.Page = options => {definition = options;};
+    delete require.cache[require.resolve('../pages/person/index.ts')];
+    require('../pages/person/index.ts');
+    const page = {...definition, circleId: 'family_demo', personId: 'p1', data: structuredClone(definition.data), setData(patch) {Object.assign(this.data, patch);}};
+    await page.loadData();
+    assert.equal(page.data.loadError, '关系读取失败');
+    fail = false;
+    await page.onRetry();
+    assert.equal(page.data.loadError, '');
+    assert.equal(page.data.person.id, 'p1');
+  } finally {
+    api.invoke = previousInvoke; global.Page = previousPage; wx.setNavigationBarTitle = previousTitle;
   }
 });

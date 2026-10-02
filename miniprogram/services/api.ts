@@ -47,6 +47,7 @@ export interface Person {
   isSelf?: boolean;
   isClaimed?: boolean;
   updatedAt?: number;
+  lastConfirmedAt?: number;
   delegations?: Delegation[];
   myDelegatedFields?: string[];
   claimedBy?: string; // Demo storage only; never returned to pages.
@@ -80,10 +81,12 @@ export interface Invite {
   id: string;
   circleId: string;
   token: string;
+  createdAt?: number;
   expiresAt: number;
   revokedAt?: number;
   usedAt?: number;
 }
+export interface InviteSummary { id: string; circleId: string; createdAt: number; expiresAt: number; status: 'active' | 'used' | 'revoked' | 'expired' }
 
 export interface JoinApplication {
   id: string;
@@ -98,6 +101,7 @@ export interface JoinApplication {
   circleType?: CircleType;
   inviteStatus?: 'active' | 'expired' | 'revoked' | 'used' | 'missing';
   inviteExpiresAt?: number;
+  canEnter?: boolean;
   actorId?: string; // Demo storage only; never returned to pages.
 }
 
@@ -146,6 +150,7 @@ export function setDemoMode(enabled: boolean): boolean {
 }
 
 interface DemoDb {
+  createRequests: Record<string, { fingerprint: string; id: string }>;
   circles: Circle[];
   persons: Person[];
   relations: Relation[];
@@ -200,6 +205,7 @@ function seedDb(): DemoDb {
       { id: 'm_c_li', circleId: 'class_demo', name: '李航', role: 'member', personId: 'c_li', status: 'joined', actorId: 'demo-li' }
     ],
     invites: [],
+    createRequests: {},
     applications: [],
     delegations: [],
     suggestions: [],
@@ -218,6 +224,7 @@ function loadDb(): DemoDb {
     stored.claimRequests = stored.claimRequests || [];
     stored.delegations = stored.delegations || [];
     stored.audits = stored.audits || [];
+    stored.createRequests = stored.createRequests || {};
     return stored as DemoDb;
   }
   const db = seedDb();
@@ -225,6 +232,11 @@ function loadDb(): DemoDb {
   return db;
 }
 function saveDb(db: DemoDb): void { storageSet(DB_KEY, db); }
+function demoRequestKey(db: DemoDb, action: 'circle.create' | 'person.create', circleId: string, requestId: any): ApiResult<{key: string}> {
+  if (requestId == null || requestId === '') return good({key: ''});
+  if (typeof requestId !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(requestId)) return bad('INVALID_INPUT', '创建请求标识无效，请重新打开页面再试');
+  return good({key: `${action}:${DEMO_ACTOR}:${circleId}:${requestId}`});
+}
 function recordAudit(db: DemoDb, circleId: string, type: string, targetId: string, details?: Record<string, unknown>): void {
   const actor = db.members.find(member => member.circleId === circleId && member.actorId === DEMO_ACTOR && member.status === 'joined');
   db.audits.push({ id: uid('audit'), circleId, type, targetId, at: Date.now(), actorName: actor?.name || '当前成员', details });
@@ -373,10 +385,19 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     if (!p.name || !String(p.name).trim()) return bad('INVALID', '请填写圈子名称');
     if (p.type !== 'family' && p.type !== 'classmate') return bad('INVALID', '请选择圈子类型');
     if (p.type === 'classmate' && (!p.school || !p.cohort || !p.className)) return bad('INVALID', '请填写学校、届别和班级');
+    const request = demoRequestKey(db, 'circle.create', '', p.requestId); if (!request.ok) return request;
+    const fingerprint = JSON.stringify({ name: String(p.name).trim(), type: p.type, mode: p.mode === 'shared' ? 'shared' : 'private', school: p.school || '', cohort: p.cohort || '', className: p.className || '' });
+    const existingRequest = request.data.key && db.createRequests[request.data.key];
+    if (existingRequest) {
+      if (existingRequest.fingerprint !== fingerprint) return bad('IDEMPOTENCY_CONFLICT', '上次创建的内容与本次不同，请重新打开新建页面');
+      const existing = db.circles.find(circle => circle.id === existingRequest.id);
+      return existing ? good({circle: existing}) : bad('NOT_FOUND', '上次创建的圈子已不存在');
+    }
     const circle: Circle = { id: uid('circle'), name: String(p.name).trim(), type: p.type, mode: p.mode === 'shared' ? 'shared' : 'private', school: p.school, cohort: p.cohort, className: p.className, role: 'owner', memberCount: 1 };
     db.circles.push(circle);
     db.members.push({ id: uid('member'), circleId: circle.id, name: '我', role: 'owner', status: 'joined', actorId: DEMO_ACTOR });
     recordAudit(db, circle.id, 'circle.create', circle.id);
+    if (request.data.key) db.createRequests[request.data.key] = {fingerprint, id: circle.id};
     saveDb(db);
     return good({ circle });
   }
@@ -410,7 +431,7 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
       const inviteStatus = !invite ? 'expired' : invite.revokedAt ? 'revoked' : invite.usedAt ? 'used' : invite.expiresAt <= Date.now() ? 'expired' : 'active';
       const status = a.status === 'pending' && inviteStatus !== 'active' ? 'expired' : a.status;
       const {actorId: _actorId, ...visible} = a;
-      return {...visible, status, inviteStatus, circleName: getCircle(db, a.circleId)?.name || '亲友圈', circleType: getCircle(db, a.circleId)?.type};
+      return {...visible, status, inviteStatus, canEnter: status === 'approved' && !!roleFor(db, a.circleId), circleName: getCircle(db, a.circleId)?.name || '亲友圈', circleType: getCircle(db, a.circleId)?.type};
     }), hasMore: !p.applicationId && mine.length > 20 });
   }
   if (!circleId) return bad('INVALID', '缺少圈子 ID');
@@ -487,11 +508,21 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
   if (action === 'person.create') {
     if (!p.claimSelf) { const denied = requireAdmin(db, circleId); if (denied) return denied; }
     if (!p.name || !String(p.name).trim()) return bad('INVALID', '请填写姓名');
+    const request = demoRequestKey(db, 'person.create', circleId, p.requestId); if (!request.ok) return request;
+    const fingerprint = JSON.stringify({name: String(p.name).trim(), gender: p.gender || 'unknown', birthOrder: p.birthOrder ?? null, claimSelf: !!p.claimSelf});
+    const existingRequest = request.data.key && db.createRequests[request.data.key];
+    if (existingRequest) {
+      if (existingRequest.fingerprint !== fingerprint) return bad('IDEMPOTENCY_CONFLICT', '上次创建的内容与本次不同，请重新打开新建页面');
+      const existing = db.persons.find(person => person.id === existingRequest.id && person.circleId === circleId);
+      return existing ? good({person: visiblePerson(existing)}) : bad('NOT_FOUND', '上次创建的人物卡已不存在');
+    }
     if (p.claimSelf && db.persons.some(x => x.circleId === circleId && x.claimedBy === DEMO_ACTOR)) return bad('ALREADY_HAS_PERSON', '你在本圈已有本人卡');
     if (p.claimSelf && db.claimRequests.some(x => x.circleId === circleId && x.actorId === DEMO_ACTOR && x.status === 'pending')) return bad('CLAIM_PENDING', '已有认领申请正在审核，请先等待结果');
     const person: Person = { id: uid('person'), circleId, name: String(p.name).trim(), gender: p.gender || 'unknown', birthOrder: p.birthOrder, visibility: {}, claimedBy: p.claimSelf ? DEMO_ACTOR : undefined, updatedAt: Date.now() };
-    db.persons.push(person); saveDb(db);
-    if (p.claimSelf) { const member = db.members.find(m => m.circleId === circleId && m.actorId === DEMO_ACTOR); if (member) member.personId = person.id; saveDb(db); }
+    db.persons.push(person);
+    if (p.claimSelf) { const member = db.members.find(m => m.circleId === circleId && m.actorId === DEMO_ACTOR); if (member) member.personId = person.id; }
+    if (request.data.key) db.createRequests[request.data.key] = {fingerprint, id: person.id};
+    saveDb(db);
     return good({ person: visiblePerson(person) });
   }
   if (action === 'person.update') {
@@ -617,8 +648,17 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
   if (action === 'invite.create') {
     const denied = requireAdmin(db, circleId); if (denied) return denied;
     if (getCircle(db, circleId)?.mode !== 'shared') return bad('PRIVATE_CIRCLE', '请先检查资料并开启邀请共建');
-    const invite: Invite = { id: uid('invite'), circleId, token: uid('token'), expiresAt: Date.now() + 72 * 3600000 };
+    const now = Date.now();
+    const invite: Invite = { id: uid('invite'), circleId, token: uid('token'), createdAt: now, expiresAt: now + 72 * 3600000 };
     db.invites.push(invite); recordAudit(db, circleId, 'invite.create', invite.id); saveDb(db); return good({ invite });
+  }
+  if (action === 'invite.list') {
+    const denied = requireAdmin(db, circleId); if (denied) return denied;
+    const invites: InviteSummary[] = db.invites.filter(invite => invite.circleId === circleId).map(invite => ({
+      id: invite.id, circleId, createdAt: (invite as any).createdAt || invite.expiresAt - 72 * 3600000, expiresAt: invite.expiresAt,
+      status: invite.revokedAt ? 'revoked' : invite.usedAt ? 'used' : invite.expiresAt <= Date.now() ? 'expired' : 'active'
+    }));
+    return good({invites});
   }
   if (action === 'invite.revoke') {
     const denied = requireAdmin(db, circleId); if (denied) return denied;

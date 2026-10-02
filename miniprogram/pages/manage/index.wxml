@@ -1,4 +1,4 @@
-<view class="page manage-page" wx:if="{{circle}}">
+<view class="page manage-page" wx:if="{{circle && !loading && !loadError}}">
   <view class="eyebrow">CIRCLE ADMIN</view><view class="title">管理 {{circle.name}}</view><view class="subtitle intro">邀请熟人、核对申请，帮圈子里的关系保持清楚。</view>
   <view class="action-tile" bindtap="onInvite"><view class="tile-icon">邀</view><view class="grow"><view class="strong">邀请真人加入圈子</view><view class="small muted">分享一次性邀请；通过审核后才有访问权</view></view><text class="chevron">›</text></view>
   <view class="action-tile placeholder-tile" bindtap="onAddPerson"><view class="tile-icon">人</view><view class="grow"><view class="strong">添加未加入的人物卡</view><view class="small muted">先记录家人或同学；不会给对方访问权</view></view><text class="chevron">›</text></view>
@@ -42,3 +42,4 @@
   <view class="card empty compact" wx:else>还没有操作记录。</view>
   <view class="audit-more" wx:if="{{auditEvents.length > 6}}" bindtap="onMoreAudit">{{showAllAudit ? '收起记录' : '查看全部 ' + auditEvents.length + ' 条记录'}}</view>
 </view>
+<view class="page manage-page" wx:else><view class="card empty"><view>{{loading ? '正在读取管理资料…' : '暂时无法打开管理页：' + loadError}}</view><button class="btn secondary" wx:if="{{!loading}}" bindtap="onRetry">重试</button><button class="btn ghost" bindtap="onHome">返回我的圈子</button></view></view>

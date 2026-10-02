@@ -12,11 +12,15 @@ export interface Circle {
   name: string;
   mode: 'private' | 'shared';
   ownerId: string;
+  /** Original creator, kept stable when ownership changes. */
+  createdBy?: string;
   school?: string;
   cohort?: string;
   className?: string;
   createdAt: number;
   updatedAt: number;
+  /** Internal fingerprint for retrying a create request after a lost response. */
+  createPayloadHash?: string;
 }
 
 export interface Member {
@@ -58,6 +62,8 @@ export interface Person {
   createdAt: number;
   updatedAt: number;
   lastConfirmedAt?: number;
+  /** Internal fingerprint for retrying a create request after a lost response. */
+  createPayloadHash?: string;
 }
 
 export interface Relation {
@@ -151,6 +157,13 @@ export interface AuditEvent {
   details?: Record<string, unknown>;
 }
 
+export interface PhotoUploadBudget {
+  id: string;
+  windowStartedAt: number;
+  count: number;
+  reservationIds: string[];
+}
+
 export interface EntityMap {
   circles: Circle;
   members: Member;
@@ -162,6 +175,7 @@ export interface EntityMap {
   suggestions: Suggestion;
   claimRequests: ClaimRequest;
   audit: AuditEvent;
+  photoUploadBudgets: PhotoUploadBudget;
 }
 
 export type CollectionName = keyof EntityMap;

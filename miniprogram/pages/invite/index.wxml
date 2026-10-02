@@ -1,4 +1,4 @@
-<view class="page invite-page" wx:if="{{circle}}">
+<view class="page invite-page" wx:if="{{circle && !loadError && !loading}}">
   <view class="eyebrow">INVITE SOMEONE YOU KNOW</view><view class="title">邀请熟人加入</view><view class="subtitle intro">一份邀请只能成功加入一位成员，72 小时有效。收到的人仍需提交申请，由管理员核对。</view>
   <view class="card review-card"><view class="section-title">分享前看一眼</view><view class="review-numbers"><view><text class="number">{{sharedPeople}}</text><text class="number-label">张人物卡</text></view><view><text class="number">{{visibleCities}}</text><text class="number-label">个可见城市</text></view></view><view class="small muted">被邀请者申请通过后，才会看到本圈允许成员查看的内容。手机号、微信号默认仅本人可见。</view></view>
   <view wx:if="{{!invite}}" class="create-invite"><button class="btn" disabled="{{creating}}" bindtap="onGenerate">{{creating ? '正在生成…' : '生成一次性邀请'}}</button></view>
@@ -11,5 +11,10 @@
     </view>
     <button class="revoke" bindtap="onRevoke">撤销这份邀请</button>
   </view>
+  <view class="card review-card" wx:if="{{olderInvites.length}}"><view class="section-title">之前生成的可用邀请</view><view class="small muted">口令只在生成时显示。重新打开页面后，仍可撤销旧邀请；如需再次分享，请生成新邀请。</view>
+    <view class="row between" wx:for="{{olderInvites}}" wx:key="id"><view class="small muted">{{item.expiryText}} 到期</view><button class="btn ghost" size="mini" data-id="{{item.id}}" disabled="{{!!busyInviteId}}" bindtap="onRevokeListed">{{busyInviteId === item.id ? '撤销中…' : '撤销'}}</button></view>
+  </view>
   <view class="demo-note" wx:if="{{demoMode}}">本地演示可点「预览受邀者申请页面」体验审核流程。真实微信分享和扫码需配置云环境并在真机上联调。</view>
 </view>
+<view class="page invite-page" wx:elif="{{loading}}"><view class="card review-card">正在读取邀请和圈子资料…</view></view>
+<view class="page invite-page" wx:else><view class="card review-card"><view class="section-title">暂时无法查看邀请</view><view class="small muted">{{loadError || '请稍后重试'}}</view><button class="btn" bindtap="onRetry">重试</button><button class="btn secondary" bindtap="onHome">返回首页</button></view></view>

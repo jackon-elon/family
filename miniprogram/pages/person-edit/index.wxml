@@ -1,4 +1,4 @@
-<view class="page edit-page">
+<view class="page edit-page" wx:if="{{!loading && !loadError}}">
   <view class="eyebrow">PERSON CARD</view><view class="title">{{isNew ? (createMode === 'self' ? '创建我的人物卡' : '添加未加入的人物卡') : '更新人物卡'}}</view><view class="subtitle intro">{{isNew && createMode === 'self' ? '先确认圈里没有你的卡，再填写自己的资料。' : '先填知道的部分，其他信息以后慢慢补上。'}}</view>
   <view class="card self-create-guide" wx:if="{{isNew && createMode === 'self'}}"><view class="strong">已有卡请先认领</view><view class="small muted">管理员或家人可能已经把你放进关系网。认领已有卡后，原来的关系就能接到你身上。</view><button class="btn secondary" bindtap="onReviewExisting">查看已有卡</button><view wx:if="{{pendingClaim}}" class="pending-warning">你的认领申请还在审核中，暂时不能新建本人卡。</view></view>
   <view class="card self-create-guide" wx:if="{{isNew && createMode === 'other'}}"><view class="strong">这是一张未加入的人物卡</view><view class="small muted">添加人物不会邀请 TA 加入。本人以后可通过邀请申请加入并认领。</view></view>
@@ -7,7 +7,7 @@
     <view class="section-title">{{isSelf || claimSelf ? '我的照片' : '人物照片'}}</view>
     <view class="row gap photo-row">
       <view class="avatar large photo-preview"><image wx:if="{{form.photoUrl}}" src="{{form.photoUrl}}" mode="aspectFill"/><text wx:else>{{initial}}</text></view>
-      <view class="photo-controls"><button class="btn secondary small-btn" disabled="{{photoChecking || saving}}" bindtap="onChoosePhoto">{{photoChecking ? '正在处理照片…' : form.photoUrl || hasPhoto ? '更换照片' : '从相册或相机选择'}}</button><text class="hint">支持 JPG、PNG；会自动压缩为适合上传的照片。</text></view>
+      <view class="photo-controls"><button class="btn secondary small-btn" disabled="{{photoChecking || saving}}" bindtap="onChoosePhoto">{{photoChecking ? '正在处理照片…' : form.photoUrl || hasPhoto ? '更换照片' : '从相册或相机选择'}}</button><text class="hint">支持 JPG、PNG；会压缩并去除照片中的拍摄位置等信息。</text></view>
     </view>
     <view class="photo-visibility" wx:if="{{isSelf || claimSelf}}"><text class="field-label">谁能看到照片</text><view class="segmented"><view class="segment {{photoVisibilityIndex === 0 ? 'active' : ''}}" data-index="0" bindtap="onPhotoVisibility">仅自己可见</view><view class="segment {{photoVisibilityIndex === 1 ? 'active' : ''}}" data-index="1" bindtap="onPhotoVisibility">本圈成员可见</view></view><text class="hint">选“本圈成员可见”后，照片会显示在他们看到的人物卡和关系网中；你可以随时改回仅自己可见。</text></view>
     <button class="btn photo-save" wx:if="{{!isNew && (photoSelected || photoVisibilityDirty)}}" disabled="{{saving || photoChecking}}" bindtap="onSavePhoto">{{saving ? '正在保存…' : photoSelected ? '单独保存这张照片' : '保存照片可见范围'}}</button>
@@ -37,3 +37,4 @@
   <view class="sticky-bottom"><button class="btn" disabled="{{saving}}" bindtap="onSave">{{saving ? '正在保存…' : '保存人物卡'}}</button></view>
   <canvas type="2d" id="photoCanvas" class="photo-canvas"></canvas>
 </view>
+<view class="page edit-page" wx:else><view class="card empty"><view>{{loading ? '正在读取人物资料…' : '暂时无法编辑：' + loadError}}</view><button class="btn secondary" wx:if="{{!loading}}" bindtap="onRetry">重试</button><button class="btn ghost" bindtap="onHome">返回我的圈子</button></view></view>

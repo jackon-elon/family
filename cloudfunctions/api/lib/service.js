@@ -18,6 +18,8 @@ const bareFields = ['name', 'nickname', 'gender', 'birthOrder'];
 const delegableFields = profileFields.filter(field => field !== 'latitude' && field !== 'longitude');
 const relationTypes = ['parent', 'spouse', 'sibling'];
 const inviteLifetime = 72 * 60 * 60 * 1000;
+const photoUploadWindow = 24 * 60 * 60 * 1000;
+const maxPhotoUploadAttempts = 20;
 const maxBulkTransactionWrites = 80;
 function fail(code, message) { throw new ApiError(code, message); }
 function object(value) {
@@ -42,6 +44,16 @@ function oneOf(value, values, name) {
 }
 function id() { return crypto.randomUUID(); }
 function hash(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
+function createRequestId(value) {
+    if (value === undefined)
+        return undefined;
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(value))
+        fail('INVALID_INPUT', 'requestId 格式错误');
+    return value;
+}
+function stableCreateId(scope, actorId, requestId) {
+    return `idem_${hash(JSON.stringify([scope, actorId, requestId])).slice(0, 40)}`;
+}
 function photoOwnerPath(circleId, userId) { return hash(`${circleId}|${userId}`).slice(0, 40); }
 function memberId(circleId, userId) { return `${circleId}_${hash(userId).slice(0, 40)}`; }
 function claimRequestId(circleId, personId, userId) { return `${circleId}_${hash(`${personId}|${userId}`).slice(0, 40)}`; }
@@ -144,7 +156,7 @@ function effectiveDelegationFields(fields) {
 }
 function rank(role) { return role === 'owner' ? 3 : role === 'admin' ? 2 : 1; }
 function safePublicCircle(circle) { const { id, name, type, school, cohort, className } = circle; return { id, name, type, school, cohort, className }; }
-function safeCircle(circle) { const { ownerId: _ownerId, ...view } = circle; return view; }
+function safeCircle(circle) { const { ownerId: _ownerId, createdBy: _createdBy, createPayloadHash: _createPayloadHash, ...view } = circle; return view; }
 class ApiService {
     repo;
     now;
@@ -178,6 +190,75 @@ class ApiService {
             return { ok: false, error: { code: 'SERVER_ERROR', message: '服务暂时不可用，请稍后重试' } };
         }
     }
+    /** Cloud-function-only reservation; never dispatch this as a client action. */
+    async reservePhotoUpload(payload, actorId) {
+        try {
+            if (!actorId)
+                fail('UNAUTHENTICATED', '请先登录微信');
+            const p = object(payload);
+            const data = await this.repo.atomic(async (tx) => {
+                const path = await this.photoUploadPath(tx, p, actorId);
+                const budgetId = `photo_${hash(actorId).slice(0, 40)}`;
+                const now = this.now();
+                let budget = await tx.get('photoUploadBudgets', budgetId);
+                if (!budget || now < budget.windowStartedAt || now - budget.windowStartedAt >= photoUploadWindow) {
+                    budget = { id: budgetId, windowStartedAt: now, count: 0, reservationIds: [] };
+                }
+                if (budget.count >= maxPhotoUploadAttempts)
+                    fail('PHOTO_UPLOAD_LIMIT', '每 24 小时最多尝试上传 20 张照片，请稍后再试');
+                const reservationId = id();
+                budget.count++;
+                budget.reservationIds.push(reservationId);
+                await tx.put('photoUploadBudgets', budget);
+                return { ...path, reservationId };
+            });
+            return { ok: true, data };
+        }
+        catch (error) {
+            if (error instanceof ApiError)
+                return { ok: false, error: { code: error.code, message: error.message } };
+            if (error instanceof repository_1.QueryResultLimitError)
+                return { ok: false, error: { code: 'DATA_LIMIT', message: '当前数据量超过查询上限，请联系管理员处理' } };
+            return { ok: false, error: { code: 'SERVER_ERROR', message: '服务暂时不可用，请稍后重试' } };
+        }
+    }
+    /** Refund only after the new cloud object is known to have been removed. */
+    async refundPhotoUpload(actorId, reservationId) {
+        const budgetId = `photo_${hash(actorId).slice(0, 40)}`;
+        await this.repo.atomic(async (tx) => {
+            const budget = await tx.get('photoUploadBudgets', budgetId);
+            if (!budget)
+                return;
+            const index = budget.reservationIds.indexOf(reservationId);
+            if (index < 0)
+                return;
+            budget.reservationIds.splice(index, 1);
+            budget.count = Math.max(0, budget.count - 1);
+            await tx.put('photoUploadBudgets', budget);
+        });
+    }
+    /** Cloud-function-only binding after a sanitized upload; no client action maps here. */
+    async bindUploadedPhoto(payload, actorId) {
+        try {
+            if (!actorId)
+                fail('UNAUTHENTICATED', '请先登录微信');
+            const p = object(payload);
+            const fileID = str(p.fileID, 'fileID', 512);
+            const data = await this.repo.atomic(tx => this.updatePerson(tx, {
+                circleId: p.circleId, personId: p.personId,
+                patch: { photoFileId: fileID },
+                ...(p.visibility === undefined ? {} : { visibility: { photoFileId: p.visibility } })
+            }, actorId, true));
+            return { ok: true, data };
+        }
+        catch (error) {
+            if (error instanceof ApiError)
+                return { ok: false, error: { code: error.code, message: error.message } };
+            if (error instanceof repository_1.QueryResultLimitError)
+                return { ok: false, error: { code: 'DATA_LIMIT', message: '当前数据量超过查询上限，请联系管理员处理' } };
+            return { ok: false, error: { code: 'SERVER_ERROR', message: '服务暂时不可用，请稍后重试' } };
+        }
+    }
     async dispatch(tx, action, p, actorId) {
         switch (action) {
             case 'circle.create': return this.createCircle(tx, p, actorId);
@@ -196,7 +277,6 @@ class ApiService {
             case 'person.claimApprove': return this.resolveClaim(tx, p, actorId, true);
             case 'person.claimReject': return this.resolveClaim(tx, p, actorId, false);
             case 'person.unclaim': return this.unclaimPerson(tx, p, actorId);
-            case 'photo.uploadPath': return this.photoUploadPath(tx, p, actorId);
             case 'relation.list': return this.listRelations(tx, p, actorId);
             case 'relation.create': return this.createRelation(tx, p, actorId);
             case 'relation.delete': return this.deleteRelation(tx, p, actorId);
@@ -256,12 +336,34 @@ class ApiService {
     async createCircle(tx, p, actorId) {
         const type = oneOf(p.type, ['family', 'classmate'], '圈子类型');
         const mode = oneOf(p.mode ?? 'private', ['private', 'shared'], '维护模式');
+        const name = str(p.name, '圈名', 60);
+        const school = type === 'classmate' ? str(p.school, '学校', 80) : undefined;
+        const cohort = type === 'classmate' ? str(p.cohort, '届别', 40) : undefined;
+        const className = type === 'classmate' ? str(p.className, '班级', 40) : undefined;
+        const requestId = createRequestId(p.requestId);
+        const createPayloadHash = requestId ? hash(JSON.stringify([type, name, mode, school, cohort, className])) : undefined;
+        const circleId = requestId ? stableCreateId('circle.create', actorId, requestId) : id();
+        if (requestId) {
+            const existing = await tx.get('circles', circleId);
+            if (existing) {
+                if (existing.createdBy !== actorId || existing.createPayloadHash !== createPayloadHash)
+                    fail('IDEMPOTENCY_CONFLICT', '该创建请求已用于其他圈子内容');
+                const member = await tx.get('members', memberId(circleId, actorId));
+                if (!member || member.status !== 'active')
+                    fail('FORBIDDEN', '你已不在这个圈子');
+                const memberCount = (await tx.find('members', { circleId, status: 'active' })).length;
+                return { circle: { ...safeCircle(existing), role: member.role, memberCount } };
+            }
+        }
+        const activeMemberships = await tx.find('members', { userId: actorId, status: 'active' });
+        if (activeMemberships.length >= maxBulkTransactionWrites)
+            fail('DATA_LIMIT', '已加入的圈子达到当前上限');
         const now = this.now();
-        const circle = { id: id(), type, name: str(p.name, '圈名', 60), mode, ownerId: actorId, createdAt: now, updatedAt: now };
+        const circle = { id: circleId, type, name, mode, ownerId: actorId, createdBy: actorId, createdAt: now, updatedAt: now, createPayloadHash };
         if (type === 'classmate') {
-            circle.school = str(p.school, '学校', 80);
-            circle.cohort = str(p.cohort, '届别', 40);
-            circle.className = str(p.className, '班级', 40);
+            circle.school = school;
+            circle.cohort = cohort;
+            circle.className = className;
         }
         const member = { id: memberId(circle.id, actorId), circleId: circle.id, userId: actorId, name: '圈主', role: 'owner', status: 'active', joinedAt: now };
         await tx.put('circles', circle);
@@ -372,17 +474,32 @@ class ApiService {
         const { circle, member } = await this.access(tx, p.circleId, actorId);
         if (rank(member.role) < 2 && p.claimSelf !== true)
             fail('FORBIDDEN', '普通成员只能建立本人的人物卡');
-        const now = this.now();
-        const person = { id: id(), circleId: circle.id, name: str(p.name, '姓名', 60), visibility: {}, relationCount: 0, createdAt: now, updatedAt: now };
-        person.nickname = optionalStr(p.nickname, '昵称', 60);
-        if (p.gender !== undefined)
-            person.gender = oneOf(p.gender, ['male', 'female', 'unknown'], '性别');
+        const requestId = createRequestId(p.requestId);
+        const name = str(p.name, '姓名', 60);
+        const nickname = optionalStr(p.nickname, '昵称', 60);
+        const gender = p.gender !== undefined ? oneOf(p.gender, ['male', 'female', 'unknown'], '性别') : undefined;
+        let birthOrder;
         if (p.birthOrder !== undefined) {
             if (!Number.isInteger(p.birthOrder) || Number(p.birthOrder) < 1 || Number(p.birthOrder) > 20)
                 fail('INVALID_INPUT', '排行应为 1 至 20');
-            person.birthOrder = Number(p.birthOrder);
+            birthOrder = Number(p.birthOrder);
         }
-        if (p.claimSelf === true) {
+        const claimSelf = p.claimSelf === true;
+        const createPayloadHash = requestId ? hash(JSON.stringify([name, nickname, gender, birthOrder, claimSelf])) : undefined;
+        const personId = requestId ? stableCreateId(`person.create:${circle.id}`, actorId, requestId) : id();
+        if (requestId) {
+            const existing = await tx.get('persons', personId);
+            if (existing) {
+                if (existing.circleId !== circle.id || existing.createPayloadHash !== createPayloadHash)
+                    fail('IDEMPOTENCY_CONFLICT', '该创建请求已用于其他人物卡内容');
+                if (claimSelf && (existing.claimedBy !== actorId || member.personId !== existing.id))
+                    fail('IDEMPOTENCY_STATE_CHANGED', '这张人物卡已解除认领，请重新申请认领');
+                return { person: this.visiblePerson(existing, actorId) };
+            }
+        }
+        const now = this.now();
+        const person = { id: personId, circleId: circle.id, name, nickname, gender, birthOrder, visibility: {}, relationCount: 0, createdAt: now, updatedAt: now, createPayloadHash };
+        if (claimSelf) {
             if (member.personId)
                 fail('ALREADY_CLAIMED', '你已经认领一张人物卡');
             const pendingClaims = await tx.find('claimRequests', { circleId: circle.id, userId: actorId, status: 'pending' });
@@ -403,6 +520,8 @@ class ApiService {
             if (!profileFields.includes(key))
                 fail('INVALID_INPUT', `不能修改字段 ${key}`);
             if (value === null || value === '') {
+                if (key === 'name')
+                    fail('INVALID_INPUT', '姓名不能为空');
                 patch[key] = undefined;
                 continue;
             }
@@ -425,10 +544,12 @@ class ApiService {
         }
         return patch;
     }
-    async updatePerson(tx, p, actorId) {
+    async updatePerson(tx, p, actorId, internalPhotoBinding = false) {
         const { circle, member } = await this.access(tx, p.circleId, actorId);
         const person = await this.person(tx, circle.id, p.personId);
         const patch = this.parsePatch(p.patch);
+        if (patch.photoFileId !== undefined && !internalPhotoBinding)
+            fail('FORBIDDEN', '请通过照片上传功能更换照片');
         const latitudeTouched = Object.prototype.hasOwnProperty.call(patch, 'latitude');
         const longitudeTouched = Object.prototype.hasOwnProperty.call(patch, 'longitude');
         if (latitudeTouched !== longitudeTouched ||
@@ -562,6 +683,11 @@ class ApiService {
             fail('CLAIMED_PERSON', '请先移除或解绑认领成员');
         if ((person.relationCount ?? 0) > 0)
             fail('RELATION_CONNECTED', `该人物关联 ${person.relationCount} 条关系，请先处理关系`);
+        // Legacy counts may be stale. Never delete a node still referenced by a
+        // real edge even when its denormalized relationCount says zero.
+        const actualRelations = await tx.find('relations', { circleId: circle.id });
+        if (actualRelations.some(relation => relation.from === person.id || relation.to === person.id))
+            fail('RELATION_CONNECTED', '该人物仍有关联关系，请先处理关系');
         await tx.delete('persons', person.id);
         await this.audit(tx, circle.id, actorId, 'person.delete', person.id);
         return { personId: person.id };
@@ -918,9 +1044,10 @@ class ApiService {
         const views = await Promise.all(applications.map(async (application) => {
             const circle = await tx.get('circles', application.circleId);
             const invite = application.status === 'pending' ? await tx.get('invites', application.inviteId) : undefined;
+            const currentMember = application.status === 'approved' ? await tx.get('members', memberId(application.circleId, actorId)) : undefined;
             const inviteStatus = invite ? this.inviteStatus(invite) : application.status === 'pending' ? 'expired' : undefined;
             const status = application.status === 'pending' && inviteStatus !== 'active' ? 'expired' : application.status;
-            return { ...this.safeApplication(application), status, circleName: circle?.name || '圈子', circleType: circle?.type, inviteStatus };
+            return { ...this.safeApplication(application), status, canEnter: currentMember?.status === 'active', circleName: circle?.name || '圈子', circleType: circle?.type, inviteStatus };
         }));
         return { applications: views, hasMore: !requestedId && all.length > applications.length };
     }
@@ -942,9 +1069,15 @@ class ApiService {
             const existing = await tx.get('members', mid);
             if (existing?.status === 'active')
                 fail('ALREADY_MEMBER', '申请人已经是成员');
-            const others = (await tx.find('applications', { inviteId: invite.id, status: 'pending' })).filter(other => other.id !== application.id);
+            const applicantMemberships = await tx.find('members', { userId: application.userId, status: 'active' });
+            if (applicantMemberships.length >= maxBulkTransactionWrites)
+                fail('DATA_LIMIT', '申请人已加入太多圈子');
+            const pendingForInvite = await tx.find('applications', { inviteId: invite.id, status: 'pending' });
+            const pendingForUser = await tx.find('applications', { circleId: circle.id, userId: application.userId, status: 'pending' });
+            const others = [...new Map([...pendingForInvite, ...pendingForUser]
+                    .filter(other => other.id !== application.id).map(other => [other.id, other])).values()];
             if (others.length > maxBulkTransactionWrites)
-                fail('DATA_LIMIT', '同一邀请待审申请过多，请先处理申请');
+                fail('DATA_LIMIT', '待审申请过多，请先处理申请');
             // Legacy application documents may still carry claimPersonId. Approval
             // must not trust or apply it; the new member claims a card afterwards.
             const member = { id: mid, circleId: circle.id, userId: application.userId, name: application.name, role: 'member', status: 'active', joinedAt: this.now() };
@@ -980,11 +1113,12 @@ class ApiService {
         }));
         return { members: views };
     }
-    async scrubAfterLeaving(tx, member) {
+    async scrubAfterLeaving(tx, member, actorId) {
         const delegations = await tx.find('delegations', { circleId: member.circleId });
         const activeDelegations = delegations.filter(delegation => !delegation.revokedAt && (delegation.ownerUserId === member.userId || delegation.adminUserId === member.userId));
-        if (activeDelegations.length > maxBulkTransactionWrites)
-            fail('DATA_LIMIT', '授权记录过多，无法一次性安全移除成员');
+        const pendingClaims = await tx.find('claimRequests', { circleId: member.circleId, userId: member.userId, status: 'pending' });
+        if (activeDelegations.length + pendingClaims.length > maxBulkTransactionWrites)
+            fail('DATA_LIMIT', '待处理授权或认领过多，无法一次性安全移除成员');
         if (member.personId) {
             const person = await tx.get('persons', member.personId);
             if (person && person.circleId === member.circleId && person.claimedBy === member.userId) {
@@ -1000,6 +1134,12 @@ class ApiService {
         for (const delegation of activeDelegations) {
             delegation.revokedAt = this.now();
             await tx.put('delegations', delegation);
+        }
+        for (const claim of pendingClaims) {
+            claim.status = 'rejected';
+            claim.reviewedAt = this.now();
+            claim.reviewedBy = actorId;
+            await tx.put('claimRequests', claim);
         }
     }
     async endMember(tx, p, actorId, state) {
@@ -1021,7 +1161,7 @@ class ApiService {
             fail('OWNER_REQUIRED', '圈主须先移交圈子');
         target.status = state;
         target.endedAt = this.now();
-        await this.scrubAfterLeaving(tx, target);
+        await this.scrubAfterLeaving(tx, target, actorId);
         await tx.put('members', target);
         await this.audit(tx, circle.id, actorId, state === 'left' ? 'member.leave' : 'member.remove', target.id);
         return { member: this.safeMember(target, actorId) };

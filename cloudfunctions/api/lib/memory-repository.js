@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MemoryRepository = void 0;
-const names = ['circles', 'members', 'persons', 'relations', 'invites', 'applications', 'delegations', 'suggestions', 'claimRequests', 'audit'];
+const names = ['circles', 'members', 'persons', 'relations', 'invites', 'applications', 'delegations', 'suggestions', 'claimRequests', 'audit', 'photoUploadBudgets'];
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 class MemoryRepository {
     data = Object.fromEntries(names.map(name => [name, new Map()]));

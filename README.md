@@ -30,7 +30,7 @@ npm run build:cloud
 - `backend/`：TypeScript 后端服务、内存仓库、CloudBase 仓库适配器及测试。
 - `cloudfunctions/api/`：微信云开发事件函数入口与构建产物。
 - `packages/kinship/`：独立亲属称呼引擎及规则测试。
-- `docs/`：[总体架构](./docs/architecture.md)、前端／后端设计和[测试计划](./docs/test-plan.md)。
+- `docs/`：[总体架构](./docs/architecture.md)、前端／后端设计、[测试计划](./docs/test-plan.md)与[入圈和管理流程产品复核](./docs/product-review-onboarding-and-admin.md)。
 
 亲属称呼源文件在 `packages/kinship/src/index.ts`；`npm run sync:kinship` 将其复制到小程序可打包的 `miniprogram/vendor/kinship.ts`。修改称呼规则后应运行同步及测试。
 

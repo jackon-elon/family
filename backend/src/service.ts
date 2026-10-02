@@ -2,7 +2,7 @@ declare function require(name: string): any;
 declare const Buffer: any;
 const crypto = require('node:crypto');
 
-import type { Application, AuditEvent, Circle, ClaimRequest, Delegation, Invite, Member, Person, PersonField, Relation, Role, Suggestion, Visibility } from './model';
+import type { Application, AuditEvent, Circle, ClaimRequest, Delegation, Invite, Member, Person, PersonField, Relation, RelationChange, Role, Suggestion, Visibility } from './model';
 import type { Repository, UnitOfWork } from './repository';
 
 export interface Request { action: string; payload?: unknown }
@@ -46,6 +46,79 @@ function relationId(circleId: string, type: Relation['type'], from: string, to: 
   const endpoints = type === 'parent' ? [from, to] : [from, to].sort();
   return `${circleId}_${hash(`${type}|${endpoints[0]}|${endpoints[1]}`).slice(0, 40)}`;
 }
+function relationSummary(relation: Relation) {
+  const {id, from, to, type, olderId} = relation;
+  return {id, from, to, type, olderId};
+}
+function relationFingerprint(relation: Relation): string {
+  return hash(JSON.stringify([relation.id, relation.from, relation.to, relation.type, relation.olderId, relation.createdBy, relation.createdAt]));
+}
+function validateFamilyGraph(relations: Relation[]): void {
+  const pairTypes = new Map<string, string>();
+  const children = new Map<string, string[]>();
+  const adjacency = new Map<string, Array<{id: string; distance: number}>>();
+  const add = (from: string, to: string, distance: number) => {
+    if (!adjacency.has(from)) adjacency.set(from, []);
+    adjacency.get(from)!.push({id: to, distance});
+  };
+  for (const relation of relations) {
+    const pair = [relation.from, relation.to].sort().join('|');
+    const existing = pairTypes.get(pair);
+    if (existing) fail('RELATION_CONFLICT', '同两人之间已有不能并存的关系');
+    pairTypes.set(pair, relation.type);
+    const distance = relation.type === 'parent' ? 1 : 0;
+    add(relation.from, relation.to, distance);
+    add(relation.to, relation.from, -distance);
+    if (relation.type === 'parent') {
+      if (!children.has(relation.from)) children.set(relation.from, []);
+      children.get(relation.from)!.push(relation.to);
+    }
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const checkCycle = (personId: string): void => {
+    if (visiting.has(personId)) fail('RELATION_CYCLE', '亲子关系不能形成循环');
+    if (visited.has(personId)) return;
+    visiting.add(personId);
+    for (const child of children.get(personId) ?? []) checkCycle(child);
+    visiting.delete(personId);
+    visited.add(personId);
+  };
+  for (const personId of children.keys()) checkCycle(personId);
+  const generation = new Map<string, number>();
+  for (const start of adjacency.keys()) {
+    if (generation.has(start)) continue;
+    generation.set(start, 0);
+    const queue = [start];
+    for (let cursor = 0; cursor < queue.length; cursor++) {
+      const current = queue[cursor];
+      const value = generation.get(current)!;
+      for (const next of adjacency.get(current) ?? []) {
+        const expected = value + next.distance;
+        const actual = generation.get(next.id);
+        if (actual === undefined) { generation.set(next.id, expected); queue.push(next.id); }
+        else if (actual !== expected) fail('GENERATION_CONFLICT', '这条关系与现有辈分关系矛盾');
+      }
+    }
+  }
+}
+function affectedComponentIds(relations: Relation[], added: Relation | undefined, endpoints: string[]): string[] {
+  const adjacency = new Map<string, Set<string>>();
+  for (const relation of added ? [...relations, added] : relations) {
+    if (!adjacency.has(relation.from)) adjacency.set(relation.from, new Set());
+    if (!adjacency.has(relation.to)) adjacency.set(relation.to, new Set());
+    adjacency.get(relation.from)!.add(relation.to);
+    adjacency.get(relation.to)!.add(relation.from);
+  }
+  const seen = new Set(endpoints);
+  const queue = [...endpoints];
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    for (const next of adjacency.get(queue[cursor]) ?? []) if (!seen.has(next)) {
+      seen.add(next); queue.push(next);
+    }
+  }
+  return [...seen];
+}
 function effectiveDelegationFields(fields: PersonField[]): PersonField[] {
   return fields.includes('city') ? [...new Set([...fields, 'country', 'province', 'latitude', 'longitude'] as PersonField[])] : fields;
 }
@@ -88,6 +161,7 @@ export class ApiService {
       case 'person.delete': return this.deletePerson(tx, p, actorId);
       case 'person.claim': return this.claimPerson(tx, p, actorId);
       case 'person.claimList': return this.listClaims(tx, p, actorId);
+      case 'person.claimMine': return this.myClaims(tx, p, actorId);
       case 'person.claimApprove': return this.resolveClaim(tx, p, actorId, true);
       case 'person.claimReject': return this.resolveClaim(tx, p, actorId, false);
       case 'person.unclaim': return this.unclaimPerson(tx, p, actorId);
@@ -96,6 +170,8 @@ export class ApiService {
       case 'relation.list': return this.listRelations(tx, p, actorId);
       case 'relation.create': return this.createRelation(tx, p, actorId);
       case 'relation.delete': return this.deleteRelation(tx, p, actorId);
+      case 'relation.replace': return this.replaceRelation(tx, p, actorId);
+      case 'relation.preview': return this.previewRelation(tx, p, actorId);
       case 'invite.create': return this.createInvite(tx, p, actorId);
       case 'invite.preview': return this.previewInvite(tx, p);
       case 'invite.apply': return this.applyInvite(tx, p, actorId);
@@ -253,6 +329,8 @@ export class ApiService {
     }
     if (p.claimSelf === true) {
       if (member.personId) fail('ALREADY_CLAIMED', '你已经认领一张人物卡');
+      const pendingClaims = await tx.find('claimRequests', {circleId: circle.id, userId: actorId, status: 'pending'});
+      if (pendingClaims.length) fail('CLAIM_PENDING', '认领申请仍在审核中，请先等待审核结果');
       person.claimedBy = actorId;
       member.personId = person.id;
       await tx.put('members', member);
@@ -381,6 +459,11 @@ export class ApiService {
     };
     const existing = await tx.get('claimRequests', request.id);
     if (existing?.status === 'pending') return {claimRequest: this.safeClaim(existing)};
+    const pendingClaims = await tx.find('claimRequests', {circleId: circle.id, userId: actorId, status: 'pending'});
+    if (pendingClaims.length) fail('CLAIM_PENDING', '已有其他人物卡认领申请正在审核');
+    // Creation of a pending claim and creation of a claimed self card both
+    // write the member document, preventing a cross-action race in CloudBase.
+    await tx.put('members', member);
     await tx.put('claimRequests', request);
     await this.audit(tx, circle.id, actorId, 'person.claimRequest', person.id);
     return {claimRequest: this.safeClaim(request)};
@@ -399,6 +482,16 @@ export class ApiService {
       return {...this.safeClaim(r), memberId: memberId(circle.id, r.userId), applicantName: member?.name || '申请人'};
     }));
     return {claimRequests};
+  }
+
+  private async myClaims(tx: UnitOfWork, p: Record<string, unknown>, actorId: string) {
+    const {circle} = await this.access(tx, p.circleId, actorId);
+    const requests = await tx.find('claimRequests', {circleId: circle.id, userId: actorId});
+    const claimRequests = await Promise.all(requests.map(async request => {
+      const person = await tx.get('persons', request.personId);
+      return {...this.safeClaim(request), personName: person?.circleId === circle.id ? person.name : '人物卡已删除'};
+    }));
+    return {claimRequests: claimRequests.sort((a, b) => b.createdAt - a.createdAt)};
   }
 
   private async resolveClaim(tx: UnitOfWork, p: Record<string, unknown>, actorId: string, approve: boolean) {
@@ -425,7 +518,10 @@ export class ApiService {
     const {circle} = await this.access(tx, p.circleId, actorId, 'admin');
     const person = await this.person(tx, circle.id, p.personId);
     if (!person.claimedBy) fail('INVALID_INPUT', '人物卡尚未认领');
+    const reasonCode = p.reasonCode === undefined ? undefined : oneOf(p.reasonCode, ['wrong_person', 'member_request', 'duplicate_card', 'other'] as const, '解绑原因');
     const oldOwner = person.claimedBy;
+    const oldMemberId = memberId(circle.id, oldOwner);
+    const clearedFields = privateFields.filter(field => person[field] !== undefined);
     const member = await tx.get('members', memberId(circle.id, oldOwner));
     if (member?.status === 'active' && member.personId === person.id) {
       member.personId = undefined;
@@ -437,8 +533,9 @@ export class ApiService {
     person.updatedAt = this.now();
     await tx.put('persons', person);
     const delegations = await tx.find('delegations', {circleId: circle.id, personId: person.id});
-    for (const delegation of delegations) if (!delegation.revokedAt) {delegation.revokedAt = this.now(); await tx.put('delegations', delegation);}
-    await this.audit(tx, circle.id, actorId, 'person.unclaim', person.id);
+    let revokedDelegationCount = 0;
+    for (const delegation of delegations) if (!delegation.revokedAt) {delegation.revokedAt = this.now(); await tx.put('delegations', delegation); revokedDelegationCount++;}
+    await this.audit(tx, circle.id, actorId, 'person.unclaim', person.id, {oldMemberId, clearedFields, revokedDelegationCount, reasonCode});
     return {person: this.visiblePerson(person, actorId)};
   }
 
@@ -452,43 +549,114 @@ export class ApiService {
   private async createRelation(tx: UnitOfWork, p: Record<string, unknown>, actorId: string) {
     const {circle} = await this.access(tx, p.circleId, actorId, 'admin');
     if (circle.type !== 'family') fail('WRONG_CIRCLE_TYPE', '同学圈不能录入亲属关系');
-    const from = await this.person(tx, circle.id, p.from);
-    const to = await this.person(tx, circle.id, p.to);
-    if (from.id === to.id) fail('INVALID_INPUT', '不能把人物关联到自己');
-    const type = oneOf(p.type, relationTypes, '关系类型') as Relation['type'];
-    let olderId: string | undefined;
-    if (type === 'sibling' && p.olderId !== undefined) {
-      olderId = str(p.olderId, 'olderId');
-      if (olderId !== from.id && olderId !== to.id) fail('INVALID_INPUT', '长者必须是关系中的一人');
-    }
-    const rid = relationId(circle.id, type, from.id, to.id);
-    const existing = await tx.get('relations', rid);
-    if (existing) fail('DUPLICATE_RELATION', '这条关系已存在');
-    const relation: Relation = {id: rid, circleId: circle.id, from: from.id, to: to.id, type, olderId, createdBy: actorId, createdAt: this.now()};
-    from.relationCount = (from.relationCount ?? 0) + 1;
-    to.relationCount = (to.relationCount ?? 0) + 1;
-    await tx.put('persons', from);
-    await tx.put('persons', to);
-    await tx.put('relations', relation);
-    await this.audit(tx, circle.id, actorId, 'relation.create', relation.id);
-    const {createdBy: _createdBy, ...visible} = relation;
-    return {relation: visible};
+    const change = await this.parseRelationChange(tx, circle, {relation: p});
+    const result = await this.applyRelationChange(tx, circle, change, actorId);
+    await this.audit(tx, circle.id, actorId, 'relation.create', result.after!.id, {created: result.after, reason: optionalStr(p.reason, '原因', 300)});
+    return {relation: result.after, impact: result.impact};
   }
 
   private async deleteRelation(tx: UnitOfWork, p: Record<string, unknown>, actorId: string) {
     const {circle} = await this.access(tx, p.circleId, actorId, 'admin');
-    const relation = await tx.get('relations', str(p.relationId, 'relationId'));
-    if (!relation || relation.circleId !== circle.id) fail('NOT_FOUND', '关系不存在');
-    const from = await this.person(tx, circle.id, relation.from);
-    const to = await this.person(tx, circle.id, relation.to);
-    if ((from.relationCount ?? 0) < 1 || (to.relationCount ?? 0) < 1) fail('DATA_INTEGRITY', '关系计数不一致');
-    from.relationCount = (from.relationCount ?? 0) - 1;
-    to.relationCount = (to.relationCount ?? 0) - 1;
-    await tx.put('persons', from);
-    await tx.put('persons', to);
-    await tx.delete('relations', relation.id);
-    await this.audit(tx, circle.id, actorId, 'relation.delete', relation.id);
-    return {relationId: relation.id};
+    const change = await this.parseRelationChange(tx, circle, {removeRelationId: p.relationId});
+    const result = await this.applyRelationChange(tx, circle, change, actorId);
+    await this.audit(tx, circle.id, actorId, 'relation.delete', result.before!.id, {removed: result.before, reason: optionalStr(p.reason, '原因', 300)});
+    return {relationId: result.before!.id, impact: result.impact};
+  }
+
+  private async replaceRelation(tx: UnitOfWork, p: Record<string, unknown>, actorId: string) {
+    const {circle} = await this.access(tx, p.circleId, actorId, 'admin');
+    if (circle.type !== 'family') fail('WRONG_CIRCLE_TYPE', '同学圈没有亲属关系');
+    const change = await this.parseRelationChange(tx, circle, {removeRelationId: p.relationId, relation: p.relation});
+    if (!change.relation) fail('INVALID_INPUT', '请填写替换后的关系');
+    const result = await this.applyRelationChange(tx, circle, change, actorId);
+    await this.audit(tx, circle.id, actorId, 'relation.replace', result.after!.id, {removed: result.before, created: result.after, reason: optionalStr(p.reason, '原因', 300)});
+    return {relation: result.after, impact: result.impact};
+  }
+
+  private async previewRelation(tx: UnitOfWork, p: Record<string, unknown>, actorId: string) {
+    const {circle} = await this.access(tx, p.circleId, actorId);
+    if (circle.type !== 'family') fail('WRONG_CIRCLE_TYPE', '同学圈没有亲属关系');
+    const change = await this.parseRelationChange(tx, circle, p.relationChange);
+    const plan = await this.planRelationChange(tx, circle, change, actorId);
+    return {impact: plan.impact, before: plan.before && relationSummary(plan.before), after: plan.after && relationSummary(plan.after)};
+  }
+
+  private async parseRelationChange(tx: UnitOfWork, circle: Circle, raw: unknown): Promise<RelationChange> {
+    const input = object(raw);
+    const removeRelationId = input.removeRelationId === undefined ? undefined : str(input.removeRelationId, 'removeRelationId');
+    let relation: RelationChange['relation'];
+    if (input.relation !== undefined) {
+      const proposed = object(input.relation);
+      const from = (await this.person(tx, circle.id, proposed.from)).id;
+      const to = (await this.person(tx, circle.id, proposed.to)).id;
+      if (from === to) fail('INVALID_INPUT', '不能把人物关联到自己');
+      const type = oneOf(proposed.type, relationTypes, '关系类型') as Relation['type'];
+      let olderId: string | undefined;
+      if (proposed.olderId !== undefined) {
+        if (type !== 'sibling') fail('INVALID_INPUT', '只有兄弟姐妹关系可记录长幼');
+        olderId = str(proposed.olderId, 'olderId');
+        if (olderId !== from && olderId !== to) fail('INVALID_INPUT', '长者必须是关系中的一人');
+      }
+      relation = {from, to, type, olderId};
+    }
+    if (!removeRelationId && !relation) fail('INVALID_INPUT', '请填写需要新增或删除的关系');
+    return {removeRelationId, relation};
+  }
+
+  private async planRelationChange(tx: UnitOfWork, circle: Circle, change: RelationChange, actorId: string, expectedRelationHash?: string) {
+    const before = change.removeRelationId ? await tx.get('relations', change.removeRelationId) : undefined;
+    if (change.removeRelationId && (!before || before.circleId !== circle.id)) fail('NOT_FOUND', '要修改的关系不存在');
+    if (before && expectedRelationHash && relationFingerprint(before) !== expectedRelationHash) fail('STALE_RELATION', '关系已被其他人修改，请重新提交建议');
+    const after: Relation | undefined = change.relation ? {
+      id: relationId(circle.id, change.relation.type, change.relation.from, change.relation.to),
+      circleId: circle.id, ...change.relation, createdBy: actorId, createdAt: this.now()
+    } : undefined;
+    // A deterministic doc read keeps identical-edge races inside the CloudBase
+    // transaction even though collection-wide graph scans use the SDK query API.
+    const exactExisting = after ? await tx.get('relations', after.id) : undefined;
+    if (exactExisting && exactExisting.id !== before?.id) fail('DUPLICATE_RELATION', '这条关系已存在');
+    const relations = await tx.find('relations', {circleId: circle.id});
+    const remaining = relations.filter(relation => relation.id !== before?.id);
+    if (after && remaining.some(relation => relation.id === after.id)) fail('DUPLICATE_RELATION', '这条关系已存在');
+    // Removing an edge cannot create a new contradiction. Let admins clean up
+    // older graphs that already contain more than one conflicting edge.
+    if (after) validateFamilyGraph([...remaining, after]);
+    const endpoints = [...new Set([before?.from, before?.to, after?.from, after?.to].filter((value): value is string => Boolean(value)))];
+    const affectedPersonIds = affectedComponentIds(relations, after, endpoints);
+    const impact = {
+      removedRelationIds: before ? [before.id] : [],
+      createdRelationIds: after ? [after.id] : [],
+      affectedPersonIds
+    };
+    return {before, after, impact};
+  }
+
+  private async applyRelationChange(tx: UnitOfWork, circle: Circle, change: RelationChange, actorId: string, expectedRelationHash?: string): Promise<{
+    before?: ReturnType<typeof relationSummary>;
+    after?: ReturnType<typeof relationSummary>;
+    impact: {removedRelationIds: string[]; createdRelationIds: string[]; affectedPersonIds: string[]};
+  }> {
+    const plan = await this.planRelationChange(tx, circle, change, actorId, expectedRelationHash);
+    const persons = new Map<string, Person>();
+    const changedEndpoints = [...new Set([plan.before?.from, plan.before?.to, plan.after?.from, plan.after?.to].filter((value): value is string => Boolean(value)))];
+    for (const personId of changedEndpoints) persons.set(personId, await this.person(tx, circle.id, personId));
+    for (const personId of [plan.before?.from, plan.before?.to]) if (personId) {
+      const person = persons.get(personId)!;
+      if ((person.relationCount ?? 0) < 1) fail('DATA_INTEGRITY', '关系计数不一致');
+      person.relationCount = (person.relationCount ?? 0) - 1;
+    }
+    for (const personId of [plan.after?.from, plan.after?.to]) if (personId) {
+      const person = persons.get(personId)!;
+      person.relationCount = (person.relationCount ?? 0) + 1;
+    }
+    for (const person of persons.values()) await tx.put('persons', person);
+    if (plan.before && plan.before.id !== plan.after?.id) await tx.delete('relations', plan.before.id);
+    if (plan.after) await tx.put('relations', plan.after);
+    // Mutate the circle document in the same transaction to serialize distinct
+    // relation IDs whose combined graph would otherwise be inconsistent.
+    circle.updatedAt = this.now();
+    await tx.put('circles', circle);
+    return {before: plan.before && relationSummary(plan.before), after: plan.after && relationSummary(plan.after), impact: plan.impact};
   }
 
   private parseToken(tokenValue: unknown): {inviteId: string; token: string} {
@@ -530,6 +698,9 @@ export class ApiService {
   }
 
   private async applyInvite(tx: UnitOfWork, p: Record<string, unknown>, actorId: string) {
+    // Joining and claiming a person card are separate, independently reviewed
+    // actions. Reject older clients that try to bind a card before membership.
+    if (p.claimPersonId !== undefined) fail('INVALID_INPUT', '请先加入圈子，再由本人申请认领人物卡');
     const invite = await this.verifyInvite(tx, p.token);
     this.requireActiveInvite(invite);
     const circle = await this.circle(tx, invite.circleId);
@@ -539,15 +710,9 @@ export class ApiService {
     if (pending?.status === 'pending') return {application: this.safeApplication(pending)};
     const pendingCount = (await tx.find('applications', {inviteId: invite.id, status: 'pending'})).length;
     if (pendingCount >= 20) fail('INVITE_FULL', '此邀请申请人数过多，请联系管理员重新邀请');
-    let claimPersonId: string | undefined;
-    if (p.claimPersonId !== undefined) {
-      const card = await this.person(tx, invite.circleId, p.claimPersonId);
-      if (card.claimedBy) fail('ALREADY_CLAIMED', '该人物卡已被认领');
-      claimPersonId = card.id;
-    }
     const application: Application = {
       id: applicationId(invite.id, actorId), circleId: invite.circleId, inviteId: invite.id, userId: actorId,
-      name: str(p.name, '姓名', 60), note: circle.type === 'classmate' ? str(p.note, '同班核对说明', 300) : optionalStr(p.note, '说明', 300), claimPersonId,
+      name: str(p.name, '姓名', 60), note: circle.type === 'classmate' ? str(p.note, '同班核对说明', 300) : optionalStr(p.note, '说明', 300),
       status: 'pending', createdAt: this.now()
     };
     await tx.put('applications', application);
@@ -556,8 +721,8 @@ export class ApiService {
   }
 
   private safeApplication(application: Application, includeIdentity = false) {
-    const {id, circleId, inviteId, name, note, claimPersonId, status, createdAt, reviewedAt} = application;
-    return {...{id, circleId, inviteId, name, note, claimPersonId, status, createdAt, reviewedAt}, ...(includeIdentity ? {memberId: memberId(circleId, application.userId)} : {})};
+    const {id, circleId, inviteId, name, note, status, createdAt, reviewedAt} = application;
+    return {...{id, circleId, inviteId, name, note, status, createdAt, reviewedAt}, ...(includeIdentity ? {memberId: memberId(circleId, application.userId)} : {})};
   }
 
   private async listInvites(tx: UnitOfWork, p: Record<string, unknown>, actorId: string) {
@@ -577,12 +742,28 @@ export class ApiService {
   private async listApplications(tx: UnitOfWork, p: Record<string, unknown>, actorId: string) {
     const {circle} = await this.access(tx, p.circleId, actorId, 'admin');
     const applications = await tx.find('applications', {circleId: circle.id, status: 'pending'});
-    return {applications: applications.map(a => this.safeApplication(a, true))};
+    const views = await Promise.all(applications.map(async application => {
+      const invite = await tx.get('invites', application.inviteId);
+      const validInvite = invite?.circleId === circle.id ? invite : undefined;
+      return {
+        ...this.safeApplication(application, true),
+        inviteStatus: validInvite ? this.inviteStatus(validInvite) : 'missing',
+        inviteExpiresAt: validInvite?.expiresAt
+      };
+    }));
+    return {applications: views};
   }
 
   private async myApplications(tx: UnitOfWork, actorId: string) {
     const applications = await tx.find('applications', {userId: actorId});
-    return {applications: applications.map(a => this.safeApplication(a))};
+    const views = await Promise.all(applications.map(async application => {
+      const circle = await tx.get('circles', application.circleId);
+      const invite = application.status === 'pending' ? await tx.get('invites', application.inviteId) : undefined;
+      const inviteStatus = invite ? this.inviteStatus(invite) : application.status === 'pending' ? 'expired' : undefined;
+      const status = application.status === 'pending' && inviteStatus !== 'active' ? 'expired' : application.status;
+      return {...this.safeApplication(application), status, circleName: circle?.name || '圈子', circleType: circle?.type, inviteStatus};
+    }));
+    return {applications: views.sort((a, b) => b.createdAt - a.createdAt)};
   }
 
   private async resolveApplication(tx: UnitOfWork, p: Record<string, unknown>, actorId: string, approve: boolean) {
@@ -599,15 +780,9 @@ export class ApiService {
       const mid = memberId(circle.id, application.userId);
       const existing = await tx.get('members', mid);
       if (existing?.status === 'active') fail('ALREADY_MEMBER', '申请人已经是成员');
-      let personId: string | undefined;
-      if (application.claimPersonId) {
-        const person = await this.person(tx, circle.id, application.claimPersonId);
-        if (person.claimedBy) fail('ALREADY_CLAIMED', '人物卡已经被认领');
-        person.claimedBy = application.userId; person.updatedAt = this.now();
-        await tx.put('persons', person);
-        personId = person.id;
-      }
-      const member: Member = {id: mid, circleId: circle.id, userId: application.userId, name: application.name, role: 'member', status: 'active', personId, joinedAt: this.now()};
+      // Legacy application documents may still carry claimPersonId. Approval
+      // must not trust or apply it; the new member claims a card afterwards.
+      const member: Member = {id: mid, circleId: circle.id, userId: application.userId, name: application.name, role: 'member', status: 'active', joinedAt: this.now()};
       await tx.put('members', member);
       invite.usedAt = this.now(); invite.usedBy = application.userId;
       await tx.put('invites', invite);
@@ -730,12 +905,20 @@ export class ApiService {
     const type = oneOf(p.type, ['person', 'relation', 'invite'] as const, '建议类型');
     let personId: string | undefined;
     if (p.personId !== undefined) personId = (await this.person(tx, circle.id, p.personId)).id;
-    const suggestion: Suggestion = {id: id(), circleId: circle.id, createdBy: actorId, personId, type, message: str(p.message, '建议内容', 500), status: 'pending', createdAt: this.now()};
+    let relationChange: RelationChange | undefined;
+    let expectedRelationHash: string | undefined;
+    if (type === 'relation') {
+      if (circle.type !== 'family') fail('WRONG_CIRCLE_TYPE', '同学圈没有亲属关系');
+      relationChange = await this.parseRelationChange(tx, circle, p.relationChange);
+      const plan = await this.planRelationChange(tx, circle, relationChange, actorId);
+      if (plan.before) expectedRelationHash = relationFingerprint(plan.before);
+    } else if (p.relationChange !== undefined) fail('INVALID_INPUT', '只有关系建议可包含关系更正');
+    const suggestion: Suggestion = {id: id(), circleId: circle.id, createdBy: actorId, personId, type, message: str(p.message, '建议内容', 500), relationChange, expectedRelationHash, status: 'pending', createdAt: this.now()};
     await tx.put('suggestions', suggestion);
     await this.audit(tx, circle.id, actorId, 'suggestion.create', suggestion.id);
     return {suggestion: this.safeSuggestion(suggestion)};
   }
-  private safeSuggestion(s: Suggestion) {return {id: s.id, circleId: s.circleId, type: s.type, personId: s.personId, message: s.message, status: s.status, createdAt: s.createdAt, resolvedAt: s.resolvedAt};}
+  private safeSuggestion(s: Suggestion) {return {id: s.id, circleId: s.circleId, type: s.type, personId: s.personId, message: s.message, relationChange: s.relationChange, status: s.status, createdAt: s.createdAt, resolvedAt: s.resolvedAt};}
   private async listSuggestions(tx: UnitOfWork, p: Record<string, unknown>, actorId: string) {
     const {circle, member} = await this.access(tx, p.circleId, actorId);
     const suggestions = await tx.find('suggestions', {circleId: circle.id});
@@ -746,16 +929,28 @@ export class ApiService {
     const suggestion = await tx.get('suggestions', str(p.suggestionId, 'suggestionId'));
     if (!suggestion || suggestion.circleId !== circle.id) fail('NOT_FOUND', '建议不存在');
     if (suggestion.status !== 'pending') fail('ALREADY_REVIEWED', '建议已处理');
-    suggestion.status = oneOf(p.status, ['accepted', 'rejected'] as const, '处理结果');
+    const status = oneOf(p.status, ['accepted', 'rejected'] as const, '处理结果');
+    let applied: Awaited<ReturnType<ApiService['applyRelationChange']>> | undefined;
+    if (status === 'accepted' && suggestion.type !== 'relation') fail('CHANGE_REQUIRED', '请先完成实际修改，暂不能直接标为已采纳');
+    if (status === 'accepted' && suggestion.type === 'relation') {
+      if (!suggestion.relationChange) fail('CHANGE_REQUIRED', '此建议只有文字说明，请先提交具体关系更正');
+      applied = await this.applyRelationChange(tx, circle, suggestion.relationChange, actorId, suggestion.expectedRelationHash);
+    }
+    suggestion.status = status;
     suggestion.resolvedAt = this.now(); suggestion.resolvedBy = actorId;
     await tx.put('suggestions', suggestion);
-    await this.audit(tx, circle.id, actorId, 'suggestion.resolve', suggestion.id, {status: suggestion.status});
-    return {suggestion: this.safeSuggestion(suggestion)};
+    await this.audit(tx, circle.id, actorId, 'suggestion.resolve', suggestion.id, {status: suggestion.status, ...(applied ? {removed: applied.before, created: applied.after, affectedPersonIds: applied.impact.affectedPersonIds, reason: suggestion.message} : {})});
+    return {suggestion: this.safeSuggestion(suggestion), ...(applied ? {impact: applied.impact} : {})};
   }
 
   private async listAudit(tx: UnitOfWork, p: Record<string, unknown>, actorId: string) {
     const {circle} = await this.access(tx, p.circleId, actorId, 'admin');
     const events = await tx.find('audit', {circleId: circle.id});
-    return {events: events.sort((a,b) => b.at - a.at).slice(0,100).map(({id, circleId, type, targetId, at, details}) => ({id, circleId, type, targetId, at, details}))};
+    const views = await Promise.all(events.sort((a,b) => b.at - a.at).slice(0,100).map(async ({id, circleId, actorId: eventActorId, type, targetId, at, details}) => {
+      const member = await tx.get('members', memberId(circle.id, eventActorId));
+      const person = member?.personId ? await tx.get('persons', member.personId) : undefined;
+      return {id, circleId, actorName: person?.circleId === circle.id ? person.name : member?.name || '原成员', type, targetId, at, details};
+    }));
+    return {events: views};
   }
 }

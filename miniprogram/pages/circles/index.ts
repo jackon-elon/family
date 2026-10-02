@@ -1,18 +1,34 @@
-import { Circle, invoke, isDemoMode, resetDemoData, setDemoMode, showApiError } from '../../services/api';
-import { confirm, go, q, toast } from '../../utils/navigation';
+import { Circle, JoinApplication, invoke, isDemoMode, resetDemoData, setDemoMode, showApiError } from '../../services/api';
+import { confirm, dateText, go, q, toast } from '../../utils/navigation';
+
+type ApplicationRow = JoinApplication & { circleName?: string; circleType?: string; statusText: string; date: string };
 
 Page({
-  data: { familyCircles: [] as Circle[], classCircles: [] as Circle[], demoMode: true, loading: true },
+  data: { familyCircles: [] as Circle[], classCircles: [] as Circle[], applicationRows: [] as ApplicationRow[], applicationError: '', demoMode: true, loading: true },
   async onShow(this: any) {
     this.setData({ demoMode: isDemoMode(), loading: true });
-    const result = await invoke<{ circles: Circle[] }>({ action: 'circle.list' });
+    const [result, mine] = await Promise.all([
+      invoke<{ circles: Circle[] }>({ action: 'circle.list' }),
+      invoke<{ applications: Array<JoinApplication & {circleName?: string; circleType?: string}> }>({ action: 'join.mine' })
+    ]);
     if (!result.ok) { showApiError(result); this.setData({ loading: false }); return; }
+    const applicationRows: ApplicationRow[] = mine.ok ? mine.data.applications
+      .slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, 5)
+      .map(application => ({
+        ...application,
+        date: dateText(application.createdAt),
+        statusText: application.status === 'approved' ? '已通过' : application.status === 'rejected' ? '未通过' : application.status === 'invalid' || application.status === 'expired' ? '已失效' : '审核中'
+      })) : [];
     this.setData({
       familyCircles: result.data.circles.filter(c => c.type === 'family'),
       classCircles: result.data.circles.filter(c => c.type === 'classmate'),
+      applicationRows,
+      applicationError: mine.ok ? '' : '加入申请暂时无法加载，点此重试',
       loading: false
     });
   },
+  onRetryApplications(this: any) { this.onShow(); },
+  onOpenApplication(this: any, event: any) { go(`/pages/apply/index?applicationId=${q(event.currentTarget.dataset.id)}`); },
   onOpenCircle(this: any, event: any) {
     const id = event.currentTarget.dataset.id;
     wx.setStorageSync('kin-current-circle', id);

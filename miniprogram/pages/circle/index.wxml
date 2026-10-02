@@ -6,7 +6,22 @@
     <view class="subtitle" wx:else>亲近的人，和他们现在生活的城市。</view>
     <view class="head-footer"><text>{{people.length}} 张人物卡</text><text> · </text><text>{{circle.mode === 'private' ? '自己记录' : '邀请共建'}}</text></view>
   </view>
-  <view class="self-prompt" wx:if="{{!selfId}}"><view class="grow"><view class="strong">先找到或创建你的本人卡</view><view class="small muted">认领后，你的位置会在关系网中亮起，还能看到亲属称呼。</view></view><button class="btn secondary small-btn" bindtap="onAddMyself">创建我的卡</button></view>
+  <view class="card claim-guide" wx:if="{{!selfId}}">
+    <view class="eyebrow">CONFIRM YOUR CARD</view><view class="section-title">确认哪张人物卡是你</view>
+    <view class="small muted claim-intro">加入圈子与认领人物卡分开办理。认领后，你的位置会在关系网中高亮；请先查看有没有家人或同学为你建好的卡。</view>
+    <view wx:if="{{pendingClaim}}" class="claim-pending"><view class="strong">「{{pendingClaimName}}」认领待审核</view><view class="small muted">管理员核对身份后才会绑定。这段时间可以先浏览圈内资料。</view></view>
+    <block wx:else>
+      <view wx:if="{{lastRejectedClaim}}" class="claim-rejected small">上一份认领申请未通过。请核对人物卡或联系管理员，再重新选择。</view>
+      <view wx:if="{{unclaimedPeople.length}}">
+        <view class="claim-subheading">已有未认领人物卡</view>
+        <view class="claim-search"><input value="{{claimQuery}}" placeholder="搜索你的姓名或昵称" bindinput="onClaimSearch" /></view>
+        <view class="claim-person" wx:for="{{claimCandidates}}" wx:key="id"><view class="avatar"><text>{{item.initial}}</text></view><view class="grow"><view class="claim-person-name">{{item.name}}</view><view class="small muted">{{item.nickname ? item.nickname + ' · ' : ''}}{{item.gender === 'male' ? '男' : item.gender === 'female' ? '女' : '信息待完善'}}</view></view><button class="btn secondary claim-person-btn" data-id="{{item.id}}" loading="{{claimBusy === item.id}}" bindtap="onClaimPerson">这是我</button></view>
+        <view class="small muted" wx:if="{{!claimCandidates.length}}">没有找到对应人物卡。可以换个名字搜索，或选择下面的新建入口。</view>
+        <view class="claim-show-all" wx:if="{{unclaimedPeople.length > claimCandidates.length && !claimQuery}}" bindtap="onShowAllCandidates">查看其余 {{unclaimedPeople.length - claimCandidates.length}} 张卡 ›</view>
+      </view>
+      <view class="claim-create"><view class="small muted">这些卡都不是你？新建前会再次检查同名卡，避免出现两张“自己”。</view><button class="btn secondary" bindtap="onAddMyself">都不是我，新建本人卡</button></view>
+    </block>
+  </view>
 
   <view class="segmented main-tabs">
     <view wx:if="{{circle.type === 'family'}}" class="segment {{tab === 'network' ? 'active' : ''}}" data-tab="network" bindtap="onTab">关系网</view>
@@ -57,6 +72,6 @@
     <view class="card empty" wx:else>可在自己的资料里选择城市。没有位置的人仍会留在列表中。</view>
   </view>
 
-  <view class="bottom-actions"><button wx:if="{{isAdmin}}" class="btn secondary" bindtap="onAddPerson">＋ 添加人物</button><button wx:if="{{isAdmin}}" class="btn ghost" bindtap="onManage">管理圈子</button></view>
+  <view class="bottom-actions"><button wx:if="{{isAdmin}}" class="btn secondary" bindtap="onAddPerson">＋ 添加未加入的人物卡</button><button wx:if="{{isAdmin}}" class="btn ghost" bindtap="onManage">管理圈子</button></view>
   <view class="leave-link" wx:if="{{role !== 'owner'}}" bindtap="onLeave">退出这个圈子</view>
 </view>

@@ -71,6 +71,11 @@ export interface Relation {
   createdAt: number;
 }
 
+export interface RelationChange {
+  removeRelationId?: string;
+  relation?: Pick<Relation, 'from' | 'to' | 'type' | 'olderId'>;
+}
+
 export interface Invite {
   id: string;
   circleId: string;
@@ -90,6 +95,7 @@ export interface Application {
   userId: string;
   name: string;
   note?: string;
+  /** Legacy field only. Join approval never binds a person card from it. */
   claimPersonId?: string;
   status: 'pending' | 'approved' | 'rejected' | 'expired';
   createdAt: number;
@@ -115,6 +121,9 @@ export interface Suggestion {
   personId?: string;
   type: 'person' | 'relation' | 'invite';
   message: string;
+  relationChange?: RelationChange;
+  /** Snapshot guard so approval cannot silently replace a newer relation. */
+  expectedRelationHash?: string;
   status: 'pending' | 'accepted' | 'rejected';
   createdAt: number;
   resolvedAt?: number;

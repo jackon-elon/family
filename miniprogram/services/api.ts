@@ -60,6 +60,10 @@ export interface Relation {
   olderId?: string;
 }
 
+export interface RelationInput { from: string; to: string; type: Relation['type']; olderId?: string }
+export interface RelationChange { removeRelationId?: string; relation?: RelationInput }
+export interface RelationImpact { removedRelationIds: string[]; createdRelationIds: string[]; affectedPersonIds: string[] }
+
 export interface Member {
   id: string;
   circleId: string;
@@ -87,9 +91,13 @@ export interface JoinApplication {
   applicantName: string;
   name?: string;
   note?: string;
-  claimPersonId?: string;
-  status: 'pending' | 'approved' | 'rejected' | 'invalid';
+  status: 'pending' | 'approved' | 'rejected' | 'expired' | 'invalid';
   createdAt: number;
+  circleName?: string;
+  circleType?: CircleType;
+  inviteStatus?: 'active' | 'expired' | 'revoked' | 'used' | 'missing';
+  inviteExpiresAt?: number;
+  actorId?: string; // Demo storage only; never returned to pages.
 }
 
 export interface Delegation {
@@ -101,10 +109,10 @@ export interface Delegation {
   active?: boolean;
   revokedAt?: number;
 }
-export interface AuditEvent { id: string; circleId: string; type: string; targetId: string; at: number; details?: Record<string, unknown> }
+export interface AuditEvent { id: string; circleId: string; type: string; targetId: string; at: number; actorName?: string; details?: Record<string, unknown> }
 
-export interface Suggestion { id: string; circleId: string; type: 'person' | 'relation' | 'invite'; personId?: string; message: string; status: 'pending' | 'accepted' | 'rejected'; createdAt: number; createdBy?: string }
-export interface ClaimRequest { id: string; circleId: string; personId: string; applicantName: string; status: 'pending' | 'approved' | 'rejected'; createdAt: number; actorId?: string }
+export interface Suggestion { id: string; circleId: string; type: 'person' | 'relation' | 'invite'; personId?: string; message: string; relationChange?: RelationChange; status: 'pending' | 'accepted' | 'rejected'; createdAt: number; createdBy?: string }
+export interface ClaimRequest { id: string; circleId: string; personId: string; personName?: string; applicantName: string; status: 'pending' | 'approved' | 'rejected'; createdAt: number; actorId?: string }
 
 export interface ApiError { code: string; message: string }
 export type ApiResult<T = any> = { ok: true; data: T } | { ok: false; error: ApiError };
@@ -213,7 +221,8 @@ function loadDb(): DemoDb {
 }
 function saveDb(db: DemoDb): void { storageSet(DB_KEY, db); }
 function recordAudit(db: DemoDb, circleId: string, type: string, targetId: string, details?: Record<string, unknown>): void {
-  db.audits.push({ id: uid('audit'), circleId, type, targetId, at: Date.now(), details });
+  const actor = db.members.find(member => member.circleId === circleId && member.actorId === DEMO_ACTOR && member.status === 'joined');
+  db.audits.push({ id: uid('audit'), circleId, type, targetId, at: Date.now(), actorName: actor?.name || '当前成员', details });
 }
 export function resetDemoData(): void { storageSet(DB_KEY, seedDb()); }
 
@@ -262,6 +271,86 @@ function requireAdmin(db: DemoDb, circleId: string): ApiResult<any> | null {
   return null;
 }
 
+function samePair(a: RelationInput, b: RelationInput): boolean {
+  return (a.from === b.from && a.to === b.to) || (a.from === b.to && a.to === b.from);
+}
+
+/** Mirror the cloud service's graph safeguards in local demo mode. */
+function previewDemoRelation(db: DemoDb, circleId: string, change: RelationChange): ApiResult<{before?: Relation; after?: RelationInput; impact: RelationImpact}> {
+  const circle = getCircle(db, circleId);
+  if (circle?.type !== 'family') return bad('WRONG_CIRCLE_TYPE', '同学圈不能录入亲属关系');
+  if (!change || (!change.removeRelationId && !change.relation)) return bad('INVALID_INPUT', '请选择要修改的关系');
+  const before = change.removeRelationId ? db.relations.find(r => r.id === change.removeRelationId && r.circleId === circleId) : undefined;
+  if (change.removeRelationId && !before) return bad('NOT_FOUND', '要修改的关系不存在');
+  const current = db.relations.filter(r => r.circleId === circleId && r.id !== change.removeRelationId);
+  const after = change.relation;
+  if (after) {
+    if (!after.from || !after.to || after.from === after.to) return bad('INVALID_INPUT', '请选择两个不同的人');
+    if (!db.persons.some(person => person.id === after.from && person.circleId === circleId) ||
+      !db.persons.some(person => person.id === after.to && person.circleId === circleId)) return bad('INVALID_INPUT', '人物不属于当前圈子');
+    if (['parent', 'spouse', 'sibling'].indexOf(after.type) < 0) return bad('INVALID_INPUT', '请选择关系类型');
+    if (after.olderId && (after.type !== 'sibling' || (after.olderId !== after.from && after.olderId !== after.to))) {
+      return bad('INVALID_INPUT', '较年长者须是这条兄弟姐妹关系中的一人');
+    }
+    if (current.some(relation => samePair(relation, after))) return bad('RELATION_CONFLICT', '这两位人物之间已有关系，请先更正原关系');
+    const candidate = [...current, {id: '_preview', circleId, ...after}];
+    const parentLinks = new Map<string, string[]>();
+    for (const relation of candidate) {
+      if (relation.type !== 'parent') continue;
+      const children = parentLinks.get(relation.from) || [];
+      children.push(relation.to); parentLinks.set(relation.from, children);
+    }
+    const seen = new Set<string>(); const active = new Set<string>();
+    const cycle = (id: string): boolean => {
+      if (active.has(id)) return true;
+      if (seen.has(id)) return false;
+      seen.add(id); active.add(id);
+      for (const child of parentLinks.get(id) || []) if (cycle(child)) return true;
+      active.delete(id); return false;
+    };
+    for (const id of parentLinks.keys()) if (cycle(id)) return bad('RELATION_CYCLE', '亲子关系形成循环，请核对方向');
+    const people = db.persons.filter(person => person.circleId === circleId).map(person => person.id);
+    const union = new Map(people.map(id => [id, id]));
+    const find = (id: string): string => { let root = id; while (union.get(root) !== root) root = union.get(root)!; return root; };
+    for (const relation of candidate) if (relation.type !== 'parent') {
+      const a = find(relation.from); const b = find(relation.to); if (a !== b) union.set(a, b);
+    }
+    const links = new Map<string, Array<{to: string; delta: number}>>();
+    for (const relation of candidate) if (relation.type === 'parent') {
+      const a = find(relation.from); const b = find(relation.to);
+      if (a === b) return bad('GENERATION_CONFLICT', '亲子与同辈关系矛盾，请核对');
+      links.set(a, [...(links.get(a) || []), {to: b, delta: 1}]);
+      links.set(b, [...(links.get(b) || []), {to: a, delta: -1}]);
+    }
+    const level = new Map<string, number>();
+    for (const start of people.map(find)) {
+      if (level.has(start)) continue;
+      level.set(start, 0); const queue = [start];
+      for (let i = 0; i < queue.length; i++) {
+        const from = queue[i];
+        for (const edge of links.get(from) || []) {
+          const next = level.get(from)! + edge.delta;
+          if (!level.has(edge.to)) { level.set(edge.to, next); queue.push(edge.to); }
+          else if (level.get(edge.to) !== next) return bad('GENERATION_CONFLICT', '新关系使人物辈分互相矛盾，请核对');
+        }
+      }
+    }
+  }
+  const endpoints = [before?.from, before?.to, after?.from, after?.to].filter((id): id is string => !!id);
+  const touched = new Set(endpoints);
+  const all = [...current, ...(before ? [before] : []), ...(after ? [{id: '_preview', circleId, ...after}] : [])];
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const relation of all) if (touched.has(relation.from) !== touched.has(relation.to)) {
+      touched.add(relation.from); touched.add(relation.to); grew = true;
+    }
+  }
+  return good({before, after, impact: {
+    removedRelationIds: before ? [before.id] : [], createdRelationIds: [], affectedPersonIds: [...touched]
+  }});
+}
+
 function mockInvoke(action: string, p: any): ApiResult<any> {
   const db = loadDb();
   const circleId = p.circleId as string;
@@ -292,10 +381,22 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     if (!invite) return bad('NOT_FOUND', '邀请不存在');
     if (invite.revokedAt || invite.usedAt || invite.expiresAt < Date.now()) return bad('INVITE_UNAVAILABLE', '这份邀请已失效，请联系管理员重新邀请');
     if (!p.name || !String(p.name).trim()) return bad('INVALID', '请填写你的姓名');
-    const application: JoinApplication = { id: uid('join'), circleId: invite.circleId, inviteId: invite.id, applicantName: String(p.name).trim(), name: String(p.name).trim(), note: p.note || '', claimPersonId: p.claimPersonId, status: 'pending', createdAt: Date.now() };
+    if (p.claimPersonId !== undefined) return bad('INVALID_INPUT', '请先申请加入，审核通过后再申请认领人物卡');
+    if (getCircle(db, invite.circleId)?.type === 'classmate' && !String(p.note || '').trim()) return bad('INVALID_INPUT', '请填写同班核对说明');
+    const application: JoinApplication = { id: uid('join'), circleId: invite.circleId, inviteId: invite.id, applicantName: String(p.name).trim(), name: String(p.name).trim(), note: p.note || '', status: 'pending', createdAt: Date.now(), actorId: DEMO_ACTOR };
     db.applications.push(application);
     saveDb(db);
-    return good({ application });
+    const {actorId: _actorId, ...visible} = application;
+    return good({ application: visible });
+  }
+  if (action === 'join.mine') {
+    return good({ applications: db.applications.filter(a => !a.actorId || a.actorId === DEMO_ACTOR).map(a => {
+      const invite = db.invites.find(i => i.id === a.inviteId);
+      const inviteStatus = !invite ? 'expired' : invite.revokedAt ? 'revoked' : invite.usedAt ? 'used' : invite.expiresAt <= Date.now() ? 'expired' : 'active';
+      const status = a.status === 'pending' && inviteStatus !== 'active' ? 'expired' : a.status;
+      const {actorId: _actorId, ...visible} = a;
+      return {...visible, status, inviteStatus, circleName: getCircle(db, a.circleId)?.name || '亲友圈', circleType: getCircle(db, a.circleId)?.type};
+    }) });
   }
   if (!circleId) return bad('INVALID', '缺少圈子 ID');
   const access = requireMember(db, circleId);
@@ -344,6 +445,7 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     if (!p.claimSelf) { const denied = requireAdmin(db, circleId); if (denied) return denied; }
     if (!p.name || !String(p.name).trim()) return bad('INVALID', '请填写姓名');
     if (p.claimSelf && db.persons.some(x => x.circleId === circleId && x.claimedBy === DEMO_ACTOR)) return bad('ALREADY_HAS_PERSON', '你在本圈已有本人卡');
+    if (p.claimSelf && db.claimRequests.some(x => x.circleId === circleId && x.actorId === DEMO_ACTOR && x.status === 'pending')) return bad('CLAIM_PENDING', '已有认领申请正在审核，请先等待结果');
     const person: Person = { id: uid('person'), circleId, name: String(p.name).trim(), gender: p.gender || 'unknown', birthOrder: p.birthOrder, visibility: {}, claimedBy: p.claimSelf ? DEMO_ACTOR : undefined, updatedAt: Date.now() };
     db.persons.push(person); saveDb(db);
     if (p.claimSelf) { const member = db.members.find(m => m.circleId === circleId && m.actorId === DEMO_ACTOR); if (member) member.personId = person.id; saveDb(db); }
@@ -401,10 +503,15 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     if (person.claimedBy) return bad('ALREADY_CLAIMED', '这张人物卡已被认领');
     if (db.persons.some(x => x.circleId === circleId && x.claimedBy === DEMO_ACTOR)) return bad('ALREADY_HAS_PERSON', '你在本圈已有本人卡');
     const member = db.members.find(m => m.circleId === circleId && m.actorId === DEMO_ACTOR);
-    if (db.claimRequests.some(x => x.personId === person.id && x.actorId === DEMO_ACTOR && x.status === 'pending')) return bad('DUPLICATE', '认领申请已在等待审核');
+    const pending = db.claimRequests.find(x => x.circleId === circleId && x.actorId === DEMO_ACTOR && x.status === 'pending');
+    if (pending) return pending.personId === person.id ? good({claimRequest: pending}) : bad('CLAIM_PENDING', '已有认领申请正在审核，请先等待结果');
     const claimRequest: ClaimRequest = { id: uid('claim'), circleId, personId: person.id, applicantName: member?.name || '成员', actorId: DEMO_ACTOR, status: 'pending', createdAt: Date.now() };
     db.claimRequests.push(claimRequest); saveDb(db);
     return good({ claimRequest });
+  }
+  if (action === 'person.claimMine') {
+    return good({ claimRequests: db.claimRequests.filter(x => x.circleId === circleId && x.actorId === DEMO_ACTOR)
+      .map(({actorId: _actorId, ...request}) => ({...request, personName: db.persons.find(person => person.id === request.personId)?.name || '人物卡'})) });
   }
   if (action === 'person.claimList') {
     const denied = requireAdmin(db, circleId); if (denied) return denied;
@@ -423,20 +530,41 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     if (member) member.personId = person.id;
     request.status = 'approved'; saveDb(db); return good({ claimRequest: request });
   }
-  if (action === 'relation.list') return good({ relations: db.relations.filter(r => r.circleId === circleId) });
-  if (action === 'relation.create') {
+  if (action === 'person.unclaim') {
     const denied = requireAdmin(db, circleId); if (denied) return denied;
-    if (getCircle(db, circleId)?.type !== 'family') return bad('INVALID', '同学圈不能添加亲属关系');
-    if (!p.from || !p.to || p.from === p.to) return bad('INVALID', '请选择两个不同的人');
-    if (!db.persons.some(x => x.id === p.from && x.circleId === circleId) || !db.persons.some(x => x.id === p.to && x.circleId === circleId)) return bad('INVALID', '人物不属于当前圈子');
-    if (['parent','spouse','sibling'].indexOf(p.type) < 0) return bad('INVALID', '请选择关系类型');
-    const relation: Relation = { id: uid('relation'), circleId, from: p.from, to: p.to, type: p.type, olderId: p.olderId };
-    db.relations.push(relation); recordAudit(db, circleId, 'relation.create', relation.id); saveDb(db); return good({ relation });
+    const person = db.persons.find(x => x.id === p.personId && x.circleId === circleId);
+    if (!person || !person.claimedBy) return bad('INVALID_INPUT', '这张人物卡没有认领人');
+    const oldActor = person.claimedBy;
+    const member = db.members.find(m => m.circleId === circleId && m.actorId === oldActor && m.personId === person.id);
+    if (member) member.personId = undefined;
+    person.claimedBy = undefined;
+    ['phone','wechatId','photoFileId','photoUrl','city','country','province','latitude','longitude','status','industry','occupation','school','bio'].forEach(key => { delete (person as any)[key]; });
+    person.visibility = {};
+    person.updatedAt = Date.now();
+    db.delegations.filter(d => d.personId === person.id && d.active).forEach(d => { d.active = false; d.revokedAt = Date.now(); });
+    recordAudit(db, circleId, 'person.unclaim', person.id, {privateFieldsCleared: true});
+    saveDb(db);
+    return good({ person: visiblePerson(person) });
   }
-  if (action === 'relation.delete') {
-    const denied = requireAdmin(db, circleId); if (denied) return denied;
-    db.relations = db.relations.filter(r => !(r.id === p.relationId && r.circleId === circleId)); recordAudit(db, circleId, 'relation.delete', p.relationId); saveDb(db);
-    return good({ deleted: true });
+  if (action === 'relation.list') return good({ relations: db.relations.filter(r => r.circleId === circleId) });
+  if (action === 'relation.preview' || action === 'relation.create' || action === 'relation.replace' || action === 'relation.delete') {
+    if (action !== 'relation.preview') { const denied = requireAdmin(db, circleId); if (denied) return denied; }
+    const change: RelationChange = action === 'relation.preview' ? p.relationChange : action === 'relation.create'
+      ? {relation: {from: p.from, to: p.to, type: p.type, olderId: p.olderId}}
+      : action === 'relation.replace' ? {removeRelationId: p.relationId, relation: p.relation}
+      : {removeRelationId: p.relationId};
+    const preview = previewDemoRelation(db, circleId, change);
+    if (!preview.ok || action === 'relation.preview') return preview;
+    const {before, after, impact} = preview.data;
+    if (before) db.relations = db.relations.filter(r => r.id !== before.id);
+    let created: Relation | undefined;
+    if (after) { created = {id: uid('relation'), circleId, ...after}; db.relations.push(created); impact.createdRelationIds.push(created.id); }
+    const kind = action === 'relation.replace' ? 'relation.replace' : action === 'relation.create' ? 'relation.create' : 'relation.delete';
+    recordAudit(db, circleId, kind, created?.id || before!.id, {removed: before, created});
+    saveDb(db);
+    if (action === 'relation.create') return good({relation: created});
+    if (action === 'relation.replace') return good({relation: created, impact});
+    return good({relationId: before!.id, impact});
   }
   if (action === 'invite.create') {
     const denied = requireAdmin(db, circleId); if (denied) return denied;
@@ -450,7 +578,15 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     if (!invite) return bad('NOT_FOUND', '邀请不存在');
     invite.revokedAt = Date.now(); recordAudit(db, circleId, 'invite.revoke', invite.id); saveDb(db); return good({ invite });
   }
-  if (action === 'join.list') return isAdmin(roleFor(db, circleId)) ? good({ applications: db.applications.filter(a => a.circleId === circleId) }) : bad('FORBIDDEN', '只有管理员可以查看申请');
+  if (action === 'join.list') {
+    if (!isAdmin(roleFor(db, circleId))) return bad('FORBIDDEN', '只有管理员可以查看申请');
+    return good({applications: db.applications.filter(a => a.circleId === circleId && a.status === 'pending').map(a => {
+      const invite = db.invites.find(i => i.id === a.inviteId);
+      const inviteStatus = !invite ? 'missing' : invite.revokedAt ? 'revoked' : invite.usedAt ? 'used' : invite.expiresAt <= Date.now() ? 'expired' : 'active';
+      const {actorId: _actorId, ...visible} = a;
+      return {...visible, inviteStatus, inviteExpiresAt: invite?.expiresAt};
+    })});
+  }
   if (action === 'join.approve' || action === 'join.reject') {
     const denied = requireAdmin(db, circleId); if (denied) return denied;
     const application = db.applications.find(a => a.id === p.applicationId && a.circleId === circleId);
@@ -459,16 +595,7 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     if (action === 'join.reject') { application.status = 'rejected'; recordAudit(db, circleId, 'join.reject', application.id); saveDb(db); return good({ application }); }
     const invite = db.invites.find(i => i.id === application.inviteId);
     if (!invite || invite.revokedAt || invite.usedAt || invite.expiresAt < Date.now()) return bad('INVITE_UNAVAILABLE', '邀请已失效，无法批准');
-    let person: Person | undefined;
-    if (application.claimPersonId) {
-      person = db.persons.find(x => x.id === application.claimPersonId && x.circleId === circleId);
-      if (!person || person.claimedBy) return bad('ALREADY_CLAIMED', '要认领的人物卡已不可用');
-      person.claimedBy = `guest_${application.id}`;
-    } else {
-      person = { id: uid('person'), circleId, name: application.applicantName, claimedBy: `guest_${application.id}`, visibility: {}, updatedAt: Date.now() };
-      db.persons.push(person);
-    }
-    db.members.push({ id: uid('member'), circleId, name: application.applicantName, role: 'member', personId: person.id, status: 'joined', actorId: `guest_${application.id}` });
+    db.members.push({ id: uid('member'), circleId, name: application.applicantName, role: 'member', status: 'joined', actorId: `guest_${application.id}` });
     application.status = 'approved'; invite.usedAt = Date.now();
     db.applications.filter(a => a.inviteId === invite.id && a.id !== application.id && a.status === 'pending').forEach(a => { a.status = 'invalid'; });
     recordAudit(db, circleId, 'join.approve', application.id); saveDb(db); return good({ application });
@@ -522,8 +649,13 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
   if (action === 'suggestion.create') {
     if (!p.message || !String(p.message).trim()) return bad('INVALID', '请写下建议内容');
     if (['person','relation','invite'].indexOf(p.type) < 0) return bad('INVALID', '建议类型不正确');
-    const suggestion: Suggestion = { id: uid('suggestion'), circleId, type: p.type, personId: p.personId, message: String(p.message).trim(), status: 'pending', createdAt: Date.now(), createdBy: DEMO_ACTOR };
-    db.suggestions.push(suggestion); saveDb(db); return good({ suggestion });
+    const relationChange: RelationChange | undefined = p.type === 'relation' ? p.relationChange : undefined;
+    if (p.type === 'relation') {
+      const preview = previewDemoRelation(db, circleId, relationChange!);
+      if (!preview.ok) return preview;
+    }
+    const suggestion: Suggestion = { id: uid('suggestion'), circleId, type: p.type, personId: p.personId, message: String(p.message).trim(), relationChange, status: 'pending', createdAt: Date.now(), createdBy: DEMO_ACTOR };
+    db.suggestions.push(suggestion); recordAudit(db, circleId, 'suggestion.create', suggestion.id); saveDb(db); return good({ suggestion });
   }
   if (action === 'suggestion.list') {
     const list = db.suggestions.filter(s => s.circleId === circleId && (isAdmin(roleFor(db, circleId)) || s.createdBy === DEMO_ACTOR));
@@ -534,7 +666,24 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     const suggestion = db.suggestions.find(s => s.circleId === circleId && s.id === p.suggestionId);
     if (!suggestion || suggestion.status !== 'pending') return bad('INVALID', '建议已处理或不存在');
     if (p.status !== 'accepted' && p.status !== 'rejected') return bad('INVALID', '处理结果不正确');
-    suggestion.status = p.status; saveDb(db); return good({ suggestion });
+    if (p.status === 'accepted' && (suggestion.type !== 'relation' || !suggestion.relationChange)) {
+      return bad('CHANGE_REQUIRED', '请先完成具体变更，不能只把建议标记为已采纳');
+    }
+    let impact: RelationImpact | undefined;
+    let removed: Relation | undefined;
+    let created: Relation | undefined;
+    if (p.status === 'accepted' && suggestion.type === 'relation') {
+      const preview = previewDemoRelation(db, circleId, suggestion.relationChange!);
+      if (!preview.ok) return preview;
+      const {before, after} = preview.data;
+      impact = preview.data.impact;
+      removed = before;
+      if (removed) db.relations = db.relations.filter(relation => relation.id !== removed!.id);
+      if (after) { created = {id: uid('relation'), circleId, ...after}; db.relations.push(created); impact.createdRelationIds.push(created.id); }
+    }
+    suggestion.status = p.status;
+    recordAudit(db, circleId, 'suggestion.resolve', suggestion.id, {status: p.status, ...(impact ? {removed, created, affectedPersonIds: impact.affectedPersonIds, reason: suggestion.message} : {})});
+    saveDb(db); return good({ suggestion, impact });
   }
   if (action === 'delegation.grant') {
     const person = db.persons.find(x => x.id === p.personId && x.circleId === circleId);

@@ -2,6 +2,7 @@ const cloud = require('wx-server-sdk');
 const { ApiService } = require('./lib/service');
 const { CloudBaseRepository } = require('./lib/cloudbase-repository');
 const { handlePhotoUpload } = require('./photo-upload');
+const { handleInviteCode } = require('./invite-code');
 
 cloud.init({env: cloud.DYNAMIC_CURRENT_ENV});
 
@@ -20,5 +21,6 @@ exports.main = async (event) => {
   };
   const api = new ApiService(new CloudBaseRepository(db), Date.now, signPhoto);
   if (event && event.action === 'photo.upload') return handlePhotoUpload(event, OPENID, api, cloud);
+  if (event && event.action === 'invite.code') return handleInviteCode(event, OPENID, api, cloud);
   return api.invoke(event || {}, OPENID);
 };

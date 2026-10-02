@@ -1,6 +1,6 @@
 # 亲友关系网后端设计（本地版）
 
-版本：0.1；对应需求文档讨论稿 0.5。此文档描述已经实现的本地服务和将来接入微信云开发时的部署边界。已有测试小程序 AppID，尚无云开发环境，因此云端行为尚未实测。
+版本：0.2；对应需求文档讨论稿 0.6。此文档描述本地服务与云函数接线，并标明接入微信云开发后的验证边界。已有测试小程序 AppID，尚无云开发环境，因此云端行为尚未实测。
 
 ## 1. 架构与边界
 
@@ -17,17 +17,17 @@
 - `persons`：圈内人物卡、基础关系信息、可选资料、可选的城市代表点 `latitude/longitude`、每字段可见范围、内部认领账号、关系连接计数。代表点取整到 0.1 度；手动选点来自小程序原生地图的 GCJ-02 坐标，常见城市使用预设近似中心。不记录实时定位或住址。
 - `relations`：仅家庭圈使用。`parent` 为 `from` 父母到 `to` 子女的有向边；`spouse` 和 `sibling` 为无向关系，`olderId` 可标记兄弟姐妹中的较长者。人物 `birthOrder` 是同父母、同性别兄弟姐妹中的排行，用于“大姨／二姨”等称呼；两人长幼优先取 `olderId`。
 - `invites`：邀请码哈希、创建人、72 小时到期时间、撤销和一次性使用状态。原始令牌仅在创建响应中给管理员一次。
-- `applications`：加入申请、身份核对说明、可选的认领卡、审批状态。
+- `applications`：加入申请、身份核对说明、审批状态；申请阶段不选人物卡。
 - `claimRequests`：已加入成员认领现有未认领卡的申请。
 - `delegations`：已认领人物本人对某位管理员授权的字段列表及撤销时间。
-- `suggestions`：成员提交人物、关系或邀请建议，由管理员标记处理结果。
-- `audit`：邀请、审批、角色、成员、人物、关系、授权等关键操作记录。
+- `suggestions`：成员提交人物、关系或邀请建议；关系建议保存结构化的新增／删除／替换边及原边指纹，供管理员预览和原子采纳。
+- `audit`：邀请、审批、角色、成员、人物、关系、授权等关键操作记录；关系更正记录删除和创建的边摘要。
 
-本地 `MemoryRepository.atomic` 串行执行并在失败时丢弃本次变更。CloudBase 适配器以事务保护确定性 ID 的成员文档、人物卡和邀请码文档；同一邀请的两次审批均须在事务里读写同一 `invites/{id}`，只有一个能提交。关系边按圈子、类型和端点生成确定性 ID；建立／删除关系时在同一事务读写两端人物的连接计数，删除人物时读取该计数，避免并发操作产生重复边或悬空关系。CloudBase 文档型数据库事务要求在服务端运行且事务内只使用 `doc(id)` 操作，因此列表查询用事务外的 `where`；决定权限和冲突的文档仍在事务内按 ID 读取。事务冲突会使请求失败，前端可刷新后重试。参考[腾讯云事务文档](https://docs.cloudbase.net/database/transaction)。
+本地 `MemoryRepository.atomic` 串行执行并在失败时丢弃本次变更。CloudBase 适配器以事务保护确定性 ID 的成员文档、人物卡和邀请码文档；同一邀请的两次审批均须在事务里读写同一 `invites/{id}`，只有一个能提交。关系边按圈子、类型和端点生成确定性 ID；关系变更在事务内更新圈子文档和相关人物连接计数，让同圈写入发生冲突时重试或失败，避免两个并发编辑各自依据旧图提交。关系图扫描用于计算变更计划和冲突；CloudBase 事务内的集合列表查询仍受 SDK 限制，云端真实并发行为须实测。CloudBase 文档型数据库事务要求在服务端运行且事务内只使用 `doc(id)` 操作，因此列表查询用事务外的 `where`；决定权限和冲突的文档仍在事务内按 ID 读取。事务冲突会使请求失败，前端可刷新后重试。参考[腾讯云事务文档](https://docs.cloudbase.net/database/transaction)。
 
 ## 3. 权限与资料可见性
 
-- **未加入者**：只能凭有效令牌调用 `invite.preview`，看到圈名、类型及班级识别信息；可申请加入，审批前不能读人物、地图、关系或联系方式。
+- **未加入者**：可凭令牌调用 `invite.preview`，看到圈名、类型及班级识别信息；有效令牌可申请加入，也可凭自己的微信身份调用 `join.mine` 查看本人申请状态。审批前不能读人物、地图、关系或联系方式。
 - **成员**：能读本圈经过字段过滤的人物和关系；能编辑自己已认领的资料与可见范围、申请认领现有卡、提交建议、退出圈子。
 - **管理员**：能邀请、审批、维护未认领卡的姓名等最少字段、建立和删除关系、处理建议、移除普通成员。管理员身份不能越过他人对联系方式、照片和城市设置的可见范围。
 - **圈主**：拥有管理员权限，还能任免管理员、移交圈主、开启共建。圈主不能被移除，退出前须先移交。
@@ -56,10 +56,11 @@
 
 - `person.list`：`{circleId}` → `{persons:[person]}`；地图和列表使用同一响应，因此隐藏城市不会进入地图人数。
 - `person.get`：`{circleId,personId}` → `{person}`；本人额外得到 `visibility` 和活跃 `delegations`；受托管理员得到 `myDelegatedFields`。
-- `person.create`：`{circleId,name,nickname?,gender?,birthOrder?,claimSelf?}` → `{person}`。管理员可创建未认领卡；任何尚无本人卡的已加入成员都可用 `claimSelf:true` 创建并认领自己的新卡，因此未选择现有卡的新同学也能填写资料。普通成员不能创建他人卡。
+- `person.create`：`{circleId,name,nickname?,gender?,birthOrder?,claimSelf?}` → `{person}`。管理员可创建未认领卡；尚无本人卡、也无待审认领申请的已加入成员可用 `claimSelf:true` 创建并认领自己的新卡。普通成员不能创建他人卡。
 - `person.update`：`{circleId,personId,patch:{...},visibility?:{field:'self'|'circle'}}` → `{person}`。本人可编辑并设可见性；管理员对未认领卡仅可改基础字段；受托管理员仅可修改授权字段。
 - `person.delete`：`{circleId,personId}` → `{personId}`。只能删除未认领、无关系连接的卡；有关系时返回 `RELATION_CONNECTED` 和关联数量说明。
-- `person.claim`：`{circleId,personId}` → `{claimRequest}`，仅提出申请；管理员用 `person.claimList` 查看含 `applicantName` 的待审请求，再用 `person.claimApprove`、`person.claimReject`（后两者 `{circleId,claimRequestId}`）核对后绑定。加入申请也可携带 `claimPersonId`，在加入审批时一并核对。
+- `person.claim`：`{circleId,personId}` → `{claimRequest}`，仅已加入且尚无本人卡的成员可提出申请；管理员用 `person.claimList` 查看含 `applicantName` 的待审请求，再用 `person.claimApprove`、`person.claimReject`（后两者 `{circleId,claimRequestId}`）核对后绑定。加入申请不能携带 `claimPersonId`，加入审批也不绑定人物卡。
+- `person.claimMine`：`{circleId}` → `{claimRequests}`，仅返回当前成员在此圈的认领申请及人物名称，供本人查看待审、通过和拒绝状态。
 - `person.unclaim`：`{circleId,personId}` → `{person}`，管理员纠正误认领；解绑账号、清除该卡私人资料、撤销代维护授权并留审计记录。
 - `photo.upload`：`{circleId,personId,base64}` → `{person}`。小程序先将 JPEG 压缩到 1 MiB 以内，再以 base64 调用云函数；云函数验证文件签名、大小与人物编辑权限，服务端上传到 `photos/<当前 OPENID>/<UUID>.jpg`，并绑定到人物卡。若绑定时权限已变更，会尝试删除刚上传的文件。`photo.uploadPath` 是云函数内部用于二次鉴权的动作，客户端不需要调用。人物和成员查询不返回其他人的 OPENID。
 - `photo.url`：`{circleId,personId}` → `{url}`，先检查本圈成员与照片可见性；拥有有效 `photoFileId` 代维护授权的管理员也可查看该照片。随后签发短时链接。
@@ -68,23 +69,26 @@
 
 ### 关系、邀请、审批与授权
 
-- `relation.list/create/delete`：分别传 `{circleId}`、`{circleId,from,to,type,olderId?}`、`{circleId,relationId}`；创建删除仅管理员，且仅家庭圈。
+- `relation.list`：`{circleId}` → `{relations}`，仅家庭圈活跃成员可读。
+- `relation.preview`：`{circleId,relationChange:{removeRelationId?,relation?:{from,to,type,olderId?}}}` → `{impact,before?,after?}`。成员可预览结构化建议，管理员可在新增、删除或替换前核对；不落库。`impact` 包含删除／新增的关系 ID 和可能受影响的人物 ID，范围按相关连通部分计算，不是逐人称呼差异清单。
+- `relation.create/replace/delete`：分别传 `{circleId,from,to,type,olderId?}`、`{circleId,relationId,relation:{from,to,type,olderId?}}`、`{circleId,relationId}`；只有管理员可修改，且仅家庭圈。新增和替换会校验互斥边、亲子环及确定的代际矛盾；删除可用于清理旧图。修改写入前后关系摘要及操作原因。
 - `invite.create`：`{circleId}` → `{invite:{id,token,expiresAt,status}}`，仅共建圈管理员。`token` 是 32 字符 base64url 字符串，可放入小程序码 `scene`；微信卡片和二维码必须承载**同一个 token**，不能各生成一份。
-- `invite.preview`：`{token}` → `{circle,expiresAt,status}`，唯一不要求已加入身份的读取接口，不含成员信息。
-- `invite.apply`：`{token,name,note?,claimPersonId?}` → `{application}`。申请人最多看到自己的申请响应。
+- `invite.code`：云函数外层路由接收 `{circleId,token}`。先以当前 OPENID 调用管理员专用的 `invite.list` 做权限校验，再核实 token 属于此圈且仍有效，最后调用微信小程序码接口，固定落地页为 `pages/apply/index`，以同一 token 作为 `scene`，返回 PNG 的 base64。演示适配器不提供真码；真实调用须在已绑定小程序的 CloudBase 环境验证。
+- `invite.preview`：`{token}` → `{circle,expiresAt,status}`，凭有效令牌可在入圈前查看有限圈信息，不含成员信息；`join.mine` 另允许申请人按自己的微信身份查询本人申请。
+- `invite.apply`：`{token,name,note?}` → `{application}`。同学圈 `note` 必填，家庭圈可选；旧客户端若传 `claimPersonId`，服务端拒绝。申请人最多看到自己的申请响应。
 - `invite.list/revoke`：`{circleId}`、`{circleId,inviteId}`，仅管理员；列表不返回原始 token。
-- `join.list`：`{circleId}` → `{applications}`；`join.approve/reject`：`{circleId,applicationId}` → `{application}`，仅管理员。批准时再次检查邀请到期／撤销／已用状态，并原子绑定成员及人物卡。多人用一份邀请码申请时，仅一人可获批准；其余申请标记过期。
-- `join.mine`：`{}` → `{applications}`，申请人查看自己提交的加入申请和处理状态，不返回别人的申请。
+- `join.list`：`{circleId}` → `{applications}`；`join.approve/reject`：`{circleId,applicationId}` → `{application}`，仅管理员。批准时再次检查邀请到期／撤销／已用状态，并原子建立成员资格，但不创建或认领人物卡。多人用一份邀请码申请时，仅一人可获批准；其余申请标记过期。
+- `join.mine`：`{}` → `{applications}`，申请人查看自己的申请、圈名／类型及处理状态；待审申请若对应邀请已失效，响应显示失效状态，不返回别人的申请。
 - `delegation.grant`：`{circleId,personId,adminMemberId,fields:[...]}` → `{delegation}`，只有已认领人物本人可授权。
 - `delegation.revoke`：`{circleId,delegationId}` → `{delegation}`，只有授权人可撤销。
-- `suggestion.create/list/resolve`：创建 `{circleId,type:'person'|'relation'|'invite',personId?,message}`；列表 `{circleId}`；管理员处理 `{circleId,suggestionId,status:'accepted'|'rejected'}`。接受建议只记录处理结果，具体资料或关系仍由管理员调用对应写接口。
-- `audit.list`：`{circleId}` → `{events}`，仅管理员，最近 100 条；成员不可查其他人的管理记录。
+- `suggestion.create/list/resolve`：创建 `{circleId,type:'person'|'relation'|'invite',personId?,message,relationChange?}`；关系建议必须带结构化 `relationChange`。管理员处理 `{circleId,suggestionId,status:'accepted'|'rejected'}`。采纳关系建议时按原边指纹检查是否过期，再于同一事务更新关系、建议状态和审计；冲突时仍为待处理。人物和邀请类建议不能只点击「已采纳」而不做实际操作；旧纯文字关系建议也不能直接采纳，可以拒绝并请成员重提具体更正。
+- `audit.list`：`{circleId}` → `{events}`，仅管理员，最近 100 条；返回操作者名称、时间、动作与安全的改动摘要，不返回 OPENID。成员不可查其他人的管理记录。
 
 ## 5. 邀请与认领状态
 
 邀请码由随机 24 字节编码为 32 字符 base64url 字符串。服务端以 SHA-256 摘要作邀请文档 ID 和校验值，不存原始 token；链接有效期为创建后 72 小时，管理员可随时撤销。展示、申请和审批分别检查状态；审批以当前服务端时间再检查一次，避免“申请时有效、审批时已过期”绕过。被转发的人只能提交身份说明，管理员核对后再批准。同学圈的“是否同班”由管理员依据学校、届别、班级及申请说明人工核对，服务无法自动证明现实身份。
 
-一张人物卡只能有一个 `claimedBy`。同名、相同手机号都不会自动绑定。圈内已有成员的认领必须独立申请和审批；加入时认领在加入审批事务内完成。并发认领会同时写同一人物文档，至多一方提交成功。
+一张人物卡只能有一个 `claimedBy`。同名、相同手机号都不会自动绑定。加入审核只授予圈内成员资格；成员进入圈子后核对已有卡，独立申请并经管理员审批认领，或在确认无卡时新建本人卡。成员有待审认领时，服务端拒绝其新建本人卡；并发认领、新建的相互冲突须由事务阻止。一张人物卡的并发认领会同时写同一人物文档，至多一方提交成功。误认领由管理员解绑，清空照片、地点、联系方式等私人字段并撤销代维护授权，关系节点保留；当前没有恢复已清空内容的入口。
 
 ## 6. 云开发安全配置与部署前置
 
@@ -94,10 +98,12 @@
 
 **函数**：可参考 [function-api-only.json](../cloudfunctions/security/function-api-only.json)，只开放 `api` 给已登录调用者。**上线硬门槛：`api` 只能由已绑定的小程序通过事件调用，禁用 HTTP、Web、定时器、数据库触发器及其他来源调用同一函数。**身份来源是 `wx.cloud.callFunction` 的 `OPENID`；腾讯云文档指出混合调用来源时 `getWXContext()` 可能因实例复用残留上一位用户身份，函数安全规则 `auth != null` 本身不能证明来源。未来增加其他端时须拆分入口或采用能够验证调用来源的可信上下文身份方案，不能沿用此入口。参考[云函数实例复用说明](https://docs.cloudbase.net/cloud-function/instance)。不要在客户端直连数据库或存储做越权查询。安全规则在真实环境中需要逐项检查生效情况，不能只因本地测试通过就发布。
 
+**小程序码**：`invite.code` 使用云函数内的 `cloud.openapi.wxacode.getUnlimited`；管理员必须持有当前有效邀请的原始 token 才能生成。`scene` 为一次性 token，微信分享卡片与扫码落地页均走 `invite.preview` 和 `invite.apply`，最终由同一条 `join.approve` 消耗邀请。云函数只接受有效 PNG，并对返回大小设上限。可用 `WX_CODE_ENV_VERSION` 指定 `develop`／`trial`／`release`，默认 `release`；联调时需按开发版本设置，且确保小程序已绑定云环境。接口代码与模拟 SDK 测试不等于真实微信开放接口已成功，必须真机扫码验证。
+
 部署顺序：创建微信小程序账号和云开发环境、绑定 AppID；创建十个数据库集合并逐个配置拒绝客户端访问规则；配置云存储和函数规则；在项目根目录执行 `npm run build:cloud`（编译后端并复制产物到 `cloudfunctions/api/lib`）；**从根目录的 `project.config.json` 打开微信开发者工具项目**，其 `miniprogramRoot` 为 `miniprogram/`、`cloudfunctionRoot` 为 `cloudfunctions/`，然后上传 `api` 云函数，或在有权限的环境用 CloudBase CLI 将 `cloudfunctions/api` 部署为事件型函数 `api`；再用真实测试账号验证权限、邀请和照片。当前 `cloudfunctions/api/package.json` 指定 `wx-server-sdk`，部署时安装云端依赖。不要只打开 `miniprogram/project.config.json`，那样云函数目录不在项目根下。参考[微信小程序调用云函数](https://docs.cloudbase.net/recipes/add-cloud-function-wechat-miniprogram)、[安全规则](https://docs.cloudbase.net/rule/rule-example)。
 
 ## 7. 本地验证与未完成事项
 
-在项目根目录运行 `npm run test:backend`，会先编译 TypeScript，然后运行 Node 自带测试。当前 18 项测试包含圈子隔离、跨圈管理员越权、邀请转发后审批前隔离、并发一次使用、到期与撤销、角色调整与圈主移交、成员退出、字段隐私、城市代表点校验与过滤、照片上传与签名、成员移除、代维护授权、认领审批、同学圈本人卡及关联卡删除保护。
+在项目根目录运行 `npm run test:backend`，会先编译 TypeScript，然后运行 Node 自带测试。测试包含圈子隔离、跨圈管理员越权、邀请转发后审批前隔离、并发一次使用、到期与撤销、加入后独立认领、待审认领与新建本人卡冲突、角色调整与圈主移交、成员退出、字段隐私、城市代表点校验与过滤、照片上传与签名、成员移除、代维护授权、关系预览／替换／冲突、结构化建议的原子采纳和审计，以及小程序码路由的模拟 SDK 校验。
 
-本地自动化测试不需要 AppID，测试使用内存仓库和模拟账号 ID。CloudBase SDK 适配器、真实微信 OPENID、数据库安全规则、云存储及实际并发事务仍须在云开发环境就绪后做端到端验证。云端照片压缩和上传也需要真机验证。当前没有实现推送通知、圈子解散与数据导出保留期限；这些事项需在上线前按产品决定补齐。地图选点由前端原生地图完成，后端校验坐标、取整并按城市权限过滤；中文称呼由独立模块计算。
+本地自动化测试不需要 AppID，测试使用内存仓库和模拟账号 ID。CloudBase SDK 适配器、真实微信 OPENID、数据库安全规则、云存储、真实小程序码及实际并发事务仍须在云开发环境就绪后做端到端验证。云端照片压缩和上传也需要真机验证。当前没有实现主动通知、操作撤销或恢复、圈子解散与数据导出保留期限、复杂再婚／收养／继亲关系类型和重复人物卡合并；这些事项需按产品上线范围决定补齐。地图选点由前端原生地图完成，后端校验坐标、取整并按城市权限过滤；中文称呼由独立模块计算。

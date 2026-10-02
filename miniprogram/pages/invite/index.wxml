@@ -3,12 +3,13 @@
   <view class="card review-card"><view class="section-title">分享前看一眼</view><view class="review-numbers"><view><text class="number">{{sharedPeople}}</text><text class="number-label">张人物卡</text></view><view><text class="number">{{visibleCities}}</text><text class="number-label">个可见城市</text></view></view><view class="small muted">被邀请者申请通过后，才会看到本圈允许成员查看的内容。手机号、微信号默认仅本人可见。</view></view>
   <view wx:if="{{!invite}}" class="create-invite"><button class="btn" disabled="{{creating}}" bindtap="onGenerate">{{creating ? '正在生成…' : '生成一次性邀请'}}</button></view>
   <view wx:else>
-    <view class="card invite-card"><view class="row between"><view class="pill">可用邀请</view><text class="small muted">{{expiryText}} 到期</text></view><view class="invite-name">{{circle.name}}</view><view class="small muted">微信卡片与下方口令对应同一份邀请，只能批准一人。</view>
-      <view class="qr-placeholder"><view class="qr-grid"><view wx:for="{{qrCells}}" wx:key="id" class="qr-cell {{item.on ? 'on' : ''}}"></view></view><view class="qr-caption">二维码预留位</view><view class="small muted">当前版本请使用微信分享或复制口令</view></view>
+    <view class="card invite-card"><view class="row between"><view class="pill">可用邀请</view><text class="small muted">{{expiryText}} 到期</text></view><view class="invite-name">{{circle.name}}</view><view class="small muted">{{demoMode ? '当前为本地演示，口令仅在本机预览中有效。' : '微信分享、扫码和下方口令对应同一份邀请，只能批准一人。'}}</view>
+      <view class="qr-panel" wx:if="{{qrPath}}"><image class="invite-qr" src="{{qrPath}}" mode="aspectFit" show-menu-by-longpress="{{true}}"/><view class="qr-caption">用微信扫一扫此小程序码</view><view class="small muted">与微信分享共用同一份邀请，只能成功加入一人。</view></view>
+      <view class="qr-panel" wx:else><view class="qr-caption">{{qrLoading ? '正在生成小程序码…' : '暂时没有可扫码的小程序码'}}</view><view class="small muted">{{qrError || '请使用微信分享或复制口令'}}</view></view>
       <view class="token-label">邀请口令</view><view class="token-box">{{invite.token}}</view>
-      <button class="btn share-btn" wx:if="{{!demoMode}}" open-type="share">微信分享邀请</button><button class="btn secondary" bindtap="onCopy">复制邀请口令</button><button class="btn ghost" bindtap="onPreview">预览受邀者申请页面</button>
+      <button class="btn share-btn" wx:if="{{!demoMode}}" open-type="share">微信分享邀请</button><button class="btn secondary" bindtap="onCopy">{{demoMode ? '复制演示口令' : '复制邀请口令'}}</button><button class="btn ghost" bindtap="onPreview">预览受邀者申请页面</button>
     </view>
     <button class="revoke" bindtap="onRevoke">撤销这份邀请</button>
   </view>
-  <view class="demo-note" wx:if="{{demoMode}}">演示模式提示：分享卡片需要真实小程序身份；可点「预览受邀者申请页面」走完整审核流程。</view>
+  <view class="demo-note" wx:if="{{demoMode}}">本地演示可点「预览受邀者申请页面」体验审核流程。真实微信分享和扫码需配置云环境并在真机上联调。</view>
 </view>

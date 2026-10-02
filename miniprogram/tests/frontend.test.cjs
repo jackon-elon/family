@@ -110,15 +110,65 @@ test('one invite can approve only one application, including in demo mode', asyn
   const created = await invoke({ action: 'invite.create', payload: { circleId: 'family_demo' } });
   assert.equal(created.ok, true);
   const token = created.data.invite.token;
+  const prematureClaim = await invoke({ action: 'invite.apply', payload: { token, name: '张晴', claimPersonId: 'f_uncle' } });
+  assert.equal(prematureClaim.ok, false);
   const first = await invoke({ action: 'invite.apply', payload: { token, name: '张晴' } });
   const second = await invoke({ action: 'invite.apply', payload: { token, name: '刘安' } });
   assert.equal(first.ok, true); assert.equal(second.ok, true);
+  const mine = await invoke({ action: 'join.mine' });
+  assert.ok(mine.data.applications.some(application => application.id === first.data.application.id && application.status === 'pending' && application.circleName === '陈家的小圈子'));
+  const personCount = storage.get('kin-network-demo-db-v2').persons.length;
   const approved = await invoke({ action: 'join.approve', payload: { circleId: 'family_demo', applicationId: first.data.application.id } });
   assert.equal(approved.ok, true);
+  const db = storage.get('kin-network-demo-db-v2');
+  assert.equal(db.persons.length, personCount, 'approval must not create a duplicate card');
+  assert.equal(db.members.find(member => member.actorId === `guest_${first.data.application.id}`).personId, undefined);
   const replay = await invoke({ action: 'join.approve', payload: { circleId: 'family_demo', applicationId: second.data.application.id } });
   assert.equal(replay.ok, false);
   const preview = await invoke({ action: 'invite.preview', payload: { token } });
   assert.equal(preview.data.status, 'used');
+});
+
+test('demo relation correction previews impact, blocks conflicts, and applies accepted suggestion', async () => {
+  resetDemoData();
+  const circleId = 'family_demo';
+  const conflict = await invoke({action: 'relation.create', payload: {circleId, from: 'f_dad', to: 'f_me', type: 'spouse'}});
+  assert.equal(conflict.ok, false);
+  assert.equal(conflict.error.code, 'RELATION_CONFLICT');
+  const cycle = await invoke({action: 'relation.create', payload: {circleId, from: 'f_me', to: 'f_grandma', type: 'parent'}});
+  assert.equal(cycle.ok, false);
+  assert.equal(cycle.error.code, 'RELATION_CYCLE');
+
+  const relationChange = {removeRelationId: 'r5', relation: {from: 'f_uncle', to: 'f_dad', type: 'sibling'}};
+  const preview = await invoke({action: 'relation.preview', payload: {circleId, relationChange}});
+  assert.equal(preview.ok, true);
+  assert.deepEqual(preview.data.impact.removedRelationIds, ['r5']);
+  assert.ok(preview.data.impact.affectedPersonIds.includes('f_me'));
+  const suggestion = await invoke({action: 'suggestion.create', payload: {circleId, type: 'relation', message: '长幼顺序待核实', relationChange}});
+  assert.equal(suggestion.ok, true);
+  const accepted = await invoke({action: 'suggestion.resolve', payload: {circleId, suggestionId: suggestion.data.suggestion.id, status: 'accepted'}});
+  assert.equal(accepted.ok, true);
+  const relations = await invoke({action: 'relation.list', payload: {circleId}});
+  assert.ok(!relations.data.relations.some(relation => relation.id === 'r5'));
+  assert.ok(relations.data.relations.some(relation => relation.from === 'f_uncle' && relation.to === 'f_dad' && relation.type === 'sibling' && !relation.olderId));
+  resetDemoData();
+});
+
+test('admin join queue marks an expired invitation before approval', async () => {
+  resetDemoData();
+  const circleId = 'family_demo';
+  const created = await invoke({action: 'invite.create', payload: {circleId}});
+  const applied = await invoke({action: 'invite.apply', payload: {token: created.data.invite.token, name: '待核对家人'}});
+  assert.equal(applied.ok, true);
+  const db = storage.get('kin-network-demo-db-v2');
+  db.invites.find(invite => invite.id === created.data.invite.id).expiresAt = Date.now() - 1;
+  storage.set('kin-network-demo-db-v2', db);
+  const queue = await invoke({action: 'join.list', payload: {circleId}});
+  assert.equal(queue.ok, true);
+  assert.equal(queue.data.applications.find(application => application.id === applied.data.application.id).inviteStatus, 'expired');
+  const result = await invoke({action: 'join.approve', payload: {circleId, applicationId: applied.data.application.id}});
+  assert.equal(result.ok, false);
+  resetDemoData();
 });
 
 test('new class circles require one specific school, cohort and class', async () => {
@@ -187,6 +237,14 @@ test('a joined non-admin without a card can create only their own card', async (
   storage.set(key, db);
   const other = await invoke({ action: 'person.create', payload: { circleId: 'class_demo', name: '其他同学' } });
   assert.equal(other.ok, false);
+  const pending = await invoke({action: 'person.claim', payload: {circleId: 'class_demo', personId: 'c_sun'}});
+  assert.equal(pending.ok, true);
+  const prematureSelf = await invoke({ action: 'person.create', payload: { circleId: 'class_demo', name: '我的新卡', claimSelf: true } });
+  assert.equal(prematureSelf.ok, false);
+  assert.equal(prematureSelf.error.code, 'CLAIM_PENDING');
+  const currentDb = storage.get(key);
+  currentDb.claimRequests.find(request => request.id === pending.data.claimRequest.id).status = 'rejected';
+  storage.set(key, currentDb);
   const self = await invoke({ action: 'person.create', payload: { circleId: 'class_demo', name: '我的新卡', claimSelf: true } });
   assert.equal(self.ok, true);
   assert.equal(self.data.person.isSelf, true);

@@ -6,7 +6,8 @@ const { handlePhotoUpload } = require('../../cloudfunctions/api/photo-upload.js'
 
 function fixture() {
   let clock = 1_800_000_000_000;
-  const api = new ApiService(new MemoryRepository(), () => clock);
+  const repo = new MemoryRepository();
+  const api = new ApiService(repo, () => clock);
   const call = async (user, action, payload = {}) => api.invoke({action, payload}, user);
   const ok = async (user, action, payload = {}) => {
     const response = await call(user, action, payload);
@@ -25,11 +26,15 @@ function fixture() {
   };
   const join = async (owner, user, circleId, claimPersonId) => {
     const invite = (await ok(owner, 'invite.create', {circleId})).invite;
-    const application = (await ok(user, 'invite.apply', {token: invite.token, name: user, note: '本班同学', claimPersonId})).application;
+    const application = (await ok(user, 'invite.apply', {token: invite.token, name: user, note: '本班同学'})).application;
     await ok(owner, 'join.approve', {circleId, applicationId: application.id});
-    return (await ok(owner, 'member.list', {circleId})).members.find(m => !m.isSelf && m.personId === claimPersonId);
+    if (claimPersonId) {
+      const request = (await ok(user, 'person.claim', {circleId, personId: claimPersonId})).claimRequest;
+      await ok(owner, 'person.claimApprove', {circleId, claimRequestId: request.id});
+    }
+    return (await ok(owner, 'member.list', {circleId})).members.find(m => !m.isSelf && (claimPersonId ? m.personId === claimPersonId : m.name === user));
   };
-  return {api, call, ok, denied, create, join, advance: ms => {clock += ms;}};
+  return {api, repo, call, ok, denied, create, join, advance: ms => {clock += ms;}};
 }
 
 test('圈子隔离与跨圈管理员越权', async () => {
@@ -80,6 +85,36 @@ test('撤销和过期邀请不可申请或审批', async () => {
   const application = (await f.ok('a', 'invite.apply', {token: expiring.token, name: 'A'})).application;
   f.advance(72 * 60 * 60 * 1000);
   await f.denied('owner', 'join.approve', {circleId: circle.id, applicationId: application.id}, 'INVITE_INACTIVE');
+});
+
+test('管理员待审列表标明邀请临期、过期、撤销和缺失状态', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const soon = (await f.ok('owner','invite.create',{circleId:circle.id})).invite;
+  const application = (await f.ok('applicant','invite.apply',{token:soon.token,name:'申请人'})).application;
+  const read = async id => (await f.ok('owner','join.list',{circleId:circle.id})).applications.find(item=>item.id===id);
+  let row = await read(application.id);
+  assert.equal(row.status,'pending');
+  assert.equal(row.inviteStatus,'active');
+  assert.equal(row.inviteExpiresAt,soon.expiresAt);
+  f.advance(72*60*60*1000 - 60*1000);
+  row = await read(application.id);
+  assert.equal(row.inviteStatus,'active');
+  assert.equal(row.inviteExpiresAt,soon.expiresAt);
+  f.advance(60*1000);
+  row = await read(application.id);
+  assert.equal(row.inviteStatus,'expired');
+  await f.denied('owner','join.approve',{circleId:circle.id,applicationId:application.id},'INVITE_INACTIVE');
+
+  const revoked = (await f.ok('owner','invite.create',{circleId:circle.id})).invite;
+  const revocation = (await f.ok('other','invite.apply',{token:revoked.token,name:'另一申请人'})).application;
+  await f.ok('owner','invite.revoke',{circleId:circle.id,inviteId:revoked.id});
+  assert.equal((await read(revocation.id)).inviteStatus,'revoked');
+  await f.repo.atomic(tx=>tx.delete('invites',revoked.id));
+  row = await read(revocation.id);
+  assert.equal(row.inviteStatus,'missing');
+  assert.equal(row.inviteExpiresAt,undefined);
+  await f.denied('applicant','join.list',{circleId:circle.id},'FORBIDDEN');
 });
 
 test('普通成员不能邀请，圈主可以任免管理员', async () => {
@@ -290,21 +325,88 @@ test('普通成员认领须管理员批准，关联人物删除被阻止', async
   await f.denied('owner', 'person.delete', {circleId: circle.id, personId: b.id}, 'RELATION_CONNECTED');
 });
 
+test('认领申请待审核时不能新建本人卡或同时申请另一张卡', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const first = (await f.ok('owner','person.create',{circleId:circle.id,name:'候选一'})).person;
+  const second = (await f.ok('owner','person.create',{circleId:circle.id,name:'候选二'})).person;
+  await f.join('owner','member',circle.id);
+  const request = (await f.ok('member','person.claim',{circleId:circle.id,personId:first.id})).claimRequest;
+  assert.equal((await f.ok('member','person.claim',{circleId:circle.id,personId:first.id})).claimRequest.id,request.id);
+  await f.denied('member','person.claim',{circleId:circle.id,personId:second.id},'CLAIM_PENDING');
+  await f.denied('member','person.create',{circleId:circle.id,name:'重复本人',claimSelf:true},'CLAIM_PENDING');
+  assert.equal((await f.ok('owner','person.list',{circleId:circle.id})).persons.length,2);
+  await f.ok('owner','person.claimReject',{circleId:circle.id,claimRequestId:request.id});
+  const own = (await f.ok('member','person.create',{circleId:circle.id,name:'确实没有我的卡',claimSelf:true})).person;
+  assert.equal(own.isSelf,true);
+  await f.denied('member','person.claim',{circleId:circle.id,personId:second.id},'ALREADY_CLAIMED');
+});
+
+test('认领申请与新建本人卡并发时只允许一条路径成功', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const card = (await f.ok('owner','person.create',{circleId:circle.id,name:'已有卡'})).person;
+  await f.join('owner','member',circle.id);
+  const [claimResult, createResult] = await Promise.all([
+    f.call('member','person.claim',{circleId:circle.id,personId:card.id}),
+    f.call('member','person.create',{circleId:circle.id,name:'新本人卡',claimSelf:true})
+  ]);
+  assert.equal([claimResult,createResult].filter(result=>result.ok).length,1);
+  assert.equal((await f.ok('owner','person.list',{circleId:circle.id})).persons.length,createResult.ok ? 2 : 1);
+  assert.equal((await f.ok('owner','person.claimList',{circleId:circle.id})).claimRequests.length,claimResult.ok ? 1 : 0);
+});
+
+test('入圈申请不能预认领，旧待审记录的预认领字段也不会被审批绑定', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const card = (await f.ok('owner','person.create',{circleId:circle.id,name:'张三'})).person;
+  const invite = (await f.ok('owner','invite.create',{circleId:circle.id})).invite;
+  const request = {token:invite.token,name:'张三',claimPersonId:card.id};
+  await f.denied('applicant','invite.apply',request,'INVALID_INPUT');
+  const application = (await f.ok('applicant','invite.apply',{token:invite.token,name:'张三'})).application;
+  await f.denied('applicant','invite.apply',request,'INVALID_INPUT');
+  await f.repo.atomic(async tx => {
+    const stored = await tx.get('applications',application.id);
+    stored.claimPersonId = card.id; // Migration case: an older client submitted this field.
+    await tx.put('applications',stored);
+  });
+  const pending = (await f.ok('owner','join.list',{circleId:circle.id})).applications[0];
+  assert.equal(pending.claimPersonId,undefined);
+  await f.ok('owner','join.approve',{circleId:circle.id,applicationId:application.id});
+  const member = (await f.ok('owner','member.list',{circleId:circle.id})).members.find(item=>!item.isSelf);
+  assert.equal(member.personId,undefined);
+  assert.equal((await f.ok('owner','person.get',{circleId:circle.id,personId:card.id})).person.isClaimed,false);
+  const claim = (await f.ok('applicant','person.claim',{circleId:circle.id,personId:card.id})).claimRequest;
+  assert.equal(claim.status,'pending');
+  await f.ok('owner','person.claimApprove',{circleId:circle.id,claimRequestId:claim.id});
+  assert.equal((await f.ok('owner','member.list',{circleId:circle.id})).members.find(item=>!item.isSelf).personId,card.id);
+});
+
 test('管理员可纠正误认领并清除私人资料，申请人只看自己的进度', async () => {
   const f = fixture();
   const circle = await f.create();
   const card = (await f.ok('owner', 'person.create', {circleId:circle.id, name:'同名卡'})).person;
   const token = (await f.ok('owner', 'invite.create', {circleId:circle.id})).invite.token;
-  const application = (await f.ok('member', 'invite.apply', {token, name:'小李', claimPersonId:card.id})).application;
+  const application = (await f.ok('member', 'invite.apply', {token, name:'小李'})).application;
   const mine = (await f.ok('member', 'join.mine')).applications;
   assert.equal(mine.length, 1);
   assert.equal(mine[0].id, application.id);
   await f.ok('owner', 'join.approve', {circleId:circle.id, applicationId:application.id});
-  await f.ok('member', 'person.update', {circleId:circle.id, personId:card.id, patch:{phone:'12345'}, visibility:{phone:'circle'}});
-  await f.ok('owner', 'person.unclaim', {circleId:circle.id, personId:card.id});
+  assert.equal((await f.ok('owner','member.list',{circleId:circle.id})).members.find(m=>!m.isSelf).personId,undefined);
+  const request = (await f.ok('member','person.claim',{circleId:circle.id,personId:card.id})).claimRequest;
+  await f.ok('owner','person.claimApprove',{circleId:circle.id,claimRequestId:request.id});
+  const oldMemberId = (await f.ok('owner','member.list',{circleId:circle.id})).members.find(m=>!m.isSelf).id;
+  await f.ok('member', 'person.update', {circleId:circle.id, personId:card.id, patch:{phone:'12345',wechatId:'secret_wechat'}, visibility:{phone:'circle'}});
+  await f.ok('owner', 'person.unclaim', {circleId:circle.id, personId:card.id, reasonCode:'wrong_person'});
   const view = (await f.ok('member', 'person.get', {circleId:circle.id, personId:card.id})).person;
   assert.equal(view.isClaimed, false);
   assert.equal(view.phone, undefined);
+  const audit = (await f.ok('owner','audit.list',{circleId:circle.id})).events.find(event=>event.type==='person.unclaim');
+  assert.equal(audit.details.oldMemberId,oldMemberId);
+  assert.deepEqual(audit.details.clearedFields.sort(),['phone','wechatId'].sort());
+  assert.equal(audit.details.reasonCode,'wrong_person');
+  assert.equal(JSON.stringify(audit).includes('12345'),false);
+  assert.equal(JSON.stringify(audit).includes('secret_wechat'),false);
   const own = (await f.ok('member', 'person.create', {circleId:circle.id, name:'正确本人', claimSelf:true})).person;
   assert.equal(own.isSelf, true);
 });
@@ -362,4 +464,130 @@ test('同一关系并发创建仅保留一条，关联计数阻止悬空人物',
   assert.equal(results.find(r => r.ok).data.relation.createdBy, undefined);
   await f.ok('owner', 'relation.delete', {circleId: circle.id, relationId: rid});
   await f.ok('owner', 'person.delete', {circleId: circle.id, personId: a.id});
+});
+
+test('关系预览和保存拦截亲子环、互斥关系及辈分矛盾', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const names = ['祖辈', '父辈', '本人', '同辈'];
+  const [grand, parent, child, peer] = await Promise.all(names.map(async name =>
+    (await f.ok('owner', 'person.create', {circleId: circle.id, name})).person));
+  const a = (await f.ok('owner', 'relation.create', {circleId:circle.id, from:grand.id, to:parent.id, type:'parent'})).relation;
+  const b = (await f.ok('owner', 'relation.create', {circleId:circle.id, from:parent.id, to:child.id, type:'parent'})).relation;
+  const base = {circleId: circle.id};
+  await f.denied('owner', 'relation.create', {...base, from:child.id, to:grand.id, type:'parent'}, 'RELATION_CYCLE');
+  await f.denied('owner', 'relation.create', {...base, from:parent.id, to:child.id, type:'sibling'}, 'RELATION_CONFLICT');
+  await f.denied('owner', 'relation.create', {...base, from:grand.id, to:child.id, type:'sibling'}, 'GENERATION_CONFLICT');
+  await f.denied('owner', 'relation.preview', {...base, relationChange:{relation:{from:grand.id,to:child.id,type:'spouse'}}}, 'GENERATION_CONFLICT');
+  const preview = await f.ok('owner', 'relation.preview', {...base, relationChange:{removeRelationId:b.id,relation:{from:parent.id,to:peer.id,type:'parent'}}});
+  assert.equal(preview.before.id, b.id);
+  assert.equal(preview.after.from, parent.id);
+  assert.ok(preview.impact.affectedPersonIds.includes(grand.id));
+  assert.ok(preview.impact.affectedPersonIds.includes(child.id));
+  assert.ok(preview.impact.affectedPersonIds.includes(peer.id));
+  assert.deepEqual((await f.ok('owner','relation.list',base)).relations.map(relation => relation.id).sort(), [a.id,b.id].sort());
+});
+
+test('管理员直接替换关系会一次性更新边、计数和审计摘要', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const parent = (await f.ok('owner','person.create',{circleId:circle.id,name:'爸爸'})).person;
+  const child = (await f.ok('owner','person.create',{circleId:circle.id,name:'孩子'})).person;
+  const old = (await f.ok('owner','relation.create',{circleId:circle.id,from:child.id,to:parent.id,type:'parent'})).relation;
+  const result = await f.ok('owner','relation.replace',{circleId:circle.id,relationId:old.id,relation:{from:parent.id,to:child.id,type:'parent'}});
+  assert.equal(result.impact.removedRelationIds[0], old.id);
+  assert.equal(result.relation.from, parent.id);
+  const relations = (await f.ok('owner','relation.list',{circleId:circle.id})).relations;
+  assert.equal(relations.length, 1);
+  assert.equal(relations[0].to, child.id);
+  const audit = (await f.ok('owner','audit.list',{circleId:circle.id})).events.find(event => event.type === 'relation.replace');
+  assert.equal(audit.actorName, '圈主');
+  assert.equal(audit.details.removed.from, child.id);
+  assert.equal(audit.details.created.from, parent.id);
+  assert.equal(audit.actorId, undefined);
+  assert.equal(audit.details.removed.createdBy, undefined);
+  assert.equal(audit.details.created.createdBy, undefined);
+  assert.equal(JSON.stringify(audit).includes('"createdBy"'), false);
+  await f.denied('owner','person.delete',{circleId:circle.id,personId:parent.id},'RELATION_CONNECTED');
+  await f.ok('owner','relation.delete',{circleId:circle.id,relationId:relations[0].id});
+  await f.ok('owner','person.delete',{circleId:circle.id,personId:parent.id});
+});
+
+test('关系建议采纳时实际改图，失败仍待处理，旧文字建议不能假采纳', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  await f.join('owner','member',circle.id);
+  const a = (await f.ok('owner','person.create',{circleId:circle.id,name:'甲'})).person;
+  const b = (await f.ok('owner','person.create',{circleId:circle.id,name:'乙'})).person;
+  const wrong = (await f.ok('owner','relation.create',{circleId:circle.id,from:b.id,to:a.id,type:'parent'})).relation;
+  const change = {removeRelationId:wrong.id,relation:{from:a.id,to:b.id,type:'parent'}};
+  const suggestion = (await f.ok('member','suggestion.create',{circleId:circle.id,type:'relation',message:'亲子方向填反了',relationChange:change})).suggestion;
+  assert.equal(suggestion.relationChange.removeRelationId, wrong.id);
+  assert.equal(suggestion.relationChange.relation.from, a.id);
+  assert.equal(suggestion.relationChange.relation.to, b.id);
+  await f.denied('member','suggestion.resolve',{circleId:circle.id,suggestionId:suggestion.id,status:'accepted'},'FORBIDDEN');
+  const resolved = await f.ok('owner','suggestion.resolve',{circleId:circle.id,suggestionId:suggestion.id,status:'accepted'});
+  assert.equal(resolved.suggestion.status,'accepted');
+  assert.equal(resolved.impact.removedRelationIds[0],wrong.id);
+  assert.equal((await f.ok('owner','relation.list',{circleId:circle.id})).relations[0].from,a.id);
+  const audit = (await f.ok('owner','audit.list',{circleId:circle.id})).events.find(event => event.type === 'suggestion.resolve');
+  assert.equal(audit.details.removed.from,b.id);
+  assert.equal(audit.details.created.from,a.id);
+  assert.equal(audit.details.removed.createdBy,undefined);
+  assert.equal(audit.details.created.createdBy,undefined);
+  await f.denied('owner','suggestion.resolve',{circleId:circle.id,suggestionId:suggestion.id,status:'accepted'},'ALREADY_REVIEWED');
+
+  // Existing installations can have text-only relation suggestions. They must
+  // remain pending on acceptance, while rejection remains possible.
+  await f.repo.atomic(tx => tx.put('suggestions',{id:'legacy',circleId:circle.id,createdBy:'member',type:'relation',message:'以前的文字建议',status:'pending',createdAt:1}));
+  await f.denied('owner','suggestion.resolve',{circleId:circle.id,suggestionId:'legacy',status:'accepted'},'CHANGE_REQUIRED');
+  assert.equal((await f.ok('owner','suggestion.list',{circleId:circle.id})).suggestions.find(item=>item.id==='legacy').status,'pending');
+  await f.ok('owner','suggestion.resolve',{circleId:circle.id,suggestionId:'legacy',status:'rejected'});
+  const personNote = (await f.ok('member','suggestion.create',{circleId:circle.id,type:'person',message:'姓名有误'})).suggestion;
+  await f.denied('owner','suggestion.resolve',{circleId:circle.id,suggestionId:personNote.id,status:'accepted'},'CHANGE_REQUIRED');
+});
+
+test('关系建议过期或与新边冲突时不会假采纳', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  await f.join('owner','member',circle.id);
+  const a = (await f.ok('owner','person.create',{circleId:circle.id,name:'甲'})).person;
+  const b = (await f.ok('owner','person.create',{circleId:circle.id,name:'乙'})).person;
+  const old = (await f.ok('owner','relation.create',{circleId:circle.id,from:a.id,to:b.id,type:'sibling'})).relation;
+  const suggestion = (await f.ok('member','suggestion.create',{circleId:circle.id,type:'relation',message:'改成长幼',relationChange:{removeRelationId:old.id,relation:{from:a.id,to:b.id,type:'sibling',olderId:a.id}}})).suggestion;
+  await f.ok('owner','relation.replace',{circleId:circle.id,relationId:old.id,relation:{from:a.id,to:b.id,type:'sibling',olderId:b.id}});
+  await f.denied('owner','suggestion.resolve',{circleId:circle.id,suggestionId:suggestion.id,status:'accepted'},'STALE_RELATION');
+  assert.equal((await f.ok('owner','suggestion.list',{circleId:circle.id})).suggestions[0].status,'pending');
+  assert.equal((await f.ok('owner','relation.list',{circleId:circle.id})).relations[0].olderId,b.id);
+  await f.ok('owner','suggestion.resolve',{circleId:circle.id,suggestionId:suggestion.id,status:'rejected'});
+
+  const third = (await f.ok('owner','person.create',{circleId:circle.id,name:'丙'})).person;
+  const proposal = (await f.ok('member','suggestion.create',{circleId:circle.id,type:'relation',message:'甲是丙家长',relationChange:{relation:{from:a.id,to:third.id,type:'parent'}}})).suggestion;
+  await f.ok('owner','relation.create',{circleId:circle.id,from:third.id,to:a.id,type:'parent'});
+  await f.denied('owner','suggestion.resolve',{circleId:circle.id,suggestionId:proposal.id,status:'accepted'},'RELATION_CONFLICT');
+  assert.equal((await f.ok('owner','suggestion.list',{circleId:circle.id})).suggestions.find(item => item.id===proposal.id).status,'pending');
+});
+
+test('自己的入圈和认领申请状态可持续查询，过期邀请不再显示审核中', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const card = (await f.ok('owner','person.create',{circleId:circle.id,name:'待认领'})).person;
+  const invite = (await f.ok('owner','invite.create',{circleId:circle.id})).invite;
+  const pending = (await f.ok('member','invite.apply',{token:invite.token,name:'成员'})).application;
+  let mine = (await f.ok('member','join.mine')).applications;
+  assert.equal(mine.find(item=>item.id===pending.id).circleName,circle.name);
+  assert.equal(mine.find(item=>item.id===pending.id).inviteStatus,'active');
+  f.advance(72*60*60*1000);
+  mine = (await f.ok('member','join.mine')).applications;
+  assert.equal(mine.find(item=>item.id===pending.id).status,'expired');
+  const fresh = (await f.ok('owner','invite.create',{circleId:circle.id})).invite;
+  const application = (await f.ok('member','invite.apply',{token:fresh.token,name:'成员'})).application;
+  await f.ok('owner','join.approve',{circleId:circle.id,applicationId:application.id});
+  const claim = (await f.ok('member','person.claim',{circleId:circle.id,personId:card.id})).claimRequest;
+  let requests = (await f.ok('member','person.claimMine',{circleId:circle.id})).claimRequests;
+  assert.equal(requests[0].personName,'待认领');
+  assert.equal(requests[0].status,'pending');
+  await f.ok('owner','person.claimApprove',{circleId:circle.id,claimRequestId:claim.id});
+  requests = (await f.ok('member','person.claimMine',{circleId:circle.id})).claimRequests;
+  assert.equal(requests[0].status,'approved');
 });

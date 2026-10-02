@@ -21,3 +21,5 @@
 .empty.compact { padding: 36rpx; font-size: 24rpx; text-align: left; }
 .sticky-bottom { margin-top: 35rpx; }
 .demo-footer { text-align: center; margin-top: 20rpx; font-size: 21rpx; color: #9aaa9f; }
+.application-section { margin-bottom: 24rpx; }.application-card { display: flex; align-items: center; gap: 14rpx; padding: 22rpx 24rpx; border-radius: 22rpx; background: #fff; margin: 12rpx 0; box-shadow: 0 7rpx 22rpx rgba(14, 49, 34, .04); }.application-name { font-size: 27rpx; font-weight: 690; }.application-date { margin-top: 7rpx; color: #839288; font-size: 21rpx; }.application-card .pill { flex-shrink: 0; }
+.application-error { margin: 3rpx 0 20rpx; padding: 18rpx; background: #fff7eb; color: #946c39; border-radius: 15rpx; text-align: center; font-size: 22rpx; }

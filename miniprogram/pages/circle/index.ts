@@ -1,15 +1,18 @@
-import { Circle, Person, Relation, invoke, resolvePhotoUrls, showApiError } from '../../services/api';
+import { Circle, ClaimRequest, Member, Person, Relation, invoke, resolvePhotoUrls, showApiError } from '../../services/api';
 import { CityGroup, groupCities } from '../../utils/geography';
 import { confirm, go, q, toast } from '../../utils/navigation';
 import { relationshipFor } from '../../utils/relationship';
 
 interface PersonRow extends Person { initial: string; relationLabel: string; relationPath: string; relationMissing?: string; relationStatus: string; detail: string; depth: number; isDimmed?: boolean }
+interface ClaimCandidate extends Person { initial: string }
 
 Page({
   data: {
     circle: null as Circle | null, circleId: '', role: 'member', isAdmin: false, tab: 'list',
     people: [] as Person[], relations: [] as Relation[], rows: [] as PersonRow[], graphRows: [] as PersonRow[], relationLabels: {} as Record<string, string>,
-    selfId: '', selectedStarId: '', selectedStar: null as PersonRow | null,
+    selfId: '', myName: '', unclaimedPeople: [] as Person[], claimCandidates: [] as ClaimCandidate[], claimQuery: '', showAllCandidates: false,
+    pendingClaim: null as ClaimRequest | null, pendingClaimName: '', lastRejectedClaim: null as ClaimRequest | null, claimBusy: '',
+    selectedStarId: '', selectedStar: null as PersonRow | null,
     query: '', statusOptions: ['全部状态'], statusIndex: 0, industryOptions: ['全部行业'], industryIndex: 0,
     cityOptions: ['全部城市'], cityIndex: 0,
     mapScope: 'china', mapGroups: [] as CityGroup[], overseas: 0, unmapped: 0,
@@ -21,20 +24,52 @@ Page({
   async loadData(this: any) {
     if (!this.circleId) { toast('请先选择圈子'); return; }
     this.setData({ loading: true });
-    const [detail, persons, relations] = await Promise.all([
+    const [detail, persons, relations, members, claims] = await Promise.all([
       invoke<{ circle: Circle; role: string }>({ action: 'circle.detail', payload: { circleId: this.circleId } }),
       invoke<{ persons: Person[] }>({ action: 'person.list', payload: { circleId: this.circleId } }),
-      invoke<{ relations: Relation[] }>({ action: 'relation.list', payload: { circleId: this.circleId } })
+      invoke<{ relations: Relation[] }>({ action: 'relation.list', payload: { circleId: this.circleId } }),
+      invoke<{ members: Member[] }>({ action: 'member.list', payload: { circleId: this.circleId } }),
+      invoke<{ claimRequests: ClaimRequest[] }>({ action: 'person.claimMine', payload: { circleId: this.circleId } })
     ]);
     if (!detail.ok) { showApiError(detail); this.setData({ loading: false }); return; }
     if (!persons.ok) { showApiError(persons); this.setData({ loading: false }); return; }
     const circle = detail.data.circle;
     const list = await resolvePhotoUrls(this.circleId, persons.data.persons);
     const self = list.find(p => p.isSelf);
+    const ownMember = members.ok ? members.data.members.find(m => m.isSelf) : null;
+    const ownClaims = claims.ok ? claims.data.claimRequests : [];
+    const pendingClaim = ownClaims.find(request => request.status === 'pending') || (!claims.ok ? this.data.pendingClaim : null);
+    const lastRejectedClaim = ownClaims.slice().sort((a, b) => b.createdAt - a.createdAt).find(request => request.status === 'rejected') || null;
+    const unclaimedPeople = list.filter(p => !p.isClaimed && !p.isSelf);
+    const pendingClaimName = pendingClaim ? (list.find(p => p.id === pendingClaim.personId)?.name || '这张人物卡') : '';
     const tab = circle.type === 'family' ? (this.data.circle?.id === circle.id ? this.data.tab : 'network') : (this.data.circle?.id === circle.id && this.data.tab !== 'network' ? this.data.tab : 'list');
     wx.setNavigationBarTitle({ title: circle.name });
-    this.setData({ circle, circleId: circle.id, role: detail.data.role, isAdmin: detail.data.role === 'owner' || detail.data.role === 'admin', people: list, relations: relations.ok ? relations.data.relations : [], selfId: self ? self.id : '', tab, loading: false });
+    this.setData({ circle, circleId: circle.id, role: detail.data.role, isAdmin: detail.data.role === 'owner' || detail.data.role === 'admin', people: list, relations: relations.ok ? relations.data.relations : [], selfId: self ? self.id : '', myName: ownMember?.name || '', unclaimedPeople, pendingClaim, pendingClaimName, lastRejectedClaim, tab, loading: false });
     this.rebuild();
+    this.rebuildClaimCandidates();
+  },
+  rebuildClaimCandidates(this: any) {
+    const query = this.data.claimQuery.trim().toLowerCase();
+    const ownName = this.data.myName.trim().toLowerCase();
+    const matches = this.data.unclaimedPeople.filter((person: Person) => !query || [person.name, person.nickname].filter(Boolean).join(' ').toLowerCase().includes(query));
+    matches.sort((a: Person, b: Person) => Number(b.name.toLowerCase() === ownName) - Number(a.name.toLowerCase() === ownName) || a.name.localeCompare(b.name, 'zh-CN'));
+    const visible = this.data.showAllCandidates || query ? matches : matches.slice(0, 5);
+    this.setData({ claimCandidates: visible.map((person: Person) => ({ ...person, initial: person.name ? person.name.slice(-1) : '人' })) });
+  },
+  onClaimSearch(this: any, event: any) { this.setData({ claimQuery: event.detail.value }); this.rebuildClaimCandidates(); },
+  onShowAllCandidates(this: any) { this.setData({ showAllCandidates: true }); this.rebuildClaimCandidates(); },
+  async onClaimPerson(this: any, event: any) {
+    if (this.data.selfId || this.data.pendingClaim || this.data.claimBusy) return;
+    const person = this.data.unclaimedPeople.find((p: Person) => p.id === event.currentTarget.dataset.id);
+    if (!person) return toast('这张人物卡已不可认领，请刷新页面');
+    if (!(await confirm('确认这是你吗？', `你选择的是「${person.name}」。管理员核对后才会绑定；如果资料不对，请先联系管理员更正。`))) return;
+    this.setData({ claimBusy: person.id });
+    const result = await invoke<{ claimRequest: ClaimRequest }>({ action: 'person.claim', payload: { circleId: this.circleId, personId: person.id } });
+    this.setData({ claimBusy: '' });
+    if (!result.ok) return showApiError(result);
+    this.setData({ pendingClaim: result.data.claimRequest, pendingClaimName: person.name });
+    toast('认领申请已送出，等待管理员核对');
+    await this.loadData();
   },
   rebuild(this: any) {
     const d = this.data;
@@ -84,8 +119,8 @@ Page({
   onStarClear(this: any) { this.setData({ selectedStarId: '', selectedStar: null }); },
   onStarOpen(this: any) { if (this.data.selectedStar) go(`/pages/person/index?circleId=${q(this.circleId)}&personId=${q(this.data.selectedStar.id)}`); },
   onPerson(this: any, e: any) { go(`/pages/person/index?circleId=${q(this.circleId)}&personId=${q(e.currentTarget.dataset.id)}`); },
-  onAddPerson(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}`); },
-  onAddMyself(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}`); },
+  onAddPerson(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}&purpose=other`); },
+  onAddMyself(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}&purpose=self`); },
   onManage(this: any) { go(`/pages/manage/index?circleId=${q(this.circleId)}`); },
   onInvite(this: any) { go(`/pages/invite/index?circleId=${q(this.circleId)}`); },
   async onLeave(this: any) {

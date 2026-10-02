@@ -14,7 +14,15 @@ npm run build:cloud
 
 `npm test` 运行 41 项亲属规则、后端权限、邀请与前端演示测试，以及 TypeScript 和页面配置检查。`build:cloud` 编译云端服务并将产物放入 `cloudfunctions/api/lib`。执行结果及未验证部分见[测试报告](./docs/test-report.md)。
 
-安装微信开发者工具后，以**项目根目录**（本目录）导入 `project.config.json`。当前 `appid` 为占位值 `touristappid`；在 2.02.2609231 版开发者工具中，直接导入会报“不存在此 AppID”，必须先申请微信小程序测试号或使用已有 AppID，再将本地 `project.config.json` 中的 `appid` 改为该值。测试号只用于开发者工具模拟器；本项目演示数据仍保存在本地缓存，不需要云开发环境。云函数目录在项目根的 `cloudfunctions/`，因此不要只导入 `miniprogram/` 子目录。
+安装微信开发者工具后，以**项目根目录**（本目录）导入 `project.config.json`。当前 `appid` 为占位值 `touristappid`；在 2.02.2609231 版开发者工具中，直接导入会报“不存在此 AppID”。申请微信小程序测试号或使用已有 AppID 后，在项目根目录新建被 Git 忽略的 `project.private.config.json`：
+
+```json
+{"appid":"wx你的测试号"}
+```
+
+再次导入项目即可，不需要修改已提交的 `project.config.json`。演示数据保存在本地缓存，不需要云开发环境。云函数目录在项目根的 `cloudfunctions/`，因此不要只导入 `miniprogram/` 子目录。
+
+已在开发者工具模拟器运行的页面截图与操作记录见[测试报告](./docs/test-report.md#微信开发者工具模拟器实测)。
 
 ## 目录
 

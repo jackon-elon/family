@@ -9,11 +9,12 @@
     "build:cloud": "npm run build:backend && node backend/scripts/package-cloud-function.cjs",
     "test:backend": "npm run build:backend && node --test backend/tests/*.test.cjs",
     "test:kinship": "node --experimental-strip-types --test packages/kinship/test/*.test.mjs",
+    "test:star": "node --experimental-strip-types --test miniprogram/components/star-network/layout.test.mjs",
     "test:frontend": "node --test miniprogram/tests/*.test.cjs",
     "typecheck:kinship": "tsc --noEmit --strict --target ES2022 --module CommonJS --skipLibCheck packages/kinship/src/index.ts",
     "typecheck:frontend": "npm run sync:kinship && tsc -p miniprogram/tsconfig.json --noEmit",
     "check:project": "node scripts/check-project.mjs",
-    "test": "npm run typecheck:kinship && npm run test:kinship && npm run test:backend && npm run typecheck:frontend && npm run test:frontend && npm run check:project"
+    "test": "npm run typecheck:kinship && npm run test:kinship && npm run test:star && npm run test:backend && npm run typecheck:frontend && npm run test:frontend && npm run check:project"
   },
   "devDependencies": {
     "typescript": "5.9.3"

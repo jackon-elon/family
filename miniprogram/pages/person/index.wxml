@@ -9,11 +9,10 @@
 
   <view class="card relation-card" wx:if="{{circle.type === 'family'}}">
     <view class="eyebrow">HOW WE CONNECT</view>
-    <view class="section-title">这层关系怎么来的</view>
+    <view class="section-title">{{person.isSelf ? '这就是你' : '你可以叫 TA：' + relationLabel}}</view>
     <view class="relation-path">{{relationPath || '暂无已记录的连接路径'}}</view>
     <view class="missing" wx:if="{{relationMissing}}">还需补充：{{relationMissing}}</view>
     <view class="small muted" wx:if="{{alternatives}}">也可称：{{alternatives}}</view>
-    <button class="btn ghost small-btn perspective-btn" bindtap="onPerspective">以 TA 为视角看看</button>
   </view>
 
   <view class="card details-card">

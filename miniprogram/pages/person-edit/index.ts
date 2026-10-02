@@ -1,5 +1,5 @@
 import { Circle, Person, invoke, isDemoMode, showApiError } from '../../services/api';
-import { CITY_OPTIONS } from '../../utils/geography';
+import { CITY_OPTIONS, cityOption } from '../../utils/geography';
 import { q, toast } from '../../utils/navigation';
 
 const STATUS_OPTIONS = ['暂不填写', '读书中', '工作中', '待业中', '退休', '其他'];
@@ -16,7 +16,7 @@ function accessFor(fields: string[]): Record<string, boolean> {
 Page({
   data: {
     circle: null as Circle | null, personId: '', isNew: true, isSelf: false, claimSelf: false, canPrivate: false,
-    form: { name: '', nickname: '', gender: 'unknown', birthOrder: '', city: '', country: '', province: '', latitude: 0, longitude: 0, status: '', industry: '', occupation: '', school: '', bio: '', phone: '', wechatId: '', photoUrl: '', photoFileId: '' },
+    form: { name: '', nickname: '', gender: 'unknown', birthOrder: '', city: '', country: '', province: '', latitude: null as number | null, longitude: null as number | null, status: '', industry: '', occupation: '', school: '', bio: '', phone: '', wechatId: '', photoUrl: '', photoFileId: '' },
     cityLabels: ['暂不填写'].concat(CITY_OPTIONS.map(c => `${c.city}${c.country === '中国' ? '' : ' · ' + c.country}`)), cityIndex: 0,
     statusOptions: STATUS_OPTIONS, statusIndex: 0, genderOptions: GENDER_OPTIONS, genderIndex: 0,
     saving: false, showClaimSelf: false, initial: '人', editable: accessFor(BARE_FIELDS)
@@ -42,7 +42,7 @@ Page({
     const editable = accessFor(p.isSelf ? PROFILE_FIELDS : p.isClaimed ? delegatedFields : BARE_FIELDS);
     this.setData({ circle: detail.data.circle, personId: p.id, isNew: false, isSelf: !!p.isSelf, canPrivate: !!p.isSelf || !!(p as any).myDelegatedFields?.length,
       editable,
-      form: { name: p.name || '', nickname: p.nickname || '', gender: p.gender || 'unknown', birthOrder: p.birthOrder ? String(p.birthOrder) : '', city: p.city || '', country: p.country || '', province: p.province || '', latitude: p.latitude || 0, longitude: p.longitude || 0, status: p.status || '', industry: p.industry || '', occupation: p.occupation || '', school: p.school || '', bio: p.bio || '', phone: p.phone || '', wechatId: p.wechatId || '', photoUrl: p.photoUrl || '', photoFileId: p.photoFileId || '' },
+      form: { name: p.name || '', nickname: p.nickname || '', gender: p.gender || 'unknown', birthOrder: p.birthOrder ? String(p.birthOrder) : '', city: p.city || '', country: p.country || '', province: p.province || '', latitude: p.latitude ?? CITY_OPTIONS[optionIndex]?.latitude ?? null, longitude: p.longitude ?? CITY_OPTIONS[optionIndex]?.longitude ?? null, status: p.status || '', industry: p.industry || '', occupation: p.occupation || '', school: p.school || '', bio: p.bio || '', phone: p.phone || '', wechatId: p.wechatId || '', photoUrl: p.photoUrl || '', photoFileId: p.photoFileId || '' },
       initial: p.name ? p.name.slice(-1) : '人',
       cityIndex: optionIndex + 1, statusIndex: Math.max(0, STATUS_OPTIONS.indexOf(p.status || '暂不填写')), genderIndex: Math.max(0, GENDER_VALUES.indexOf(p.gender || 'unknown')) });
     wx.setNavigationBarTitle({ title: p.isSelf ? '编辑我的资料' : '编辑人物卡' });
@@ -50,14 +50,39 @@ Page({
   onInput(this: any, e: any) {
     const field = e.currentTarget.dataset.field;
     const geographic = field === 'city' || field === 'country' || field === 'province';
-    this.setData({ [`form.${field}`]: e.detail.value, ...(field === 'name' ? { initial: e.detail.value ? e.detail.value.slice(-1) : '人' } : {}), ...(geographic ? { cityIndex: 0, 'form.latitude': 0, 'form.longitude': 0 } : {}) });
+    this.setData({ [`form.${field}`]: e.detail.value, ...(field === 'name' ? { initial: e.detail.value ? e.detail.value.slice(-1) : '人' } : {}), ...(geographic ? { cityIndex: 0, 'form.latitude': null, 'form.longitude': null } : {}) });
   },
   onGender(this: any, e: any) { const index = Number(e.detail.value); this.setData({ genderIndex: index, 'form.gender': GENDER_VALUES[index] }); },
   onStatus(this: any, e: any) { const index = Number(e.detail.value); this.setData({ statusIndex: index, 'form.status': index ? STATUS_OPTIONS[index] : '' }); },
   onCity(this: any, e: any) {
     const index = Number(e.detail.value);
     const city = CITY_OPTIONS[index - 1];
-    this.setData({ cityIndex: index, 'form.city': city?.city || '', 'form.country': city?.country || '', 'form.province': city?.province || '', 'form.latitude': city?.latitude || 0, 'form.longitude': city?.longitude || 0 });
+    this.setData({ cityIndex: index, 'form.city': city?.city || '', 'form.country': city?.country || '', 'form.province': city?.province || '', 'form.latitude': city?.latitude ?? null, 'form.longitude': city?.longitude ?? null });
+  },
+  onChooseCityPoint(this: any) {
+    wx.navigateTo({
+      url: '/pages/location-picker/index',
+      events: {
+        cityLocationSelected: (selected: {city: string; country: string; province: string; latitude: number; longitude: number}) => {
+          const option = cityOption(selected.city, selected.country);
+          this.setData({
+            cityIndex: option ? CITY_OPTIONS.indexOf(option) + 1 : 0,
+            'form.city': selected.city,
+            'form.country': selected.country,
+            'form.province': selected.province,
+            'form.latitude': selected.latitude,
+            'form.longitude': selected.longitude
+          });
+        }
+      },
+      success: (res: any) => res.eventChannel.emit('initialCityLocation', {
+        city: this.data.form.city,
+        country: this.data.form.country,
+        province: this.data.form.province,
+        latitude: this.data.form.latitude,
+        longitude: this.data.form.longitude
+      })
+    });
   },
   onClaimSelf(this: any, e: any) { const selected = !!e.detail.value; this.setData({ claimSelf: selected, canPrivate: selected, editable: accessFor(selected ? PROFILE_FIELDS : BARE_FIELDS) }); },
   onChoosePhoto(this: any) {
@@ -84,6 +109,8 @@ Page({
   async onSave(this: any) {
     const f = this.data.form;
     if (!f.name.trim()) return toast('请填写姓名');
+    if (this.data.editable.city && f.city.trim() &&
+      (typeof f.latitude !== 'number' || typeof f.longitude !== 'number')) return toast('请在地图上选城市中心');
     this.setData({ saving: true });
     let personId = this.personId;
     if (this.data.isNew) {
@@ -94,7 +121,7 @@ Page({
     const candidate: any = { name: f.name.trim(), nickname: f.nickname.trim(), gender: f.gender, birthOrder: f.birthOrder ? Number(f.birthOrder) : '', city: f.city, country: f.country, province: f.province, status: f.status, industry: f.industry.trim(), occupation: f.occupation.trim(), school: f.school.trim(), bio: f.bio.trim(), phone: f.phone.trim(), wechatId: f.wechatId.trim() };
     const patch: any = {};
     Object.keys(candidate).forEach(key => { if (this.data.editable[key]) patch[key] = candidate[key]; });
-    if (isDemoMode() && this.data.editable.city) { patch.latitude = f.latitude; patch.longitude = f.longitude; }
+    if (this.data.editable.city) { patch.latitude = f.latitude; patch.longitude = f.longitude; }
     if (isDemoMode() && this.data.editable.photoFileId) patch.photoUrl = f.photoUrl;
     const updated = await invoke({ action: 'person.update', payload: { circleId: this.circleId, personId, patch } });
     this.setData({ saving: false });

@@ -52,6 +52,35 @@ test('demo API keeps family and class cards separate and redacts private fields'
   assert.equal(family.data.persons.find(person => person.id === 'f_aunt').city, '旧金山');
   assert.equal(family.data.persons.find(person => person.id === 'f_dad').phone, undefined);
   assert.equal(family.data.persons.find(person => person.id === 'f_me').phone, '13800000000');
+  assert.deepEqual([classmates.data.persons.find(person => person.id === 'c_wang').latitude, classmates.data.persons.find(person => person.id === 'c_wang').longitude], [51.5, -0.1]);
+});
+
+test('demo city points are coarse, paired, and removed with private location data', async () => {
+  resetDemoData();
+  const base = {circleId: 'family_demo', personId: 'f_me'};
+  const invalid = await invoke({action: 'person.update', payload: {...base, patch: {city: '奥斯陆', latitude: 59.9}}});
+  assert.equal(invalid.ok, false);
+  const saved = await invoke({action: 'person.update', payload: {...base, patch: {city: '奥斯陆', country: '挪威', latitude: 59.9139, longitude: 10.7522}}});
+  assert.equal(saved.ok, true);
+  assert.deepEqual([saved.data.person.latitude, saved.data.person.longitude], [59.9, 10.8]);
+  const changed = await invoke({action: 'person.update', payload: {...base, patch: {city: '卑尔根'}}});
+  assert.equal(changed.ok, true);
+  assert.equal(changed.data.person.latitude, undefined);
+  assert.equal(changed.data.person.longitude, undefined);
+  const key = 'kin-network-demo-db-v2';
+  const db = storage.get(key);
+  const stranger = db.persons.find(person => person.id === 'c_wang');
+  stranger.visibility.city = 'self';
+  storage.set(key, db);
+  const hidden = await invoke({action: 'person.get', payload: {circleId: 'class_demo', personId: 'c_wang'}});
+  assert.equal(hidden.data.person.city, undefined);
+  assert.equal(hidden.data.person.latitude, undefined);
+  assert.equal(hidden.data.person.longitude, undefined);
+  resetDemoData();
+  const removed = await invoke({action: 'member.remove', payload: {circleId: 'class_demo', memberId: 'm_c_wang'}});
+  assert.equal(removed.ok, true);
+  assert.equal(storage.get(key).persons.find(person => person.id === 'c_wang').latitude, undefined);
+  assert.equal(storage.get(key).persons.find(person => person.id === 'c_wang').longitude, undefined);
 });
 
 test('the shared kinship engine recalculates labels from each perspective', async () => {

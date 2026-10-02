@@ -1,0 +1,21 @@
+<view class="cosmos-wrap">
+  <view class="cosmos-header"><text class="cosmos-kicker">我们的关系星空</text><text class="cosmos-counter">{{nodes.length}} 颗星</text></view>
+  <block wx:if="{{nodes.length}}">
+    <scroll-view class="cosmos-vertical" scroll-y scroll-top="{{scrollTop}}" show-scrollbar="{{false}}">
+      <scroll-view class="cosmos-horizontal" scroll-x scroll-left="{{scrollLeft}}" show-scrollbar="{{false}}" style="height:{{boardSize}}rpx;">
+        <view class="cosmos-board" style="{{boardStyle}}">
+          <view class="space-glow space-glow-a"></view><view class="space-glow space-glow-b"></view>
+          <view class="orbit" wx:for="{{orbits}}" wx:key="id" style="{{item.style}}"></view>
+          <view class="relation-line relation-{{item.type}}" wx:for="{{edges}}" wx:key="id" style="{{item.style}}"></view>
+          <view class="star-node {{item.isFocus ? 'is-focus' : ''}} {{item.isSelf ? 'is-self' : ''}} {{item.connected ? '' : 'is-unlinked'}} tone-{{item.tone}}" wx:for="{{nodes}}" wx:key="id" style="{{item.style}}" data-id="{{item.id}}" bindtap="onPerson" aria-role="button" aria-label="{{item.name}}，{{item.label || '查看资料'}}">
+            <view class="planet-shell"><image wx:if="{{item.photoUrl}}" src="{{item.photoUrl}}" mode="aspectFill"/><text wx:else>{{item.initial}}</text></view>
+            <text class="star-name">{{item.name}}</text>
+            <text class="star-label" wx:if="{{item.label}}">{{item.label}}</text>
+          </view>
+        </view>
+      </scroll-view>
+    </scroll-view>
+    <view class="cosmos-footer"><text>拖动星空探索更多 · 轻触星球查看资料</text><text wx:if="{{hiddenCount}}">另有 {{hiddenCount}} 人可在列表中查看</text></view>
+  </block>
+  <view class="cosmos-empty" wx:else><text class="empty-orbit">✦</text><text>这里还没有人物星球</text><text class="empty-sub">添加人物后，关系会在这里连成星空</text></view>
+</view>

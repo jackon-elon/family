@@ -8,14 +8,14 @@ interface PersonRow extends Person { initial: string; relationLabel: string; rel
 Page({
   data: {
     circle: null as Circle | null, circleId: '', role: 'member', isAdmin: false, tab: 'list',
-    people: [] as Person[], relations: [] as Relation[], rows: [] as PersonRow[], graphRows: [] as PersonRow[],
-    selfId: '', perspectiveId: '', perspectiveName: '', perspectiveInitial: '我', perspectiveNames: [] as string[], perspectiveIndex: 0,
+    people: [] as Person[], relations: [] as Relation[], rows: [] as PersonRow[], graphRows: [] as PersonRow[], relationLabels: {} as Record<string, string>,
+    selfId: '', selectedStarId: '', selectedStar: null as PersonRow | null,
     query: '', statusOptions: ['全部状态'], statusIndex: 0, industryOptions: ['全部行业'], industryIndex: 0,
-    cityOptions: ['全部城市'], cityIndex: 0, expanded: false,
+    cityOptions: ['全部城市'], cityIndex: 0,
     mapScope: 'china', mapGroups: [] as CityGroup[], overseas: 0, unmapped: 0,
     selectedCity: '', selectedCityRows: [] as PersonRow[], filteredCount: 0, loading: true
   },
-  onLoad(this: any, options: any) { this.circleId = options.circleId || wx.getStorageSync('kin-current-circle'); this.requestedPerspectiveId = options.perspectiveId || ''; this.loadData(); },
+  onLoad(this: any, options: any) { this.circleId = options.circleId || wx.getStorageSync('kin-current-circle'); this.loadData(); },
   onShow(this: any) { if (this.circleId && !this.data.loading) this.loadData(); },
   onPullDownRefresh(this: any) { this.loadData().finally(() => wx.stopPullDownRefresh()); },
   async loadData(this: any) {
@@ -31,13 +31,9 @@ Page({
     const circle = detail.data.circle;
     const list = await resolvePhotoUrls(this.circleId, persons.data.persons);
     const self = list.find(p => p.isSelf);
-    const requestedPerspective = this.requestedPerspectiveId && list.some(p => p.id === this.requestedPerspectiveId) ? this.requestedPerspectiveId : '';
-    const existingPerspective = requestedPerspective || (list.some(p => p.id === this.data.perspectiveId) ? this.data.perspectiveId : '');
-    this.requestedPerspectiveId = '';
-    const perspectiveId = existingPerspective || (self && self.id) || (list[0] && list[0].id) || '';
     const tab = circle.type === 'family' ? (this.data.circle?.id === circle.id ? this.data.tab : 'network') : (this.data.circle?.id === circle.id && this.data.tab !== 'network' ? this.data.tab : 'list');
     wx.setNavigationBarTitle({ title: circle.name });
-    this.setData({ circle, circleId: circle.id, role: detail.data.role, isAdmin: detail.data.role === 'owner' || detail.data.role === 'admin', people: list, relations: relations.ok ? relations.data.relations : [], selfId: self ? self.id : '', perspectiveId, perspectiveName: list.find(p => p.id === perspectiveId)?.name || '', perspectiveInitial: list.find(p => p.id === perspectiveId)?.name?.slice(-1) || '我', perspectiveNames: list.map(p => p.name), perspectiveIndex: Math.max(0, list.findIndex(p => p.id === perspectiveId)), tab, loading: false });
+    this.setData({ circle, circleId: circle.id, role: detail.data.role, isAdmin: detail.data.role === 'owner' || detail.data.role === 'admin', people: list, relations: relations.ok ? relations.data.relations : [], selfId: self ? self.id : '', tab, loading: false });
     this.rebuild();
   },
   rebuild(this: any) {
@@ -47,9 +43,9 @@ Page({
     const industry = d.industryOptions[d.industryIndex];
     const city = d.cityOptions[d.cityIndex];
     const rows: PersonRow[] = d.people.map((person: Person) => {
-      const rel = d.circle?.type === 'family' && d.perspectiveId ? relationshipFor(d.people, d.relations, d.perspectiveId, person.id) : null;
+      const rel = d.circle?.type === 'family' && d.selfId ? relationshipFor(d.people, d.relations, d.selfId, person.id) : null;
       const detail = [person.city, person.status, person.industry].filter(Boolean).join(' · ');
-      return { ...person, initial: person.name ? person.name.slice(-1) : '人', relationLabel: rel ? rel.label : '同班同学', relationPath: rel ? rel.path : '', relationMissing: rel ? rel.missing : '', detail: detail || '资料待完善', depth: rel ? (rel.path.match(/→/g) || []).length : 0 };
+      return { ...person, initial: person.name ? person.name.slice(-1) : '人', relationLabel: rel ? rel.label : d.circle?.type === 'family' ? '关系待补充' : '同班同学', relationPath: rel ? rel.path : '', relationMissing: rel ? rel.missing : '', detail: detail || '资料待完善', depth: rel ? (rel.path.match(/→/g) || []).length : 0 };
     });
     const statusOptions = ['全部状态'].concat(Array.from(new Set(rows.map(r => r.status).filter(Boolean))) as string[]);
     const industryOptions = ['全部行业'].concat(Array.from(new Set(rows.map(r => r.industry).filter(Boolean))) as string[]);
@@ -64,32 +60,26 @@ Page({
       if (cityIndex && row.city !== cityOptions[cityIndex]) return false;
       return true;
     });
-    const graphRows = filtered.filter(r => r.id !== d.perspectiveId && (d.expanded || query || r.depth <= 2)).sort((a, b) => (a.depth || 99) - (b.depth || 99));
+    const selfRow = rows.find(r => r.id === d.selfId);
+    const graphRows = d.circle?.type === 'family' ? (selfRow && !filtered.some(r => r.id === d.selfId) ? [selfRow, ...filtered] : filtered) : [];
+    const relationLabels: Record<string, string> = {};
+    rows.forEach(row => { relationLabels[row.id] = row.relationLabel; });
     const mapped = groupCities(filtered, d.mapScope);
     const chosen = mapped.groups.find(g => g.key === d.selectedCity);
-    this.setData({ rows: filtered, graphRows, statusOptions, statusIndex, industryOptions, industryIndex, cityOptions, cityIndex, mapGroups: mapped.groups, overseas: mapped.overseas, unmapped: mapped.unmapped, selectedCityRows: chosen ? chosen.persons.map(p => filtered.find(r => r.id === p.id)!) : [], selectedCity: chosen ? chosen.key : '', filteredCount: filtered.length });
+    const selectedStar = rows.find(row => row.id === d.selectedStarId) || null;
+    this.setData({ rows: filtered, graphRows, relationLabels, selectedStar, statusOptions, statusIndex, industryOptions, industryIndex, cityOptions, cityIndex, mapGroups: mapped.groups, overseas: mapped.overseas, unmapped: mapped.unmapped, selectedCityRows: chosen ? chosen.persons.map(p => filtered.find(r => r.id === p.id)!) : [], selectedCity: chosen ? chosen.key : '', filteredCount: filtered.length });
   },
-  onTab(this: any, e: any) { this.setData({ tab: e.currentTarget.dataset.tab, selectedCity: '', selectedCityRows: [] }); this.rebuild(); },
+  onTab(this: any, e: any) { this.setData({ tab: e.currentTarget.dataset.tab, selectedCity: '', selectedCityRows: [], selectedStarId: '', selectedStar: null }); this.rebuild(); },
   onSearch(this: any, e: any) { this.setData({ query: e.detail.value }); this.rebuild(); },
   onFilter(this: any, e: any) { this.setData({ [e.currentTarget.dataset.field]: Number(e.detail.value) }); this.rebuild(); },
   onScope(this: any, e: any) { this.setData({ mapScope: e.currentTarget.dataset.scope, selectedCity: '', selectedCityRows: [] }); this.rebuild(); },
   onCity(this: any, e: any) { this.setData({ selectedCity: e.currentTarget.dataset.key }); this.rebuild(); },
+  onMapCity(this: any, e: any) { this.setData({ selectedCity: e.detail.key }); this.rebuild(); },
   clearCity(this: any) { this.setData({ selectedCity: '', selectedCityRows: [] }); },
-  onPerspective(this: any, e: any) {
-    const index = Number(e.detail.value);
-    const person = this.data.people[index];
-    if (!person) return;
-    this.setData({ perspectiveIndex: index, perspectiveId: person.id, perspectiveName: person.name, perspectiveInitial: person.name?.slice(-1) || '人' });
-    this.rebuild();
-  },
-  onMyView(this: any) {
-    if (!this.data.selfId) return toast('认领本人卡后就能一键回到我的视角');
-    const index = this.data.people.findIndex((p: Person) => p.id === this.data.selfId);
-    this.setData({ perspectiveId: this.data.selfId, perspectiveIndex: index, perspectiveName: this.data.people[index]?.name || '', perspectiveInitial: this.data.people[index]?.name?.slice(-1) || '我' });
-    this.rebuild();
-  },
-  onExpand(this: any) { this.setData({ expanded: !this.data.expanded }); this.rebuild(); },
-  onPerson(this: any, e: any) { go(`/pages/person/index?circleId=${q(this.circleId)}&personId=${q(e.currentTarget.dataset.id)}&perspectiveId=${q(this.data.perspectiveId)}`); },
+  onStarSelect(this: any, e: any) { this.setData({ selectedStarId: e.detail.personId }); this.rebuild(); },
+  onStarClear(this: any) { this.setData({ selectedStarId: '', selectedStar: null }); },
+  onStarOpen(this: any) { if (this.data.selectedStar) go(`/pages/person/index?circleId=${q(this.circleId)}&personId=${q(this.data.selectedStar.id)}`); },
+  onPerson(this: any, e: any) { go(`/pages/person/index?circleId=${q(this.circleId)}&personId=${q(e.currentTarget.dataset.id)}`); },
   onAddPerson(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}`); },
   onAddMyself(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}`); },
   onManage(this: any) { go(`/pages/manage/index?circleId=${q(this.circleId)}`); },

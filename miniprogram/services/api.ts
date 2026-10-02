@@ -47,6 +47,7 @@ export interface Person {
   isClaimed?: boolean;
   updatedAt?: number;
   delegations?: Delegation[];
+  myDelegatedFields?: string[];
   claimedBy?: string; // Demo storage only; never returned to pages.
 }
 
@@ -162,7 +163,7 @@ function seedDb(): DemoDb {
       { id: 'f_cousin', circleId: 'family_demo', name: '陈雨晴', gender: 'female', country: '中国', province: '四川', city: '成都', status: '工作中', industry: '设计', visibility: { city: 'circle', industry: 'circle' }, updatedAt: now - 86400000 * 3 },
       { id: 'c_me', circleId: 'class_demo', name: '陈小满', nickname: '满满', gender: 'female', country: '中国', province: '上海', city: '上海', status: '工作中', industry: '互联网', occupation: '产品设计', school: '青禾中学', visibility: clone(circleVisible), claimedBy: DEMO_ACTOR, updatedAt: now },
       { id: 'c_zhao', circleId: 'class_demo', name: '赵乐', gender: 'male', country: '中国', province: '四川', city: '成都', status: '工作中', industry: '游戏', occupation: '策划', visibility: clone(circleVisible), claimedBy: 'demo-zhao', updatedAt: now - 86400000 * 2 },
-      { id: 'c_wang', circleId: 'class_demo', name: '王宁', gender: 'female', country: '英国', city: '伦敦', status: '读书中', industry: '学术', school: '伦敦大学学院', visibility: clone(circleVisible), claimedBy: 'demo-wang', updatedAt: now - 86400000 * 10 },
+      { id: 'c_wang', circleId: 'class_demo', name: '王宁', gender: 'female', country: '英国', city: '伦敦', latitude: 51.5, longitude: -0.1, status: '读书中', industry: '学术', school: '伦敦大学学院', visibility: clone(circleVisible), claimedBy: 'demo-wang', updatedAt: now - 86400000 * 10 },
       { id: 'c_li', circleId: 'class_demo', name: '李航', gender: 'male', country: '加拿大', city: '多伦多', status: '工作中', industry: '金融', visibility: clone(circleVisible), claimedBy: 'demo-li', updatedAt: now - 86400000 * 15 },
       { id: 'c_sun', circleId: 'class_demo', name: '孙妍', gender: 'female', status: '工作中', industry: '法律', visibility: { city: 'self', industry: 'circle' }, updatedAt: now - 86400000 * 28 }
     ],
@@ -225,6 +226,10 @@ function getCircle(db: DemoDb, id: string): Circle | undefined { return db.circl
 function visiblePerson(raw: Person): Person {
   const p = clone(raw);
   const self = raw.claimedBy === DEMO_ACTOR;
+  const db = loadDb();
+  const actorMember = db.members.find(m => m.circleId === raw.circleId && m.actorId === DEMO_ACTOR && m.status === 'joined');
+  const delegation = db.delegations.find(d => d.personId === raw.id && d.adminMemberId === actorMember?.id && d.active);
+  const delegatedFields = delegation ? effectiveDelegationFields(delegation.fields) : [];
   p.isSelf = self;
   p.isClaimed = !!raw.claimedBy;
   delete p.claimedBy;
@@ -232,14 +237,18 @@ function visiblePerson(raw: Person): Person {
     const restricted: Record<string, string> = { city: 'city', country: 'city', province: 'city', latitude: 'city', longitude: 'city', photoFileId: 'photoFileId', photoUrl: 'photoFileId', school: 'school', industry: 'industry', occupation: 'occupation', status: 'status', bio: 'bio', phone: 'phone', wechatId: 'wechatId' };
     Object.keys(restricted).forEach(field => {
       const visibilityKey = restricted[field];
-      if (!raw.claimedBy || !raw.visibility || raw.visibility[visibilityKey] !== 'circle') delete (p as any)[field];
+      if ((!raw.claimedBy || !raw.visibility || raw.visibility[visibilityKey] !== 'circle') && delegatedFields.indexOf(field) < 0) delete (p as any)[field];
     });
     delete p.visibility;
     delete p.delegations;
+    if (delegatedFields.length) p.myDelegatedFields = delegatedFields;
   } else {
-    p.delegations = loadDb().delegations.filter(d => d.personId === raw.id && d.active);
+    p.delegations = db.delegations.filter(d => d.personId === raw.id && d.active);
   }
   return p;
+}
+function effectiveDelegationFields(fields: string[]): string[] {
+  return fields.indexOf('city') >= 0 ? [...new Set(fields.concat(['country', 'province', 'latitude', 'longitude']))] : fields;
 }
 function requireMember(db: DemoDb, circleId: string): ApiResult<any> | null {
   if (!getCircle(db, circleId)) return bad('NOT_FOUND', '这个圈子不存在');
@@ -350,12 +359,26 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     if (!self && !adminUnclaimed && !delegated) return bad('FORBIDDEN', '只能编辑本人资料或已授权的资料');
     const allowed = ['name','nickname','gender','birthOrder','country','province','city','latitude','longitude','status','industry','occupation','school','bio','phone','wechatId','photoFileId','photoUrl'];
     const patch = p.patch || {};
+    const latitudeTouched = Object.prototype.hasOwnProperty.call(patch, 'latitude');
+    const longitudeTouched = Object.prototype.hasOwnProperty.call(patch, 'longitude');
+    if (latitudeTouched !== longitudeTouched) return bad('INVALID_INPUT', '城市坐标须同时填写或同时清除');
+    const latitude = patch.latitude == null || patch.latitude === '' ? undefined : patch.latitude;
+    const longitude = patch.longitude == null || patch.longitude === '' ? undefined : patch.longitude;
+    if (latitudeTouched && ((latitude === undefined) !== (longitude === undefined))) return bad('INVALID_INPUT', '城市坐标须同时填写或同时清除');
+    if (latitude !== undefined && (typeof latitude !== 'number' || !Number.isFinite(latitude) || Math.abs(latitude) > 90 ||
+      typeof longitude !== 'number' || !Number.isFinite(longitude) || Math.abs(longitude) > 180)) return bad('INVALID_INPUT', '城市坐标超出范围');
+    const next = { ...person };
     for (const key of Object.keys(patch)) {
       if (allowed.indexOf(key) < 0) continue;
       if (adminUnclaimed && ['name','nickname','gender','birthOrder'].indexOf(key) < 0) return bad('FORBIDDEN', '未认领人物只可填写最少资料');
-      if (delegated && !self && !adminUnclaimed && delegated.fields.indexOf(key) < 0) return bad('FORBIDDEN', '此字段不在代维护授权范围内');
-      (person as any)[key] = patch[key];
+      if (delegated && !self && !adminUnclaimed && effectiveDelegationFields(delegated.fields).indexOf(key) < 0) return bad('FORBIDDEN', '此字段不在代维护授权范围内');
+      (next as any)[key] = key === 'latitude' ? (latitude === undefined ? undefined : Math.round(latitude * 10) / 10) :
+        key === 'longitude' ? (longitude === undefined ? undefined : Math.round(longitude * 10) / 10) : patch[key];
     }
+    if (latitude !== undefined && !next.city) return bad('INVALID_INPUT', '请先填写城市再确认城市中心点');
+    const locationNameChanged = ['city','country','province'].some(key => Object.prototype.hasOwnProperty.call(patch, key) && (next as any)[key] !== (person as any)[key]);
+    if (!next.city || (locationNameChanged && !latitudeTouched)) { next.latitude = undefined; next.longitude = undefined; }
+    Object.assign(person, next);
     if (p.visibility) {
       if (!self) return bad('FORBIDDEN', '只有本人可以修改可见范围');
       person.visibility = { ...(person.visibility || {}), ...p.visibility };
@@ -468,7 +491,7 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     const person = db.persons.find(x => x.id === member.personId && x.circleId === circleId);
     if (person) {
       person.claimedBy = undefined;
-      ['phone','wechatId','photoFileId','photoUrl','city','country','province','status','industry','occupation','school','bio'].forEach(k => { delete (person as any)[k]; });
+      ['phone','wechatId','photoFileId','photoUrl','city','country','province','latitude','longitude','status','industry','occupation','school','bio'].forEach(k => { delete (person as any)[k]; });
       person.visibility = {};
     }
     member.personId = undefined;
@@ -485,7 +508,7 @@ function mockInvoke(action: string, p: any): ApiResult<any> {
     const person = db.persons.find(x => x.id === member.personId && x.circleId === circleId);
     if (person) {
       person.claimedBy = undefined;
-      ['phone','wechatId','photoFileId','photoUrl','city','country','province','status','industry','occupation','school','bio'].forEach(k => { delete (person as any)[k]; });
+      ['phone','wechatId','photoFileId','photoUrl','city','country','province','latitude','longitude','status','industry','occupation','school','bio'].forEach(k => { delete (person as any)[k]; });
       person.visibility = {};
     }
     member.personId = undefined;

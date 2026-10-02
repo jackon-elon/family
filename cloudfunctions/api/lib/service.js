@@ -10,10 +10,11 @@ class ApiError extends Error {
     }
 }
 exports.ApiError = ApiError;
-const profileFields = ['name', 'nickname', 'gender', 'birthOrder', 'country', 'province', 'city', 'status', 'school', 'industry', 'occupation', 'bio', 'phone', 'wechatId', 'photoFileId'];
-const privateFields = ['country', 'province', 'city', 'status', 'school', 'industry', 'occupation', 'bio', 'phone', 'wechatId', 'photoFileId'];
+const profileFields = ['name', 'nickname', 'gender', 'birthOrder', 'country', 'province', 'city', 'latitude', 'longitude', 'status', 'school', 'industry', 'occupation', 'bio', 'phone', 'wechatId', 'photoFileId'];
+const privateFields = ['country', 'province', 'city', 'latitude', 'longitude', 'status', 'school', 'industry', 'occupation', 'bio', 'phone', 'wechatId', 'photoFileId'];
 const visibilityFields = ['city', 'status', 'school', 'industry', 'occupation', 'bio', 'phone', 'wechatId', 'photoFileId'];
 const bareFields = ['name', 'nickname', 'gender', 'birthOrder'];
+const delegableFields = profileFields.filter(field => field !== 'latitude' && field !== 'longitude');
 const relationTypes = ['parent', 'spouse', 'sibling'];
 const inviteLifetime = 72 * 60 * 60 * 1000;
 function fail(code, message) { throw new ApiError(code, message); }
@@ -47,7 +48,7 @@ function relationId(circleId, type, from, to) {
     return `${circleId}_${hash(`${type}|${endpoints[0]}|${endpoints[1]}`).slice(0, 40)}`;
 }
 function effectiveDelegationFields(fields) {
-    return fields.includes('city') ? [...new Set([...fields, 'country', 'province'])] : fields;
+    return fields.includes('city') ? [...new Set([...fields, 'country', 'province', 'latitude', 'longitude'])] : fields;
 }
 function rank(role) { return role === 'owner' ? 3 : role === 'admin' ? 2 : 1; }
 function safePublicCircle(circle) { const { id, name, type, school, cohort, className } = circle; return { id, name, type, school, cohort, className }; }
@@ -220,7 +221,7 @@ class ApiService {
         for (const field of privateFields) {
             if (person[field] === undefined)
                 continue;
-            const visibilityKey = field === 'country' || field === 'province' ? 'city' : field;
+            const visibilityKey = field === 'country' || field === 'province' || field === 'latitude' || field === 'longitude' ? 'city' : field;
             if (own || (person.claimedBy && person.visibility[visibilityKey] === 'circle'))
                 result[field] = person[field];
         }
@@ -294,6 +295,13 @@ class ApiService {
                     fail('INVALID_INPUT', '排行应为 1 至 20');
                 patch[key] = Number(value);
             }
+            else if (key === 'latitude' || key === 'longitude') {
+                const limit = key === 'latitude' ? 90 : 180;
+                if (typeof value !== 'number' || !Number.isFinite(value) || value < -limit || value > limit)
+                    fail('INVALID_INPUT', `${key}须为有效坐标`);
+                // Keep only a city-scale representative point, not a precise pin.
+                patch[key] = Math.round(value * 10) / 10;
+            }
             else
                 patch[key] = str(value, key, key === 'bio' ? 500 : key === 'phone' ? 30 : key === 'photoFileId' ? 512 : 120);
         }
@@ -303,6 +311,12 @@ class ApiService {
         const { circle, member } = await this.access(tx, p.circleId, actorId);
         const person = await this.person(tx, circle.id, p.personId);
         const patch = this.parsePatch(p.patch);
+        const latitudeTouched = Object.prototype.hasOwnProperty.call(patch, 'latitude');
+        const longitudeTouched = Object.prototype.hasOwnProperty.call(patch, 'longitude');
+        if (latitudeTouched !== longitudeTouched ||
+            (latitudeTouched && ((patch.latitude === undefined) !== (patch.longitude === undefined)))) {
+            fail('INVALID_INPUT', '城市坐标须同时填写或同时清除');
+        }
         const allowedPhoto = /^cloud:\/\/[^/]+\/photos\/([^/]+)\/([0-9a-f-]{36}\.jpg)$/;
         const photoMatch = patch.photoFileId === undefined ? undefined : allowedPhoto.exec(patch.photoFileId);
         if (patch.photoFileId !== undefined && (!photoMatch || photoMatch[1] !== actorId)) {
@@ -335,7 +349,20 @@ class ApiService {
                 person.visibility[key] = oneOf(value, ['self', 'circle'], '可见范围');
             }
         }
+        const locationNameChanged = (Object.prototype.hasOwnProperty.call(patch, 'city') && patch.city !== person.city) ||
+            (Object.prototype.hasOwnProperty.call(patch, 'country') && patch.country !== person.country) ||
+            (Object.prototype.hasOwnProperty.call(patch, 'province') && patch.province !== person.province);
         Object.assign(person, patch);
+        if (latitudeTouched && patch.latitude !== undefined && !person.city) {
+            fail('INVALID_INPUT', '请先填写城市再确认城市中心点');
+        }
+        if (!person.city || (locationNameChanged && !latitudeTouched)) {
+            person.latitude = undefined;
+            person.longitude = undefined;
+        }
+        if ((person.latitude === undefined) !== (person.longitude === undefined) ||
+            (person.latitude !== undefined && !person.city))
+            fail('INVALID_INPUT', '请先填写城市再确认城市中心点');
         person.updatedAt = this.now();
         if (own)
             person.lastConfirmedAt = this.now();
@@ -752,11 +779,11 @@ class ApiService {
         const admin = await tx.get('members', str(p.adminMemberId, 'adminMemberId'));
         if (!admin || admin.circleId !== circle.id || admin.status !== 'active' || rank(admin.role) < 2 || admin.userId === actorId)
             fail('INVALID_INPUT', '请选择本圈其他管理员');
-        if (!Array.isArray(p.fields) || p.fields.length === 0 || p.fields.length > profileFields.length)
+        if (!Array.isArray(p.fields) || p.fields.length === 0 || p.fields.length > delegableFields.length)
             fail('INVALID_INPUT', '请选择授权字段');
         const fields = [];
         for (const field of p.fields) {
-            if (typeof field !== 'string' || !profileFields.includes(field))
+            if (typeof field !== 'string' || !delegableFields.includes(field))
                 fail('INVALID_INPUT', '授权字段不支持');
             if (!fields.includes(field))
                 fields.push(field);

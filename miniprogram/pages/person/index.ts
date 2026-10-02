@@ -4,7 +4,7 @@ import { relationshipFor } from '../../utils/relationship';
 
 Page({
   data: { circle: null as Circle | null, person: null as Person | null, initial: '人', relationLabel: '', relationPath: '', relationMissing: '', alternatives: '', isAdmin: false, canEdit: false, canClaim: false, rows: [] as { label: string; value: string }[], updated: '', loading: true },
-  onLoad(this: any, options: any) { this.circleId = options.circleId; this.personId = options.personId; this.perspectiveId = options.perspectiveId || ''; this.loadData(); },
+  onLoad(this: any, options: any) { this.circleId = options.circleId; this.personId = options.personId; this.loadData(); },
   onShow(this: any) { if (this.personId && !this.data.loading) this.loadData(); },
   async loadData(this: any) {
     this.setData({ loading: true });
@@ -19,8 +19,8 @@ Page({
     const person = (await resolvePhotoUrls(this.circleId, [current.data.person]))[0];
     const circle = detail.data.circle;
     const all = people.ok ? people.data.persons : [person];
-    const perspectiveId = all.some(p => p.id === this.perspectiveId) ? this.perspectiveId : all.find(p => p.isSelf)?.id || '';
-    const relation = circle.type === 'family' && perspectiveId ? relationshipFor(all, relations.ok ? relations.data.relations : [], perspectiveId, person.id) : null;
+    const selfId = all.find(p => p.isSelf)?.id || '';
+    const relation = circle.type === 'family' && selfId ? relationshipFor(all, relations.ok ? relations.data.relations : [], selfId, person.id) : null;
     const rows = [
       { label: '所在城市', value: [person.country && person.country !== '中国' ? person.country : '', person.city].filter(Boolean).join(' · ') },
       { label: '目前状态', value: person.status }, { label: '学校', value: person.school },
@@ -33,7 +33,6 @@ Page({
   },
   onEdit(this: any) { go(`/pages/person-edit/index?circleId=${q(this.circleId)}&personId=${q(this.personId)}`); },
   onPrivacy(this: any) { go(`/pages/privacy/index?circleId=${q(this.circleId)}&personId=${q(this.personId)}`); },
-  onPerspective(this: any) { go(`/pages/circle/index?circleId=${q(this.circleId)}&perspectiveId=${q(this.personId)}`); },
   onCopyWechat(this: any) { wx.setClipboardData({ data: this.data.person.wechatId }); },
   onCall(this: any) { wx.makePhoneCall({ phoneNumber: this.data.person.phone }); },
   async onClaim(this: any) {

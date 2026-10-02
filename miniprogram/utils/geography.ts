@@ -1,7 +1,7 @@
 import { Person } from '../services/api';
 
 export interface CityOption { city: string; province: string; country: string; latitude: number; longitude: number }
-export interface CityGroup { key: string; city: string; country: string; count: number; persons: Person[]; x: number; y: number; outsideChina: boolean }
+export interface CityGroup { key: string; city: string; country: string; count: number; persons: Person[]; outsideChina: boolean }
 
 export const CITY_OPTIONS: CityOption[] = [
   { city: '北京', province: '北京', country: '中国', latitude: 39.9, longitude: 116.4 },
@@ -46,9 +46,7 @@ export function groupCities(persons: Person[], scope: 'china' | 'world'): { grou
     const country = person.country || '中国';
     const key = `${country}/${person.city}`;
     if (!map[key]) {
-      const x = scope === 'china' ? ((point.longitude - 73) / 62) * 100 : ((point.longitude + 180) / 360) * 100;
-      const y = scope === 'china' ? ((54 - point.latitude) / 36) * 100 : ((90 - point.latitude) / 180) * 100;
-      map[key] = { key, city: person.city || '', country, count: 0, persons: [], x: Math.max(9, Math.min(91, Math.round(x))), y: Math.max(14, Math.min(82, Math.round(y))), outsideChina: country !== '中国' };
+      map[key] = { key, city: person.city || '', country, count: 0, persons: [], outsideChina: country !== '中国' };
     }
     map[key].count++;
     map[key].persons.push(person);

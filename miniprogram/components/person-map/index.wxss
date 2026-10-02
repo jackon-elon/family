@@ -1,0 +1,3 @@
+.person-map { position: relative; width: 100%; height: 470rpx; overflow: hidden; border-radius: 28rpx; background: #e8f1eb; }
+.person-map__native { display: block; width: 100%; height: 100%; }
+.person-map__message { position: absolute; left: 12%; top: 45%; width: 76%; padding: 18rpx 8rpx; border-radius: 16rpx; color: #456151; background: #fff; text-align: center; font-size: 24rpx; }

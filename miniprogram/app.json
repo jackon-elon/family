@@ -5,6 +5,7 @@
     "pages/circle/index",
     "pages/person/index",
     "pages/person-edit/index",
+    "pages/location-picker/index",
     "pages/manage/index",
     "pages/invite/index",
     "pages/apply/index",

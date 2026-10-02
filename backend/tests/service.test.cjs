@@ -133,6 +133,44 @@ test('联系方式与城市由本人逐字段公开，管理员不能绕过', as
   assert.equal(view.visibility, undefined);
 });
 
+test('任意城市代表点按城市权限过滤，并以约十公里精度保存', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const me = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '我', claimSelf: true})).person;
+  await f.join('owner', 'member', circle.id);
+  await f.ok('owner', 'person.update', {circleId: circle.id, personId: me.id, patch: {
+    city: '奥斯陆', country: '挪威', latitude: 59.9139, longitude: 10.7522
+  }});
+  let view = (await f.ok('member', 'person.get', {circleId: circle.id, personId: me.id})).person;
+  assert.equal(view.city, undefined);
+  assert.equal(view.latitude, undefined);
+  assert.equal(view.longitude, undefined);
+  await f.ok('owner', 'person.update', {circleId: circle.id, personId: me.id, patch: {}, visibility: {city: 'circle'}});
+  view = (await f.ok('member', 'person.get', {circleId: circle.id, personId: me.id})).person;
+  assert.equal(view.city, '奥斯陆');
+  assert.equal(view.country, '挪威');
+  assert.equal(view.latitude, 59.9);
+  assert.equal(view.longitude, 10.8);
+  await f.ok('owner', 'person.update', {circleId: circle.id, personId: me.id, patch: {city: '卑尔根'}});
+  view = (await f.ok('member', 'person.get', {circleId: circle.id, personId: me.id})).person;
+  assert.equal(view.city, '卑尔根');
+  assert.equal(view.latitude, undefined);
+  assert.equal(view.longitude, undefined);
+});
+
+test('城市坐标必须成对、在范围内，不能在未填写城市时保存', async () => {
+  const f = fixture();
+  const circle = await f.create();
+  const me = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '我', claimSelf: true})).person;
+  const base = {circleId: circle.id, personId: me.id};
+  await f.denied('owner', 'person.update', {...base, patch: {city: '北京', latitude: 39.9}}, 'INVALID_INPUT');
+  await f.denied('owner', 'person.update', {...base, patch: {city: '北京', latitude: 91, longitude: 116.4}}, 'INVALID_INPUT');
+  await f.denied('owner', 'person.update', {...base, patch: {latitude: 39.9, longitude: 116.4}}, 'INVALID_INPUT');
+  const view = (await f.ok('owner', 'person.get', base)).person;
+  assert.equal(view.city, undefined);
+  assert.equal(view.latitude, undefined);
+});
+
 test('照片临时链接只对获准查看的成员签发', async () => {
   const repo = new MemoryRepository();
   let signed = 0;
@@ -191,13 +229,15 @@ test('移除成员立即失去访问，人物节点保留但私人资料清空',
   const circle = await f.create();
   const placeholder = (await f.ok('owner', 'person.create', {circleId: circle.id, name: '长辈'})).person;
   await f.join('owner', 'elder', circle.id, placeholder.id);
-  await f.ok('elder', 'person.update', {circleId: circle.id, personId: placeholder.id, patch: {city: '上海', phone: '12345'}, visibility: {city: 'circle', phone: 'circle'}});
+  await f.ok('elder', 'person.update', {circleId: circle.id, personId: placeholder.id, patch: {city: '上海', latitude: 31.2, longitude: 121.5, phone: '12345'}, visibility: {city: 'circle', phone: 'circle'}});
   const member = (await f.ok('owner', 'member.list', {circleId: circle.id})).members.find(m => !m.isSelf);
   await f.ok('owner', 'member.remove', {circleId: circle.id, memberId: member.id});
   await f.denied('elder', 'person.list', {circleId: circle.id}, 'FORBIDDEN');
   const view = (await f.ok('owner', 'person.get', {circleId: circle.id, personId: placeholder.id})).person;
   assert.equal(view.name, '长辈');
   assert.equal(view.city, undefined);
+  assert.equal(view.latitude, undefined);
+  assert.equal(view.longitude, undefined);
   assert.equal(view.phone, undefined);
   assert.equal(view.isClaimed, false);
 });
@@ -216,16 +256,18 @@ test('代维护仅可按授权字段修改，撤销后立即失效', async () =>
   const ownerMember = (await f.ok('owner', 'member.list', {circleId: circle.id})).members.find(m => m.isSelf);
   const delegation = (await f.ok('elder', 'delegation.grant', {circleId: circle.id, personId: card.id, adminMemberId: ownerMember.id, fields: ['city']})).delegation;
   const delegatedView = (await f.ok('owner', 'person.get', {circleId: circle.id, personId: card.id})).person;
-  assert.deepEqual(delegatedView.myDelegatedFields, ['city', 'country', 'province']);
+  assert.deepEqual(delegatedView.myDelegatedFields, ['city', 'country', 'province', 'latitude', 'longitude']);
   assert.equal(delegatedView.city, '佛山');
   assert.equal(delegatedView.province, '广东');
   assert.equal(delegatedView.phone, undefined);
   assert.equal((await f.ok('other', 'person.get', {circleId: circle.id, personId: card.id})).person.city, undefined);
-  await f.ok('owner', 'person.update', {circleId: circle.id, personId: card.id, patch: {country: '中国', province: '广东', city: '广州'}});
+  await f.ok('owner', 'person.update', {circleId: circle.id, personId: card.id, patch: {country: '中国', province: '广东', city: '广州', latitude: 23.1291, longitude: 113.2644}});
   const elderView = (await f.ok('elder', 'person.get', {circleId: circle.id, personId: card.id})).person;
   assert.equal(elderView.country, '中国');
   assert.equal(elderView.province, '广东');
   assert.equal(elderView.city, '广州');
+  assert.equal(elderView.latitude, 23.1);
+  assert.equal(elderView.longitude, 113.3);
   await f.denied('owner', 'person.update', {circleId: circle.id, personId: card.id, patch: {phone: '123'}}, 'FORBIDDEN');
   await f.denied('owner', 'person.update', {circleId: circle.id, personId: card.id, patch: {}, visibility: {city: 'circle'}}, 'FORBIDDEN');
   await f.ok('elder', 'delegation.revoke', {circleId: circle.id, delegationId: delegation.id});

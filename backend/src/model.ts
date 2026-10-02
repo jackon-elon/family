@@ -3,7 +3,7 @@ export type Role = 'owner' | 'admin' | 'member';
 export type Visibility = 'self' | 'circle';
 export type PersonField =
   | 'name' | 'nickname' | 'gender' | 'birthOrder'
-  | 'country' | 'province' | 'city' | 'status' | 'school'
+  | 'country' | 'province' | 'city' | 'latitude' | 'longitude' | 'status' | 'school'
   | 'industry' | 'occupation' | 'bio' | 'phone' | 'wechatId' | 'photoFileId';
 
 export interface Circle {
@@ -41,6 +41,9 @@ export interface Person {
   country?: string;
   province?: string;
   city?: string;
+  /** Coarse city representative point, rounded to 0.1 degree; never GPS/home location. */
+  latitude?: number;
+  longitude?: number;
   status?: string;
   school?: string;
   industry?: string;

@@ -1,0 +1,23 @@
+<view class="person-map">
+  <map
+    id="person-city-map"
+    class="person-map__native"
+    latitude="{{centerLatitude}}"
+    longitude="{{centerLongitude}}"
+    scale="{{scale}}"
+    markers="{{markers}}"
+    include-points="{{includePoints}}"
+    enable-zoom="{{true}}"
+    enable-scroll="{{true}}"
+    enable-rotate="{{false}}"
+    show-location="{{false}}"
+    bindmarkertap="onMarkerTap"
+    bindlabeltap="onMarkerTap"
+    bindcallouttap="onMarkerTap"
+    binderror="onMapError"
+    bindupdated="onMapUpdated"
+  >
+    <cover-view wx:if="{{!markers.length}}" class="person-map__message">还没有可显示的城市</cover-view>
+    <cover-view wx:if="{{mapError}}" class="person-map__message">地图暂时无法加载，请检查网络后重试</cover-view>
+  </map>
+</view>

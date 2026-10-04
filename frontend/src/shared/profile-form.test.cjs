@@ -39,6 +39,7 @@ const { patchOf, draftOf, birthdayDaysInMonth, createFields } = loadTs(
 const base = {
   ...draftOf(),
   name: "生日验收",
+  phone: "13800000001",
   country: "中国",
   city: "上海",
   calendar: "solar",
@@ -148,15 +149,15 @@ test("new family records include a valid account-compatible phone in the first c
   );
 });
 
-test("unlinked family edits require a phone while a member can retain independent contact details", () => {
-  assert.throws(() => patchOf(base, { requirePhone: true }), /手机号/);
+test("every profile edit requires a valid phone and no longer submits a nickname", () => {
+  for (const phone of ["", " ", "020-12345678", "12345"])
+    assert.throws(() => patchOf({ ...base, phone }), /手机号/);
+  assert.equal(patchOf(base).phone, "+8613800000001");
   assert.equal(
-    patchOf({ ...base, phone: "13800000001" }, { requirePhone: true }).phone,
-    "+8613800000001",
+    patchOf({ ...base, phone: "+1 (202) 555-0100" }).phone,
+    "+12025550100",
   );
-  assert.equal(patchOf(base).phone, null);
-  assert.equal(
-    patchOf({ ...base, phone: " 020-12345678 " }).phone,
-    "020-12345678",
-  );
+  assert.equal("nickname" in draftOf({ nickname: "旧昵称" }), false);
+  assert.equal("nickname" in patchOf(base), false);
+  assert.equal("nickname" in createFields(base), false);
 });

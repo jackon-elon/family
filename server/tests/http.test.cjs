@@ -2009,7 +2009,7 @@ test("guest family reads expose chosen family profiles while excluding identitie
     personCount: 2,
   });
   const readPerson = data.persons.find((row) => row.id === person.id);
-  assert.equal(readPerson.phone, "13812349999");
+  assert.equal(readPerson.phone, "+8613812349999");
   assert.equal(readPerson.wechatId, "family-contact");
   assert.deepEqual(readPerson.birthday, PROFILE.birthday);
   assert.equal(readPerson.bio, "最近在学画画");

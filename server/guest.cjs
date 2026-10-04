@@ -46,7 +46,7 @@ function familyBirthdays(persons, family, now) {
           ? [
               {
                 personId: person.id,
-                personName: person.nickname || person.name,
+                personName: person.name,
                 circleId: family.id,
                 circleName: family.name,
                 ...occurrence,

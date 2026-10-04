@@ -8,7 +8,6 @@ import { gregorianForLunar } from "../shared/lunar-calendar";
 
 export interface ProfileDraft {
   name: string;
-  nickname: string;
   gender: "male" | "female" | "unknown";
   country?: string;
   province?: string;
@@ -33,7 +32,6 @@ export function draftOf(
 ): ProfileDraft {
   return {
     name: p?.name || "",
-    nickname: p?.nickname || "",
     gender: p?.gender || "unknown",
     country: p?.country || "中国",
     province: p?.province,
@@ -66,10 +64,7 @@ export function profilePhone(value: string): string {
     throw new Error("请填写有效手机号；海外号码请带国家区号。");
   return phone;
 }
-export function patchOf(
-  d: ProfileDraft,
-  options: { requirePhone?: boolean } = {},
-) {
+export function patchOf(d: ProfileDraft) {
   if (
     !d.name.trim() ||
     !d.country?.trim() ||
@@ -118,7 +113,6 @@ export function patchOf(
     throw new Error("这一年的农历生日不存在，请核对月份、日期和闰月。");
   return {
     name: d.name.trim(),
-    nickname: d.nickname || null,
     gender: d.gender,
     country: d.country.trim(),
     province: d.province || null,
@@ -126,9 +120,7 @@ export function patchOf(
     latitude: d.latitude ?? null,
     longitude: d.longitude ?? null,
     birthday,
-    phone: options.requirePhone
-      ? profilePhone(d.phone)
-      : d.phone.trim() || null,
+    phone: profilePhone(d.phone),
     wechatId: d.wechatId || null,
     status: d.status || null,
     school: d.school || null,
@@ -161,10 +153,9 @@ export function birthdayDaysInMonth(draft: ProfileDraft): number {
     : 31;
 }
 export function createFields(d: ProfileDraft) {
-  const p = patchOf(d, { requirePhone: true });
+  const p = patchOf(d);
   return {
     name: p.name,
-    nickname: p.nickname || undefined,
     gender: p.gender,
     country: p.country,
     province: p.province || undefined,
@@ -183,7 +174,6 @@ export default function ProfileForm({
   photoUrl,
   photoBase64,
   onPhotoPreparing,
-  phoneRequired = false,
 }: {
   value: ProfileDraft;
   onChange: (value: ProfileDraft) => void;
@@ -192,7 +182,6 @@ export default function ProfileForm({
   photoUrl?: string;
   photoBase64?: string;
   onPhotoPreparing?: (preparing: boolean) => void;
-  phoneRequired?: boolean;
 }) {
   const [photoError, setPhotoError] = useState("");
   const [preparing, setPreparing] = useState(false);
@@ -225,7 +214,7 @@ export default function ProfileForm({
         required={required}
         disabled={disabled}
         placeholder={placeholder}
-        maxLength={key === "name" || key === "nickname" ? 60 : 120}
+        maxLength={key === "name" ? 60 : 120}
         onChange={(e) => set(key, e.target.value as never)}
       />
     </label>
@@ -281,7 +270,6 @@ export default function ProfileForm({
       <Alert message={photoError} />
       <div className="form-grid">
         {text("name", "姓名", "真实姓名", true)}
-        {text("nickname", "昵称", "选填")}
         <label>
           性别
           <select
@@ -296,24 +284,20 @@ export default function ProfileForm({
           </select>
         </label>
       </div>
-      {phoneRequired && (
-        <label>
-          手机号 <span className="required">*</span>
-          <input
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            required
-            value={value.phone}
-            maxLength={30}
-            placeholder="国内手机号或带国家区号的海外号码"
-            onChange={(e) => set("phone", e.target.value)}
-          />
-          <span className="hint">
-            用于与本人登录账号对应，受邀加入后由管理员确认。
-          </span>
-        </label>
-      )}
+      <label>
+        手机号 <span className="required">*</span>
+        <input
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          required
+          value={value.phone}
+          maxLength={30}
+          placeholder="国内手机号或带国家区号的海外号码"
+          onChange={(e) => set("phone", e.target.value)}
+        />
+        <span className="hint">填写本人手机号，方便家人联系。</span>
+      </label>
       <div className="field-section">
         <h3>
           所在城市 <span className="required">*</span>
@@ -404,10 +388,9 @@ export default function ProfileForm({
       </div>
       <details className="form-details">
         <summary>
-          联系方式与近况 <span>选填</span>
+          微信与近况 <span>选填</span>
         </summary>
         <div className="form-grid">
-          {!phoneRequired && text("phone", "联系电话")}
           {text("wechatId", "微信号")}
           {text("status", "目前在做什么", "例如：上学、工作、退休")}
           {text("school", "学校")}

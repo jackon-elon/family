@@ -1503,7 +1503,7 @@ export function FamilyAlbum({
       data?.people.map((p) => ({
         ...p,
         originalName: p.name,
-        name: (!readOnly && data.remarks[p.id]) || p.nickname || p.name,
+        name: (!readOnly && data.remarks[p.id]) || p.name,
       })) || [],
     [data, readOnly],
   );
@@ -1847,12 +1847,12 @@ export function PersonDetail({
             )}
             <div>
               <h2>
-                {visibleRemark || person.nickname || person.name}
+                {visibleRemark || person.name}
                 {!readOnly && person.isSelf && (
                   <span className="self-tag">我</span>
                 )}
               </h2>
-              {(visibleRemark || person.nickname) && (
+              {visibleRemark && (
                 <p className="muted original-name">{person.name}</p>
               )}
               {floating && (
@@ -2336,7 +2336,7 @@ function ProfileEditor({
 }) {
   const { user } = useApp();
   const [draft, setDraft] = useState(() =>
-      draftOf(profile || { phone: user.phone }),
+      draftOf({ ...profile, phone: profile?.phone || user.phone }),
     ),
     [photo, setPhoto] = useState(""),
     [photoPreparing, setPhotoPreparing] = useState(false),

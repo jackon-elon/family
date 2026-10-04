@@ -305,6 +305,28 @@ function beforeWebWork(db, current, action, payload, now) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
   const actorId = current.user.id;
   if (
+    action === "account.profile.update" &&
+    payload.patch &&
+    typeof payload.patch === "object" &&
+    !Array.isArray(payload.patch)
+  ) {
+    const profile = read(db, "userProfiles", profileId(actorId));
+    // Legacy profiles can use the login phone when no contact was recorded.
+    const phone = Object.prototype.hasOwnProperty.call(payload.patch, "phone")
+      ? payload.patch.phone
+      : profile?.phone || accountPhone(db, actorId);
+    try {
+      const validated = normalizePhone(phone);
+      if (
+        Object.prototype.hasOwnProperty.call(payload.patch, "phone") ||
+        !profile?.phone
+      )
+        payload.patch.phone = validated;
+    } catch {
+      throw new ApiError("PHONE_REQUIRED", "请填写本人有效手机号。");
+    }
+  }
+  if (
     action === "person.create" &&
     payload.claimSelf !== true &&
     requireAdmin(db, payload.circleId, actorId)
@@ -325,6 +347,13 @@ function beforeWebWork(db, current, action, payload, now) {
     requireUnusedPhone(db, payload.circleId, payload.phone, exceptId);
   }
   if (action === "person.create" && payload.claimSelf === true) {
+    try {
+      payload.phone = normalizePhone(
+        payload.phone === undefined ? accountPhone(db, actorId) : payload.phone,
+      );
+    } catch {
+      throw new ApiError("PHONE_REQUIRED", "请填写本人有效手机号。");
+    }
     const member =
       typeof payload.circleId === "string" &&
       read(db, "members", memberId(payload.circleId, actorId));
@@ -340,24 +369,35 @@ function beforeWebWork(db, current, action, payload, now) {
   }
   if (
     action === "person.update" &&
-    requireAdmin(db, payload.circleId, actorId)
+    typeof payload.circleId === "string" &&
+    typeof payload.personId === "string" &&
+    payload.patch &&
+    typeof payload.patch === "object" &&
+    !Array.isArray(payload.patch)
   ) {
     const person = read(db, "persons", payload.personId);
+    const member = read(db, "members", memberId(payload.circleId, actorId));
     if (
       person?.circleId === payload.circleId &&
-      !person.claimedBy &&
-      payload.patch &&
-      Object.prototype.hasOwnProperty.call(payload.patch, "phone")
+      member?.status === "active" &&
+      (requireAdmin(db, payload.circleId, actorId) ||
+        person.claimedBy === actorId)
     ) {
+      const phone = Object.prototype.hasOwnProperty.call(payload.patch, "phone")
+        ? payload.patch.phone
+        : effectivePhone(db, person);
       try {
-        payload.patch.phone = normalizePhone(payload.patch.phone);
+        const validated = normalizePhone(phone);
+        if (Object.prototype.hasOwnProperty.call(payload.patch, "phone"))
+          payload.patch.phone = validated;
       } catch {
-        throw new ApiError(
-          "PHONE_REQUIRED",
-          "请填写这位家人本人将来登录使用的有效手机号。",
-        );
+        throw new ApiError("PHONE_REQUIRED", "请填写这位家人的有效手机号。");
       }
-      requireUnusedPhone(db, person.circleId, payload.patch.phone, person.id);
+      if (
+        !person.claimedBy &&
+        Object.prototype.hasOwnProperty.call(payload.patch, "phone")
+      )
+        requireUnusedPhone(db, person.circleId, payload.patch.phone, person.id);
     }
   }
   if (action === "invite.apply") {

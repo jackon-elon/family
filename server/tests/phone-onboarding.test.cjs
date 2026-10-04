@@ -351,7 +351,7 @@ test("matching trusts accounts phone only and imports never overwrite account ch
   assert.equal(imported.name, "本人名字");
   assert.equal(imported.city, "上海市");
   assert.equal(imported.longitude, 121.5);
-  assert.equal(imported.phone, "13800000999");
+  assert.equal(imported.phone, "+8613800000999");
   assert.equal(imported.wechatId, undefined);
   assert.equal(imported.industry, "旧行业");
   const secondInvite = await f.invite(),
@@ -680,4 +680,66 @@ test("reconfirmation keeps the entire chosen location when the person changed on
   assert.equal(profile.city, "上海市");
   assert.equal(profile.latitude, undefined);
   assert.equal(profile.longitude, undefined);
+});
+
+test("member and admin edits cannot clear or corrupt a required contact phone", async (t) => {
+  const f = await fixture(t),
+    target = await f.add(),
+    invitation = await f.invite();
+  const user = await f.register(invitation);
+  await f.confirm(user, invitation);
+  const application = await f.apply(user, invitation);
+  const pending = (
+    await f.ok(f.owner.cookie, "join.list", { circleId: f.circleId })
+  ).applications[0];
+  await f.approve(application, {
+    id: pending.phoneMatch.personId,
+    updatedAt: pending.phoneMatch.personUpdatedAt,
+  });
+  const before = (
+    await f.ok(user.cookie, "person.list", { circleId: f.circleId })
+  ).persons;
+  for (const phone of [null, "", " ", "12345", "02012345678"]) {
+    for (const [cookie, action, scope] of [
+      [user.cookie, "account.profile.update", {}],
+      [f.owner.cookie, "account.profile.update", {}],
+      [
+        user.cookie,
+        "person.update",
+        { circleId: f.circleId, personId: target.id },
+      ],
+      [
+        f.owner.cookie,
+        "person.update",
+        { circleId: f.circleId, personId: target.id },
+      ],
+    ]) {
+      const response = await f.rpc(cookie, action, {
+        ...scope,
+        patch: { phone, name: "不应保存" },
+      });
+      assert.equal(
+        response.json.error?.code,
+        "PHONE_REQUIRED",
+        JSON.stringify(response.json),
+      );
+    }
+  }
+  assert.deepEqual(
+    (await f.ok(user.cookie, "person.list", { circleId: f.circleId })).persons,
+    before,
+  );
+  await f.ok(user.cookie, "account.profile.update", {
+    patch: { phone: "138 0000 0022", name: "本人修改" },
+  });
+  await f.ok(f.owner.cookie, "person.update", {
+    circleId: f.circleId,
+    personId: target.id,
+    patch: { phone: "+86 13800000022", name: "管理员更正" },
+  });
+  const saved = (
+    await f.ok(user.cookie, "person.list", { circleId: f.circleId })
+  ).persons.find((p) => p.id === target.id);
+  assert.equal(saved.phone, "+8613800000022");
+  assert.equal(saved.name, "管理员更正");
 });

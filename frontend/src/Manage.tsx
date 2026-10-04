@@ -929,7 +929,7 @@ function PersonEditor({
     setBusy(true);
     setError("");
     try {
-      const patch = patchOf(draft, { requirePhone: !person?.isClaimed });
+      const patch = patchOf(draft);
       if (!savedId.current) {
         const payload = idempotency.current.payload || {
           circleId: data.circle.id,
@@ -994,7 +994,6 @@ function PersonEditor({
           photoBase64={photo}
           onPhoto={setPhoto}
           onPhotoPreparing={setPhotoPreparing}
-          phoneRequired={!person?.isClaimed}
         />
         {!person && data.people.length > 0 && (
           <RelationChoiceFields

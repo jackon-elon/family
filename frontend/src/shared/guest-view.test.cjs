@@ -194,7 +194,7 @@ test("a stale China-day reminder is hidden, but partial calendar failures keep v
   assert.ok(!partial.includes("暂无家人生日"));
 });
 
-test("many birthdays stay compact while all members remain available through an explicit expansion", () => {
+test("many birthdays keep three inline previews and offer a separate birthday window", () => {
   const events = Array.from({ length: 8 }, (_, i) => ({
     ...birthdays.events[0],
     personId: `person-${i}`,
@@ -209,7 +209,8 @@ test("many birthdays stay compact while all members remain available through an 
     }),
   );
   assert.equal((html.match(/class="birthday-item/g) || []).length, 3);
-  assert.ok(html.includes("还有 5 位家人，展开看看"));
+  assert.ok(html.includes("查看全部生日（8 人）"));
+  assert.ok(!html.includes('role="dialog"'));
 });
 
 test("legacy guest snapshots lacking birthdays still render the entire family and navigation", () => {

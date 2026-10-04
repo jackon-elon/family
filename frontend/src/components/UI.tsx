@@ -71,12 +71,14 @@ export function Modal({
   children,
   busy = false,
   wide = false,
+  className = "",
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   busy?: boolean;
   wide?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
@@ -184,7 +186,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`modal${wide ? " wide" : ""}`}
+        className={`modal${wide ? " wide" : ""} ${className}`}
       >
         <header className="modal-header">
           <h2>{title}</h2>

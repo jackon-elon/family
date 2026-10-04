@@ -2867,3 +2867,15 @@ form fieldset > label + label {
 .graph-search-results small { margin-top: 4px; color: #65705e; font-size: 14px; }
 .graph-overflow summary { min-height: 48px; padding: 12px 0; cursor: pointer; font-size: 16px; }
 .graph-overflow button { min-height: 48px; }
+
+/* Keep navigation and the exit from a long birthday list within reach. */
+.album-backbar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; padding: 6px 0; margin-bottom: 12px; background: #f7f6f2; border-bottom: 1px solid #e2e5da; }
+.album-back-link { display: inline-flex; align-items: center; min-height: 48px; padding: 8px 12px; border: 1px solid #dce2d4; border-radius: 10px; background: #fffefa; color: #3d5946; font-size: 18px; font-weight: 600; text-decoration: none; }
+.album-page:has(.album-backbar) .family-graph, .album-page:has(.album-backbar) .person-map { scroll-margin-top: 68px; }
+.birthday-show-all { min-height: 48px; margin-top: 10px; font-size: 16px; }
+.modal.birthday-dialog { display: flex; flex-direction: column; overflow: hidden; height: min(680px, calc(100dvh - 100px)); }
+.birthday-dialog .modal-header { flex: 0 0 auto; margin-bottom: 10px; }
+.birthday-dialog .modal-header .icon-button { flex-shrink: 0; }
+.birthday-dialog-caption { flex: 0 0 auto; margin: 0 0 14px; font-size: 15px; color: #64715b; }
+.birthday-dialog-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; flex: 1; padding-right: 4px; }
+.birthday-dialog .birthday-list.is-expanded { grid-template-columns: 1fr; }

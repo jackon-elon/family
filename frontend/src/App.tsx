@@ -1102,7 +1102,32 @@ export function GuestBirthdayList({
   onRetry: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const events = expanded ? birthdays.events : birthdays.events.slice(0, 3);
+  const renderBirthday = (event: BirthdayEvent) => (
+    <button
+      type="button"
+      key={event.personId}
+      className={`birthday-item${event.daysUntil === 0 ? " is-today" : ""}`}
+      onClick={() => {
+        setExpanded(false);
+        onSelect(event.personId);
+      }}
+    >
+      <h3>
+        <Avatar
+          person={
+            people.find((p) => p.id === event.personId) || {
+              name: event.personName,
+            }
+          }
+        />
+        {people.find((p) => p.id === event.personId)?.name || event.personName}
+      </h3>
+      <p>{birthdayDateDescription(event)}</p>
+      <span className="birthday-count">
+        {birthdayCountdown(event.daysUntil)}
+      </span>
+    </button>
+  );
   return (
     <section className="birthday-section guest-birthdays" aria-label="近期生日">
       <div className="section-heading">
@@ -1123,30 +1148,15 @@ export function GuestBirthdayList({
       {!stale &&
         (birthdays.events.length ? (
           <>
-            <div className={`birthday-list${expanded ? " is-expanded" : ""}`}>
-              {events.map((event) => (
-                <button
-                  type="button"
-                  key={event.personId}
-                  className={`birthday-item${event.daysUntil === 0 ? " is-today" : ""}`}
-                  onClick={() => onSelect(event.personId)}
-                >
-                  <h3><Avatar person={people.find((p) => p.id === event.personId) || {name: event.personName}} />{people.find((p) => p.id === event.personId)?.name || event.personName}</h3>
-                  <p>{birthdayDateDescription(event)}</p>
-                  <span className="birthday-count">
-                    {birthdayCountdown(event.daysUntil)}
-                  </span>
-                </button>
-              ))}
+            <div className="birthday-list">
+              {birthdays.events.slice(0, 3).map(renderBirthday)}
             </div>
             {birthdays.events.length > 3 && (
               <button
-                className="text-button"
-                onClick={() => setExpanded((value) => !value)}
+                className="button secondary birthday-show-all"
+                onClick={() => setExpanded(true)}
               >
-                {expanded
-                  ? "收起生日列表"
-                  : `还有 ${birthdays.events.length - 3} 位家人，展开看看`}
+                查看全部生日（{birthdays.events.length} 人）
               </button>
             )}
           </>
@@ -1157,6 +1167,33 @@ export function GuestBirthdayList({
             </p>
           )
         ))}
+      {expanded && (
+        <Modal
+          title="近期生日"
+          className="birthday-dialog"
+          onClose={() => setExpanded(false)}
+        >
+          <p className="birthday-dialog-caption">
+            未来 30 天 · {birthdays.events.length} 位家人
+          </p>
+          <div
+            className="birthday-dialog-scroll"
+            role="region"
+            aria-label="全部生日列表"
+            tabIndex={0}
+          >
+            {stale || birthdays.error ? (
+              <p className="soft-note">
+                {birthdays.error || "日期已变化，请关闭后刷新生日。"}
+              </p>
+            ) : (
+              <div className="birthday-list is-expanded">
+                {birthdays.events.map(renderBirthday)}
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
     </section>
   );
 }
@@ -1239,7 +1276,11 @@ export function InvitationHome({
 
 function MemberHome() {
   const { circles, circlesLoading, circlesError } = useApp();
-  const { birthdays, loading: eventsLoading, load: reloadBirthdays } = useFamilyBirthdays(undefined, circles);
+  const {
+    birthdays,
+    loading: eventsLoading,
+    load: reloadBirthdays,
+  } = useFamilyBirthdays(undefined, circles);
   const events = birthdays?.events || [];
   const error = birthdays?.error || "";
   return (
@@ -1512,9 +1553,11 @@ export function FamilyAlbum({
   return (
     <div className="page album-page">
       {!readOnly && (
-        <Link to="/" className="back text-button">
-          ← 返回亲友录
-        </Link>
+        <nav className="album-backbar" aria-label="家庭导航">
+          <Link to="/" className="album-back-link">
+            ← 返回亲友录
+          </Link>
+        </nav>
       )}
       <header className="page-header">
         <div>
@@ -1610,9 +1653,26 @@ export function FamilyAlbum({
               <p>找到 {filtered.length} 位家人，点头像看资料</p>
               <div>
                 {filtered.map((person) => (
-                  <button type="button" key={person.id} onClick={(event) => pick(person.id, event.currentTarget)}>
+                  <button
+                    type="button"
+                    key={person.id}
+                    onClick={(event) => pick(person.id, event.currentTarget)}
+                  >
                     <Avatar person={person} />
-                    <span><strong>{person.name}</strong><small>{[person.name !== person.originalName ? person.originalName : "", person.city || "城市待补充", labels[person.id]].filter(Boolean).join(" · ")}</small></span>
+                    <span>
+                      <strong>{person.name}</strong>
+                      <small>
+                        {[
+                          person.name !== person.originalName
+                            ? person.originalName
+                            : "",
+                          person.city || "城市待补充",
+                          labels[person.id],
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </small>
+                    </span>
                   </button>
                 ))}
               </div>

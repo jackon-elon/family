@@ -11,7 +11,7 @@
     "enhance": true,
     "postcss": true,
     "minified": false,
-    "compileHotReLoad": true,
+    "compileHotReLoad": false,
     "useCompilerPlugins": ["typescript"]
   }
 }

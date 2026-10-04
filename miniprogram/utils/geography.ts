@@ -1,4 +1,5 @@
 import { Person } from '../services/api';
+import { CITY_CATALOG } from './city-catalog';
 
 export interface CityOption { city: string; province: string; country: string; latitude: number; longitude: number }
 export interface CityGroup { key: string; city: string; country: string; count: number; persons: Person[]; outsideChina: boolean }
@@ -27,15 +28,44 @@ export const CITY_OPTIONS: CityOption[] = [
 ];
 
 export function cityOption(city?: string, country?: string): CityOption | undefined {
-  return CITY_OPTIONS.find(c => c.city === city && (!country || c.country === country));
+  return cityOptionInProvince(city, country);
+}
+
+export function cityOptionInProvince(city?: string, country?: string, province?: string): CityOption | undefined {
+  if (!city) return undefined;
+  const established = CITY_OPTIONS.find(c => c.city === city && (!country || c.country === country) && (!province || c.province === province));
+  if (established) return established;
+  const found = CITY_CATALOG.find(c => c[2] === city && (!country || c[0] === country) && (!province || c[1] === province));
+  if (found) return { country: found[0], province: found[1], city: found[2], latitude: found[3], longitude: found[4] };
+  return undefined;
+}
+
+export function cityCountries(): string[] {
+  return Array.from(new Set(CITY_CATALOG.map(c => c[0]))).sort((a, b) => a === '中国' ? -1 : b === '中国' ? 1 : a.localeCompare(b, 'zh-CN'));
+}
+
+export function cityProvinces(country: string): string[] {
+  return Array.from(new Set(CITY_CATALOG.filter(c => c[0] === country).map(c => c[1]))).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+}
+
+export function cityChoices(country: string, province: string): CityOption[] {
+  return CITY_CATALOG.filter(c => c[0] === country && c[1] === province)
+    .map(c => ({ country: c[0], province: c[1], city: c[2], latitude: c[3], longitude: c[4] }))
+    .sort((a, b) => a.city.localeCompare(b.city, 'zh-CN'));
 }
 function coord(person: Person): { latitude: number; longitude: number } | null {
-  if (typeof person.latitude === 'number' && typeof person.longitude === 'number' && (person.latitude !== 0 || person.longitude !== 0)) return { latitude: person.latitude, longitude: person.longitude };
-  const option = cityOption(person.city, person.country);
+  if (typeof person.latitude === 'number' && Number.isFinite(person.latitude) && Math.abs(person.latitude) <= 90 &&
+      typeof person.longitude === 'number' && Number.isFinite(person.longitude) && Math.abs(person.longitude) <= 180 &&
+      (person.latitude !== 0 || person.longitude !== 0)) return { latitude: Math.round(person.latitude * 10) / 10, longitude: Math.round(person.longitude * 10) / 10 };
+  const option = cityOptionInProvince(person.city, person.country, person.province);
   return option ? { latitude: option.latitude, longitude: option.longitude } : null;
 }
-export function groupCities(persons: Person[], scope: 'china' | 'world'): { groups: CityGroup[]; overseas: number; unmapped: number } {
-  const visible = persons.filter(p => !!p.city);
+export interface CityMapSummary { groups: CityGroup[]; overseas: number; unmapped: number; missingCity: number; incomplete: number; mappedPeople: number }
+export function groupCities(persons: Person[], scope: 'china' | 'world'): CityMapSummary {
+  const incomplete = persons.filter(p => p.profileComplete === false).length;
+  const eligible = persons.filter(p => p.profileComplete !== false);
+  const missingCity = eligible.filter(p => !p.city?.trim()).length;
+  const visible = eligible.filter(p => !!p.city?.trim());
   const overseas = visible.filter(p => p.country && p.country !== '中国').length;
   const items = scope === 'china' ? visible.filter(p => !p.country || p.country === '中国') : visible;
   const map: Record<string, CityGroup> = {};
@@ -51,5 +81,6 @@ export function groupCities(persons: Person[], scope: 'china' | 'world'): { grou
     map[key].count++;
     map[key].persons.push(person);
   });
-  return { groups: Object.values(map).sort((a, b) => b.count - a.count || a.city.localeCompare(b.city)), overseas, unmapped };
+  const groups = Object.values(map).sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
+  return { groups, overseas, unmapped, missingCity, incomplete, mappedPeople: groups.reduce((count, group) => count + group.count, 0) };
 }

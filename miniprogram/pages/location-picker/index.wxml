@@ -1,23 +1,36 @@
 <view class="page picker-page">
-  <view class="eyebrow">CITY POINT</view>
-  <view class="title">标记所在城市</view>
-  <view class="subtitle intro">填写城市名称，再拖动地图，让十字落在城市附近。保存的是城市代表点。</view>
-  <view class="card empty" wx:if="{{!hasOpener}}">请从人物资料编辑页打开城市地图，选好的城市才能带回人物卡。<button class="btn secondary" bindtap="onBackHome">返回我的圈子</button></view>
+  <view class="eyebrow">CITY</view>
+  <view class="title">选择所在城市</view>
+  <view class="subtitle intro">按国家、地区和城市逐级选择。只记录城市，不读取你的实时位置。</view>
+  <view class="card empty" wx:if="{{!hasOpener}}">请从人物资料编辑页打开城市选择。<button class="btn secondary" bindtap="onBackHome">返回亲友录</button></view>
   <block wx:else>
-  <view class="card name-card">
-    <label class="field"><text class="field-label">城市 *</text><input class="field-control" value="{{city}}" placeholder="例如：奥斯陆" maxlength="40" data-field="city" bindinput="onInput" /></label>
-    <label class="field"><text class="field-label">国家 / 地区 *</text><input class="field-control" value="{{country}}" placeholder="例如：挪威" maxlength="40" data-field="country" bindinput="onInput" /></label>
-    <label class="field"><text class="field-label">省 / 州（可选）</text><input class="field-control" value="{{province}}" placeholder="例如：广东" maxlength="40" data-field="province" bindinput="onInput" /></label>
-  </view>
-  <view class="region-row">
-    <view class="region-chip" wx:for="{{regions}}" wx:key="label" data-index="{{index}}" bindtap="onRegion">{{item.label}}</view>
-  </view>
-  <view class="map-frame">
-    <map id="cityMap" class="picker-map" latitude="{{latitude}}" longitude="{{longitude}}" scale="{{scale}}" show-location="{{false}}" enable-scroll="{{true}}" enable-zoom="{{true}}" enable-rotate="{{false}}" enable-overlooking="{{false}}" />
-    <cover-view class="crosshair">＋</cover-view>
-  </view>
-  <view class="map-caption">拖动或缩放地图，把十字移到城市中心附近</view>
-  <view class="card privacy-note">不会读取你的实时位置。保存前会把地图位置取整到约 10 公里精度；请不要标记家庭住址。</view>
-  <view class="sticky-bottom"><button class="btn" disabled="{{selecting}}" bindtap="onConfirm">{{selecting ? '正在确认…' : '确认这个城市'}}</button></view>
+    <view class="card choice-summary" wx:if="{{country || city}}">
+      <view class="field-label">当前选择</view>
+      <view class="choice-summary__value">{{country || '国家待选'}} <text wx:if="{{province}}">/ {{province}}</text> <text wx:if="{{city}}">/ {{city}}</text></view>
+      <view class="small muted" wx:if="{{stage === 'custom' && city}}">这座城市会保存在资料中；地图暂时无法标注，仍可在列表查看。</view>
+    </view>
+
+    <view class="picker-heading row between">
+      <view class="section-title">{{stage === 'country' ? '1. 选择国家 / 地区' : stage === 'province' ? '2. 选择省 / 州' : stage === 'city' ? '3. 选择城市' : '填写未收录城市'}}</view>
+      <text class="picker-back" wx:if="{{stage !== 'country' && stage !== 'custom'}}" bindtap="onBackLevel">上一级</text>
+    </view>
+
+    <block wx:if="{{stage !== 'custom'}}">
+      <view class="search-box"><text class="search-icon">⌕</text><input value="{{search}}" placeholder="{{stage === 'country' ? '搜索国家 / 地区' : stage === 'province' ? '搜索省 / 州' : '搜索城市'}}" bindinput="onSearch" /></view>
+      <scroll-view scroll-y="true" class="card choice-list" style="height: {{shownOptions.length > 7 ? 616 : shownOptions.length * 88}}rpx;" wx:if="{{shownOptions.length}}">
+        <view class="choice-row {{stage === 'city' && selected && city === item.label ? 'is-selected' : ''}}" wx:for="{{shownOptions}}" wx:key="label" data-index="{{index}}" bindtap="onSelect">{{item.label}}<text class="choice-arrow">{{stage === 'city' && selected && city === item.label ? '✓' : '›'}}</text></view>
+      </scroll-view>
+      <view class="card empty" wx:else>没有找到匹配的{{stage === 'country' ? '国家或地区' : stage === 'province' ? '省或州' : '城市'}}。</view>
+      <view class="custom-entry" bindtap="onCustom">目录里没有？手动填写城市 ›</view>
+    </block>
+
+    <view class="card custom-form" wx:else>
+      <label class="field"><text class="field-label">国家 / 地区 *</text><input class="field-control" value="{{country}}" maxlength="40" placeholder="例如：挪威" data-field="country" bindinput="onCustomInput" /></label>
+      <label class="field"><text class="field-label">省 / 州（可选）</text><input class="field-control" value="{{province}}" maxlength="40" placeholder="例如：奥斯陆郡" data-field="province" bindinput="onCustomInput" /></label>
+      <label class="field"><text class="field-label">城市 *</text><input class="field-control" value="{{city}}" maxlength="40" placeholder="例如：奥斯陆" data-field="city" bindinput="onCustomInput" /></label>
+      <view class="small muted custom-tip">手动填写的城市会保存在资料中；地图暂时无法标注，仍可在列表查看。</view>
+      <view class="custom-entry" bindtap="onBackLevel">返回目录选择 ›</view>
+    </view>
+    <view class="sticky-bottom"><button class="btn" disabled="{{selecting || !city}}" bindtap="onConfirm">确认城市</button></view>
   </block>
 </view>

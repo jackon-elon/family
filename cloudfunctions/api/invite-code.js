@@ -4,7 +4,7 @@ async function handleInviteCode(event, actorId, api, cloud) {
   const circleId = payload.circleId;
   const token = payload.token;
   if (typeof circleId !== 'string' || !circleId || typeof token !== 'string' || !token) {
-    return {ok: false, error: {code: 'INVALID_INPUT', message: '缺少圈子或邀请口令'}};
+    return {ok: false, error: {code: 'INVALID_INPUT', message: '缺少记录或邀请口令'}};
   }
   // invite.list is administrator-only. The public invite.preview alone is not
   // sufficient to authorize generation of a code containing its secret token.
@@ -13,7 +13,7 @@ async function handleInviteCode(event, actorId, api, cloud) {
   const preview = await api.invoke({action: 'invite.preview', payload: {token}}, actorId);
   if (!preview.ok) return preview;
   if (preview.data.circle.id !== circleId) {
-    return {ok: false, error: {code: 'FORBIDDEN', message: '邀请不属于当前圈子'}};
+    return {ok: false, error: {code: 'FORBIDDEN', message: '邀请不属于当前记录'}};
   }
   if (preview.data.status !== 'active') {
     return {ok: false, error: {code: 'INVITE_INACTIVE', message: '邀请已失效，请重新生成'}};

@@ -1,0 +1,7 @@
+.bottom-navigation { position: fixed; z-index: 100; right: 0; bottom: 0; left: 0; padding: 5px 16px calc(5px + env(safe-area-inset-bottom)); border-top: 1px solid #e3e9e1; background: #fff; box-sizing: border-box; }
+.tab-items { display: flex; gap: 12px; }
+.tab-item { position: relative; flex: 1; width: 50%; min-height: 50px; margin: 0; padding: 0; border: 0; border-radius: 12px; background: #fff; color: #5f7068; line-height: 50px; font-size: 17px; font-weight: 600; text-align: center; }
+.tab-item::after { border: 0; }
+.tab-item.is-selected { color: #1d684e; background: #f0f6f0; font-weight: 700; }
+.tab-label { font-size: 17px; }
+.tab-indicator { position: absolute; bottom: 5px; left: calc(50% - 9px); width: 18px; height: 3px; border-radius: 2px; background: #1d684e; }

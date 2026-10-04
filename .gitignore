@@ -10,3 +10,15 @@ private.*.key
 !*.env.example
 project.private.config.json
 miniprogram/project.private.config.json
+data/
+backups/
+playwright-report/
+test-results/
+__pycache__/
+*.py[cod]
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.pem
+*.p12
+*.pfx

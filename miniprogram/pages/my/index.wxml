@@ -1,0 +1,33 @@
+<view class="page my-page">
+  <view class="hero">
+    <view class="title">我的</view>
+    <view class="subtitle">一份个人资料，与家人和同窗相见。</view>
+  </view>
+
+  <view class="state-chip" wx:if="{{demoMode}}">本地演示 · 资料仅保存在此设备</view>
+  <view class="card empty compact" wx:if="{{loading}}">正在读取我的资料…</view>
+  <view class="card empty compact" wx:elif="{{error}}"><view>暂时无法读取：{{error}}</view><button class="btn secondary retry" bindtap="onRetry">重试</button></view>
+  <block wx:else>
+    <view class="section-head"><view class="section-title">我的资料</view></view>
+    <view class="card profile-entry" bindtap="onOpenProfile">
+      <view class="avatar">我</view>
+      <view class="grow"><view class="profile-name">查看和修改个人资料</view><view class="profile-meta">照片、城市、行业、联系方式和生日</view></view>
+      <text class="chevron">›</text>
+    </view>
+
+    <view wx:if="{{managedRecords.length}}">
+      <view class="section-head"><view class="section-title">管理</view></view>
+      <view class="admin-card" wx:for="{{managedRecords}}" wx:key="id" data-id="{{item.id}}" bindtap="onOpenManage">
+        <view class="admin-icon">管</view>
+        <view class="grow"><view class="link-name">{{item.name}}</view><view class="link-meta">{{item.typeLabel}} · {{item.type === 'family' ? '资料、家人关系与邀请' : '同学资料与邀请'}}</view></view>
+        <text class="chevron">›</text>
+      </view>
+    </view>
+  </block>
+
+  <view class="settings" wx:if="{{demoMode && managedRecords.length}}">
+    <view class="settings-title">本地演示设置</view>
+    <view class="settings-row" wx:if="{{canConnectCloud}}" bindtap="onSwitchMode"><text>连接云端</text><text>›</text></view>
+    <view class="settings-row" bindtap="onReset"><text>恢复演示数据</text><text>›</text></view>
+  </view>
+</view>

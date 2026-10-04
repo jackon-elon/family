@@ -1,0 +1,16 @@
+<view class="page login-page">
+  <view class="login-art" aria-hidden="true"><text class="orbit orbit-one"></text><text class="orbit orbit-two"></text><text class="star star-one">✦</text><text class="star star-two">✦</text><text class="star star-three">✦</text><text class="star star-four">✦</text><text class="star star-five">✦</text><text class="star star-six">✦</text></view>
+  <view class="eyebrow">人间星图</view>
+  <view class="title">把熟悉的人，<br/>放在心上的地图里</view>
+  <view class="subtitle">家人、同窗，各有一份记录。看见关系，也看见彼此如今在哪座城。</view>
+  <view class="login-panel card">
+    <view class="section-title">用微信手机号登录</view>
+    <view class="small muted">首次登录需要点一次微信手机号授权；以后打开会自动进入。手机号只核对你已加入记录里的本人资料，不会让你自动加入别人的记录。</view>
+    <view class="error" wx:if="{{error}}">{{error}}</view>
+    <view class="login-loading muted" wx:if="{{loading}}">正在确认登录状态…</view>
+    <button class="btn login-button" wx:elif="{{demo}}" disabled="{{busy}}" bindtap="onDemoLogin">{{busy ? '正在登录…' : '微信手机号登录'}}</button>
+    <button class="btn login-button" wx:else open-type="getPhoneNumber" disabled="{{busy}}" bindgetphonenumber="onPhoneNumber">{{busy ? '正在登录…' : '微信手机号登录'}}</button>
+    <view class="demo-note" wx:if="{{demo}}">本地演示使用模拟号码；接入云开发后由微信验证真实手机号。</view>
+    <button class="btn ghost retry" wx:if="{{error && !loading}}" bindtap="onRetry">重试检查</button>
+  </view>
+</view>

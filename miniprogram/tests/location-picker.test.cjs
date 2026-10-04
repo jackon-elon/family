@@ -9,10 +9,11 @@ require.extensions['.ts'] = (module, filename) => {
   module._compile(output, filename);
 };
 
-test('native city picker returns only a coarse manually selected point', () => {
+function picker() {
   const callbacks = {};
   const emitted = [];
-  let navigatedBack = 0;
+  const routes = [];
+  const toasts = [];
   let definition;
   const channel = {
     on: (name, callback) => {callbacks[name] = callback;},
@@ -20,30 +21,70 @@ test('native city picker returns only a coarse manually selected point', () => {
   };
   global.Page = options => {definition = options;};
   global.wx = {
-    createMapContext: id => {
-      assert.equal(id, 'cityMap');
-      return {getCenterLocation: ({success}) => success({latitude: 59.913868, longitude: 10.752245})};
-    },
-    navigateBack: () => {navigatedBack++;},
-    showToast: () => {}
+    navigateBack: () => {routes.push('back');},
+    reLaunch: options => {routes.push(options.url);},
+    showToast: options => {toasts.push(options.title);}
   };
+  delete require.cache[require.resolve('../pages/location-picker/index.ts')];
   require('../pages/location-picker/index.ts');
   const page = {
-    ...definition,
-    data: {...definition.data},
+    ...definition, data: {...definition.data},
     getOpenerEventChannel: () => channel,
     setData(patch) {this.data = {...this.data, ...patch};}
   };
   page.onLoad();
-  assert.deepEqual(page.data.regions.map(region => region.label), ['中国', '亚洲', '欧洲', '非洲', '美洲', '大洋洲']);
-  callbacks.initialCityLocation({city: '奥斯陆', country: '挪威', latitude: 59.9, longitude: 10.8});
-  assert.deepEqual([page.data.latitude, page.data.longitude], [59.9, 10.8]);
-  page.onReady();
+  const choose = name => {
+    const index = page.data.shownOptions.findIndex(option => option.label === name);
+    assert.notEqual(index, -1, `option ${name} should exist`);
+    page.onSelect({currentTarget: {dataset: {index}}});
+  };
+  return {page, callbacks, emitted, routes, toasts, choose};
+}
+
+test('city picker selects country, province and city without map dragging or GPS', () => {
+  const {page, emitted, routes, choose} = picker();
+  assert.equal(page.data.stage, 'country');
+  assert.equal(page.data.shownOptions[0].label, '中国');
+  choose('中国');
+  assert.equal(page.data.stage, 'province');
+  choose('广东');
+  assert.equal(page.data.stage, 'city');
+  choose('深圳');
   page.onConfirm();
   assert.deepEqual(emitted, [{name: 'cityLocationSelected', payload: {
-    city: '奥斯陆', country: '挪威', province: '', latitude: 59.9, longitude: 10.8
+    city: '深圳', country: '中国', province: '广东', latitude: 22.5, longitude: 114.1
   }}]);
-  assert.equal(navigatedBack, 1);
+  assert.deepEqual(routes, ['back']);
+});
+
+test('picker filters options and can locate an overseas city', () => {
+  const {page, emitted, choose} = picker();
+  page.onSearch({detail: {value: '美国'}});
+  assert.deepEqual(page.data.shownOptions.map(option => option.label), ['美国']);
+  choose('美国');
+  choose('California');
+  choose('旧金山');
+  page.onConfirm();
+  assert.deepEqual(emitted[0].payload, {city: '旧金山', country: '美国', province: 'California', latitude: 37.8, longitude: -122.4});
+});
+
+test('unlisted city can be saved as a city without inventing a coordinate', () => {
+  const {page, emitted, routes} = picker();
+  page.onCustom();
+  for (const [field, value] of [['country', '挪威'], ['province', '奥斯陆郡'], ['city', '某镇']]) {
+    page.onCustomInput({currentTarget: {dataset: {field}}, detail: {value}});
+  }
+  page.onConfirm();
+  assert.deepEqual(emitted[0].payload, {city: '某镇', country: '挪威', province: '奥斯陆郡', latitude: null, longitude: null});
+  assert.deepEqual(routes, ['back']);
+});
+
+test('unchanged legacy custom city keeps its existing coarse point', () => {
+  const {page, callbacks, emitted} = picker();
+  callbacks.initialCityLocation({city: '奥斯陆郊区', country: '挪威', province: '奥斯陆郡', latitude: 59.913868, longitude: 10.752245});
+  assert.equal(page.data.stage, 'custom');
+  page.onConfirm();
+  assert.deepEqual([emitted[0].payload.latitude, emitted[0].payload.longitude], [59.9, 10.8]);
 });
 
 test('directly opening city picker without an opener shows a safe return path', () => {
@@ -65,7 +106,7 @@ test('directly opening city picker without an opener shows a safe return path', 
   assert.doesNotThrow(() => page.onLoad());
   assert.equal(page.data.hasOpener, false);
   assert.doesNotThrow(() => page.onConfirm());
-  assert.match(toasts[0], /人物资料编辑页/);
+  assert.match(toasts[0], /资料编辑页/);
   page.onBackHome();
   assert.equal(route, '/pages/circles/index');
 });

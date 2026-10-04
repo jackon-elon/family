@@ -1,3 +1,20 @@
-.person-map { position: relative; width: 100%; height: 470rpx; overflow: hidden; border-radius: 28rpx; background: #e8f1eb; }
+.person-map { width: 100%; }
+.person-map__overview-section { margin-bottom: 18rpx; }
+.person-map__section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12rpx; margin: 0 2rpx 12rpx; color: #2a6248; font-size: 25rpx; font-weight: 720; }
+.person-map__section-tip { color: #6c8878; font-size: 20rpx; font-weight: 400; }
+.person-map__detail-heading { margin-top: 23rpx; }
+.person-map__back { color: #226c4f; font-weight: 650; }
+.person-map__overview { position: relative; width: 100%; height: 300rpx; overflow: hidden; border: 1rpx solid #cadfd5; border-radius: 22rpx; background: #e6f3f1; }
+.person-map__land { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.person-map__pin { position: absolute; z-index: 1; width: 86rpx; min-height: 66rpx; transform: translate(-50%, -18rpx); display: flex; align-items: center; flex-direction: column; }
+.person-map__pin-count { display: flex; align-items: center; justify-content: center; min-width: 37rpx; height: 37rpx; padding: 0 6rpx; border: 3rpx solid #fff; border-radius: 999rpx; box-sizing: border-box; background: #216b50; box-shadow: 0 3rpx 12rpx rgba(12, 55, 38, .28); color: #fff; font-size: 20rpx; font-weight: 760; }
+.person-map__pin-label { box-sizing: border-box; max-width: 86rpx; margin-top: 3rpx; padding: 2rpx 6rpx; border-radius: 6rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: rgba(255, 255, 255, .92); color: #224a39; font-size: 18rpx; line-height: 1.3; }
+.person-map__pin.is-selected .person-map__pin-count { background: #a7562e; box-shadow: 0 0 0 5rpx rgba(250, 184, 111, .35); }
+.person-map__overview-empty { position: absolute; left: 20%; top: 41%; width: 60%; border-radius: 14rpx; padding: 14rpx 0; background: rgba(255, 255, 255, .94); color: #557868; font-size: 22rpx; text-align: center; }
+.person-map__choice { margin-top: 13rpx; padding: 17rpx; border-radius: 17rpx; background: #eaf4eb; }
+.person-map__choice-title { margin-bottom: 10rpx; color: #315b43; font-size: 21rpx; }
+.person-map__choice-grid { display: flex; flex-wrap: wrap; gap: 9rpx; }
+.person-map__choice-city { padding: 9rpx 13rpx; border-radius: 11rpx; background: #fff; color: #245f43; font-size: 21rpx; }
+.person-map__native-wrap { position: relative; width: 100%; height: 470rpx; overflow: hidden; border-radius: 28rpx; background: #e8f1eb; }
 .person-map__native { display: block; width: 100%; height: 100%; }
 .person-map__message { position: absolute; left: 12%; top: 45%; width: 76%; padding: 18rpx 8rpx; border-radius: 16rpx; color: #456151; background: #fff; text-align: center; font-size: 24rpx; }

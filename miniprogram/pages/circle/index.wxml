@@ -1,50 +1,59 @@
 <view class="page circle-page" wx:if="{{circle && !loadError && !loading}}">
   <view class="circle-head">
-    <view class="row between"><view class="eyebrow">{{circle.type === 'family' ? 'FAMILY CIRCLE' : 'CLASS CIRCLE'}}</view><text class="pill {{circle.type === 'family' ? '' : 'class-pill'}}">{{circle.type === 'family' ? '家庭圈' : '同学圈'}}</text></view>
+    <view class="row between"><view class="eyebrow">{{circle.type === 'family' ? '家人录' : '同窗录'}}</view><text class="pill {{circle.type === 'family' ? '' : 'class-pill'}}">{{circle.type === 'family' ? '家人' : '同窗'}}</text></view>
     <view class="title">{{circle.name}}</view>
     <view class="subtitle" wx:if="{{circle.type === 'classmate'}}">{{circle.school}} · {{circle.cohort}} · {{circle.className}}</view>
     <view class="subtitle" wx:else>亲近的人，和他们现在生活的城市。</view>
-    <view class="head-footer"><text>{{people.length}} 张人物卡</text><text> · </text><text>{{circle.mode === 'private' ? '自己记录' : '邀请共建'}}</text></view>
+    <view class="head-footer"><text>{{people.length}} 人</text></view>
+  </view>
+  <view class="card claim-guide" wx:if="{{ownerTransfer && ownerTransfer.isTarget}}">
+    <view class="section-title">邀请你接任创建者</view>
+    <view class="small muted claim-intro">接受后，你可以设置管理员，原创建者仍是管理员。</view>
+    <view class="row gap"><button class="btn secondary" disabled="{{transferBusy}}" data-decision="decline" bindtap="onOwnerTransfer">暂不接任</button><button class="btn" disabled="{{transferBusy}}" data-decision="accept" bindtap="onOwnerTransfer">接受</button></view>
   </view>
   <view class="card claim-guide" wx:if="{{!selfId}}">
-    <view class="eyebrow">CONFIRM YOUR CARD</view><view class="section-title">确认哪张人物卡是你</view>
-    <view class="small muted claim-intro">加入圈子与认领人物卡分开办理。认领后，你的位置会在关系网中高亮；请先查看有没有家人或同学为你建好的卡。</view>
-    <view wx:if="{{pendingClaim}}" class="claim-pending"><view class="strong">「{{pendingClaimName}}」认领待审核</view><view class="small muted">管理员核对身份后才会绑定。这段时间可以先浏览圈内资料。</view></view>
+    <view class="section-title">哪一位是你？</view>
+    <view class="small muted claim-intro">家人或同学可能已经添加过你，先找找看，避免重复添加。</view>
+    <view wx:if="{{pendingClaim}}" class="claim-pending"><view class="strong">「{{pendingClaimName}}」等待管理员确认</view><view class="small muted">确认后会标出你的位置。现在也可以先逛逛。</view></view>
     <block wx:else>
-      <view wx:if="{{lastRejectedClaim}}" class="claim-rejected small">上一份认领申请未通过。请核对人物卡或联系管理员，再重新选择。</view>
-      <view wx:if="{{unclaimedPeople.length}}">
-        <view class="claim-subheading">已有未认领人物卡</view>
-        <view class="claim-search"><input value="{{claimQuery}}" placeholder="搜索你的姓名或昵称" bindinput="onClaimSearch" /></view>
-        <view class="claim-person" wx:for="{{claimCandidates}}" wx:key="id"><view class="avatar"><text>{{item.initial}}</text></view><view class="grow"><view class="claim-person-name">{{item.name}}</view><view class="small muted">{{item.nickname ? item.nickname + ' · ' : ''}}{{item.gender === 'male' ? '男' : item.gender === 'female' ? '女' : '信息待完善'}}</view></view><button class="btn secondary claim-person-btn" data-id="{{item.id}}" loading="{{claimBusy === item.id}}" bindtap="onClaimPerson">这是我</button></view>
-        <view class="small muted" wx:if="{{!claimCandidates.length}}">没有找到对应人物卡。可以换个名字搜索，或选择下面的新建入口。</view>
-        <view class="claim-show-all" wx:if="{{unclaimedPeople.length > claimCandidates.length && !claimQuery}}" bindtap="onShowAllCandidates">查看其余 {{unclaimedPeople.length - claimCandidates.length}} 张卡 ›</view>
-      </view>
-      <view class="claim-create"><view class="small muted">这些卡都不是你？新建前会再次检查同名卡，避免出现两张“自己”。</view><button class="btn secondary" bindtap="onAddMyself">都不是我，新建本人卡</button></view>
+      <view class="claim-show-all" bindtap="onToggleManualMatch">{{showManualMatch ? '收起' : '找找我的名字'}} ›</view>
+      <block wx:if="{{showManualMatch}}">
+        <view wx:if="{{lastRejectedClaim}}" class="claim-rejected small">上次未通过确认，请联系管理员看看哪里填错了。</view>
+        <view wx:if="{{unclaimedPeople.length}}">
+          <view class="claim-subheading">已有{{circle.type === 'family' ? '家人' : '同学'}}</view>
+          <view class="small muted">找到后点“这是我”，请管理员确认。</view>
+          <view class="claim-search"><input value="{{claimQuery}}" placeholder="搜索你的姓名或昵称" bindinput="onClaimSearch" /></view>
+          <view class="claim-person" wx:for="{{claimCandidates}}" wx:key="id"><view class="avatar"><text>{{item.initial}}</text></view><view class="grow"><view class="claim-person-name">{{item.name}}</view><view class="small muted">{{item.nickname ? item.nickname + ' · ' : ''}}{{item.gender === 'male' ? '男' : item.gender === 'female' ? '女' : '信息待完善'}}</view></view><button class="btn secondary claim-person-btn" data-id="{{item.id}}" loading="{{claimBusy === item.id}}" bindtap="onClaimPerson">这是我</button></view>
+          <view class="small muted" wx:if="{{!claimCandidates.length}}">没有找到，试试其他名字，或请管理员帮忙。</view>
+          <view class="claim-show-all" wx:if="{{unclaimedPeople.length > claimCandidates.length && !claimQuery}}" bindtap="onShowAllCandidates">查看其余 {{unclaimedPeople.length - claimCandidates.length}} 人 ›</view>
+        </view>
+        <view class="claim-create"><view class="small muted">这里还没有你？{{circle.type === 'family' ? '可以添加自己，家人关系也能以后补。' : '可以直接带入已填写的个人资料。'}}</view><button class="btn secondary" bindtap="onAddMyself">添加我自己</button></view>
+      </block>
     </block>
   </view>
 
   <view class="segmented main-tabs">
-    <view wx:if="{{circle.type === 'family'}}" class="segment {{tab === 'network' ? 'active' : ''}}" data-tab="network" bindtap="onTab">关系网</view>
-    <view class="segment {{tab === 'list' ? 'active' : ''}}" data-tab="list" bindtap="onTab">列表</view>
-    <view class="segment {{tab === 'map' ? 'active' : ''}}" data-tab="map" bindtap="onTab">地图</view>
+    <view wx:if="{{circle.type === 'family'}}" class="segment {{tab === 'network' ? 'active' : ''}}" data-tab="network" bindtap="onTab">亲缘图</view>
+    <view class="segment {{tab === 'list' ? 'active' : ''}}" data-tab="list" bindtap="onTab">{{circle.type === 'family' ? '家人簿' : '同窗簿'}}</view>
+    <view class="segment {{tab === 'map' ? 'active' : ''}}" data-tab="map" bindtap="onTab">天南海北</view>
   </view>
 
-  <view class="search-box"><text class="search-icon">⌕</text><input value="{{query}}" placeholder="搜索姓名、称呼或城市" confirm-type="search" bindinput="onSearch" /></view>
+  <view class="search-box"><text class="search-icon">⌕</text><input value="{{query}}" placeholder="搜索姓名、备注、称呼或城市" confirm-type="search" bindinput="onSearch" /></view>
+  <view class="remark-notice" wx:if="{{remarkError}}"><text>{{remarkError}}</text><text class="remark-retry" bindtap="onRetry">重试</text></view>
 
   <view wx:if="{{tab === 'network' && circle.type === 'family'}}">
-    <view class="network-heading"><view class="section-title">亲友关系图</view><view class="small muted">同一行是同一辈 · 点人物看称呼和关系</view></view>
-    <star-network wx:if="{{graphRows.length}}" persons="{{graphRows}}" relations="{{relations}}" focus-id="{{selfId}}" self-id="{{selfId}}" relation-labels="{{relationLabels}}" bindperson="onStarSelect" />
+    <view class="network-heading"><view class="section-title">亲缘图</view><view class="small muted">看辈分、认亲人 · 点人物看称呼</view></view>
+    <star-network id="star-network" wx:if="{{graphRows.length}}" persons="{{graphRows}}" relations="{{relations}}" focus-id="{{selfId}}" self-id="{{selfId}}" selected-id="{{selectedStarId}}" relation-labels="{{relationLabels}}" bindperson="onStarSelect" bindclear="onStarClear" />
     <view class="small muted network-tip" wx:if="{{query}}">已高亮 {{filteredCount}} 位匹配人物，其余人物保留在关系图中。</view>
     <view class="card empty" wx:if="{{!graphRows.length}}"><text class="empty-icon">✦</text>还没有可显示的人物。先添加人物，再把关系连起来。</view>
-    <view id="star-person-card" class="card star-person-card" wx:if="{{selectedStar}}">
-      <view class="row between"><view class="row gap star-person-heading"><view class="avatar"><image wx:if="{{selectedStar.photoUrl}}" src="{{selectedStar.photoUrl}}" mode="aspectFill"/><text wx:else>{{selectedStar.initial}}</text></view><view class="star-person-title"><view class="eyebrow">你们的连接</view><view class="section-title">{{selectedStar.name}}</view></view></view><text class="star-close" bindtap="onStarClear" aria-role="button" aria-label="收起人物标签">×</text></view>
+    <view id="star-person-card" class="star-person-card star-card-{{starCardPlacement}}" wx:if="{{selectedStar}}" catchtap="onStarCardTap">
+      <view class="row between"><view class="row gap star-person-heading"><view class="avatar"><image wx:if="{{selectedStar.photoUrl}}" src="{{selectedStar.photoUrl}}" mode="aspectFill"/><text wx:else>{{selectedStar.initial}}</text></view><view class="star-person-title"><view class="section-title">{{selectedStar.displayName}}</view><view class="star-original" wx:if="{{selectedStar.hasRemark}}">原名 {{selectedStar.originalName}}</view></view></view><view class="star-close" bindtap="onStarClear" aria-role="button" aria-label="收起人物标签">×</view></view>
       <view class="star-term">{{selectedStar.isSelf ? '这就是你' : selectedStar.relationStatus === 'resolved' ? '你可以叫 TA：' + selectedStar.relationLabel : '关系：' + selectedStar.relationLabel}}</view>
       <view class="star-relation" wx:if="{{selectedStar.relationPath}}">{{selectedStar.relationPath}}</view>
-      <view class="small muted" wx:if="{{selectedStar.relationMissing}}">还需补充：{{selectedStar.relationMissing}}</view>
-      <view class="small muted" wx:if="{{selectedStar.city}}">所在城市：{{selectedStar.city}}</view>
-      <button class="btn secondary star-open" bindtap="onStarOpen">查看资料</button>
+      <view class="star-missing" wx:if="{{selectedStar.relationMissing}}">还需补充：{{selectedStar.relationMissing}}</view>
+      <view class="star-card-footer"><text class="small muted">{{selectedStar.city || '城市待补充'}}</text><button class="star-open" bindtap="onStarOpen">查看资料 ›</button></view>
     </view>
-    <view class="small muted network-tip" wx:if="{{!selfId}}">认领本人卡后，你的位置会在关系图中高亮，并显示亲属称呼。</view>
+    <view class="small muted network-tip" wx:if="{{!selfId}}">找到自己的资料后，就能高亮你的头像、显示亲属称呼。</view>
   </view>
 
   <view wx:if="{{tab === 'list'}}">
@@ -53,26 +62,26 @@
       <picker mode="selector" range="{{statusOptions}}" value="{{statusIndex}}" data-field="statusIndex" bindchange="onFilter"><view class="filter-chip">{{statusOptions[statusIndex]}} ▾</view></picker>
       <picker mode="selector" range="{{industryOptions}}" value="{{industryIndex}}" data-field="industryIndex" bindchange="onFilter"><view class="filter-chip">{{industryOptions[industryIndex]}} ▾</view></picker>
     </view>
-    <view class="row between list-heading"><view class="section-title">{{circle.type === 'family' ? '家人列表' : '同班同学'}}</view><text class="small muted">{{filteredCount}} 人</text></view>
+    <view class="row between list-heading"><view class="section-title">{{circle.type === 'family' ? '家人簿' : '同窗簿'}}</view><text class="small muted">{{filteredCount}} 人</text></view>
     <view class="card list-card" wx:if="{{rows.length}}">
-      <view class="person-row" wx:for="{{rows}}" wx:key="id" data-id="{{item.id}}" bindtap="onPerson"><view class="avatar"><image wx:if="{{item.photoUrl}}" src="{{item.photoUrl}}" mode="aspectFill"/><text wx:else>{{item.initial}}</text></view><view class="grow"><view class="row gap"><text class="person-name">{{item.name}}</text><text class="pill grey" wx:if="{{item.isSelf}}">我</text></view><view class="person-meta">{{item.relationLabel}} · {{item.detail}}</view></view><text class="chevron">›</text></view>
+      <view class="person-row" wx:for="{{rows}}" wx:key="id" data-id="{{item.id}}" bindtap="onPerson"><view class="avatar"><image wx:if="{{item.photoUrl}}" src="{{item.photoUrl}}" mode="aspectFill"/><text wx:else>{{item.initial}}</text></view><view class="grow"><view class="row gap person-name-row"><text class="person-name">{{item.displayName}}</text><text class="pill grey" wx:if="{{item.isSelf}}">我</text></view><view class="original-name" wx:if="{{item.hasRemark}}">原名 {{item.originalName}}</view><view class="person-meta">{{item.relationLabel}} · {{item.detail}}</view></view><text class="chevron">›</text></view>
     </view>
     <view class="card empty" wx:else><text class="empty-icon">⌕</text>没有找到符合条件的人。试试换个名字或筛选。</view>
   </view>
 
   <view wx:if="{{tab === 'map'}}">
-    <view class="row between map-heading"><view><view class="section-title">他们在哪座城市</view><view class="small muted">真实地图 · 只显示公开的城市级位置</view></view><view class="map-toggle"><text class="{{mapScope === 'china' ? 'active' : ''}}" data-scope="china" bindtap="onScope">中国</text><text class="{{mapScope === 'world' ? 'active' : ''}}" data-scope="world" bindtap="onScope">世界</text></view></view>
-    <person-map people="{{rows}}" scope="{{mapScope}}" selected-key="{{selectedCity}}" bind:citytap="onMapCity" />
-    <view class="map-note" wx:if="{{mapScope === 'world'}}">拖动地图探索各地，或点下方城市索引定位。</view>
-    <view class="map-note" wx:if="{{mapScope === 'china' && overseas}}">本圈另有 {{overseas}} 位成员在海外，切到「世界」看看。</view>
-    <view class="map-note" wx:if="{{unmapped}}">有 {{unmapped}} 位成员填写的城市暂未定位到地图，仍可在列表中找到。</view>
-    <view class="card city-sheet" wx:if="{{selectedCityRows.length}}"><view class="row between"><view class="section-title">{{selectedCityRows[0].city}} · {{selectedCityRows.length}} 人</view><text class="star-close" bindtap="clearCity" aria-role="button" aria-label="收起城市人物列表">×</text></view><view class="person-row" wx:for="{{selectedCityRows}}" wx:key="id" data-id="{{item.id}}" bindtap="onPerson"><view class="avatar"><image wx:if="{{item.photoUrl}}" src="{{item.photoUrl}}" mode="aspectFill"/><text wx:else>{{item.initial}}</text></view><view class="grow"><view class="person-name">{{item.name}}</view><view class="person-meta">{{item.relationLabel}} · {{item.status || '近况待完善'}}</view></view><text class="chevron">›</text></view></view>
+    <view class="row between map-heading"><view><view class="section-title">天南海北</view><view class="small muted">看看大家在哪里</view></view><view class="map-toggle"><text class="{{mapScope === 'china' ? 'active' : ''}}" data-scope="china" bindtap="onScope">中国</text><text class="{{mapScope === 'world' ? 'active' : ''}}" data-scope="world" bindtap="onScope">世界</text></view></view>
+    <view class="map-note">共 {{filteredCount}} 人 · {{mapScope === 'china' ? '中国城市' : '全球城市'}} {{mappedPeople}} 人<text wx:if="{{mapScope === 'china' && overseas}}"> · 海外 {{overseas}} 人（切换世界查看）</text><text wx:if="{{incompleteProfiles}}"> · 资料待补齐 {{incompleteProfiles}} 人</text><text wx:if="{{missingCity}}"> · 未填城市 {{missingCity}} 人</text><text wx:if="{{unmapped}}"> · 城市待定位 {{unmapped}} 人</text></view>
+    <person-map id="person-map" people="{{mapRows}}" scope="{{mapScope}}" selected-key="{{selectedCity}}" bind:citytap="onMapCity" bind:overview="clearCity" />
+    <view class="map-note" wx:if="{{mapScope === 'world' && !selectedCity}}">在世界概览点城市标记，可以查看当地详细地图。也可从城市索引选择。</view>
+    <view class="card city-sheet" wx:if="{{selectedCityRows.length}}"><view class="row between"><view class="section-title">{{selectedCityRows[0].city}} · {{selectedCityRows.length}} 人</view><text class="star-close" bindtap="clearCity" aria-role="button" aria-label="收起城市人物列表">×</text></view><view class="person-row" wx:for="{{selectedCityRows}}" wx:key="id" data-id="{{item.id}}" bindtap="onPerson"><view class="avatar"><image wx:if="{{item.photoUrl}}" src="{{item.photoUrl}}" mode="aspectFill"/><text wx:else>{{item.initial}}</text></view><view class="grow"><view class="person-name">{{item.displayName}}</view><view class="original-name" wx:if="{{item.hasRemark}}">原名 {{item.originalName}}</view><view class="person-meta">{{item.relationLabel}} · {{item.status || '近况待完善'}}</view></view><text class="chevron">›</text></view></view>
     <view class="section-title city-heading">城市索引</view>
     <view class="card" wx:if="{{mapGroups.length}}"><view class="city-row" wx:for="{{mapGroups}}" wx:key="key" data-key="{{item.key}}" bindtap="onCity"><view class="city-pin">●</view><view class="grow">{{item.city}}<text class="small muted" wx:if="{{item.outsideChina}}"> · {{item.country}}</text></view><text class="pill grey">{{item.count}} 人</text></view></view>
     <view class="card empty" wx:else>可在自己的资料里选择城市。没有位置的人仍会留在列表中。</view>
+    <view class="section-title city-heading" wx:if="{{unmappedRows.length}}">当前未上图 · {{unmappedRows.length}} 人</view>
+    <view class="card" wx:if="{{unmappedRows.length}}"><view class="city-row" wx:for="{{unmappedRows}}" wx:key="id" data-id="{{item.id}}" bindtap="onPerson"><view class="grow"><view class="person-name">{{item.displayName}}</view><view class="original-name" wx:if="{{item.hasRemark}}">原名 {{item.originalName}}</view><text class="small muted">{{item.mapReason}}</text></view><text class="chevron">›</text></view></view>
   </view>
 
-  <view class="bottom-actions"><button wx:if="{{isAdmin}}" class="btn secondary" bindtap="onAddPerson">＋ 添加未加入的人物卡</button><button wx:if="{{isAdmin}}" class="btn ghost" bindtap="onManage">管理圈子</button></view>
-  <view class="leave-link" wx:if="{{role !== 'owner'}}" bindtap="onLeave">退出这个圈子</view>
+  <view class="leave-entry" wx:if="{{role !== 'owner'}}"><button class="btn ghost" disabled="{{leaving}}" bindtap="onLeave">退出{{circle.type === 'family' ? '家人录' : '同窗录'}}</button></view>
 </view>
-<view class="page circle-page" wx:else><view class="card empty"><view>{{loading ? '正在读取圈子和关系…' : '暂时无法打开圈子：' + loadError}}</view><button class="btn secondary" wx:if="{{!loading}}" bindtap="onRetry">重试</button><button class="btn ghost" bindtap="onHome">返回我的圈子</button></view></view>
+<view class="page circle-page" wx:else><view class="card empty"><view>{{loading ? '正在读取资料…' : '暂时无法打开：' + loadError}}</view><button class="btn secondary" wx:if="{{!loading}}" bindtap="onRetry">重试</button><button class="btn ghost" bindtap="onHome">返回亲友录</button></view></view>

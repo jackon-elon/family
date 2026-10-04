@@ -2,46 +2,43 @@
   <view class="profile-hero">
     <view class="avatar large profile-avatar"><image wx:if="{{person.photoUrl}}" src="{{person.photoUrl}}" mode="aspectFill"/><text wx:else>{{initial}}</text></view>
     <button class="profile-photo-action" wx:if="{{person.isSelf}}" bindtap="onPhoto">{{person.hasPhoto ? '更换我的照片' : '上传我的照片'}}</button>
-    <view class="profile-name">{{person.name}}</view>
+    <view class="profile-name">{{displayName || person.name}}</view>
+    <view class="profile-original" wx:if="{{remark && remark !== person.name}}">原名 {{person.name}}</view>
     <view class="profile-nickname" wx:if="{{person.nickname}}">也叫 {{person.nickname}}</view>
     <view class="pill {{circle.type === 'family' ? '' : 'class-pill'}}">{{relationLabel}}</view>
     <view class="profile-city" wx:if="{{person.city}}">⌖ {{person.city}}</view>
   </view>
 
+  <view class="card remark-card" wx:if="{{!person.isSelf}}">
+    <view class="remark-heading"><view class="section-title">备注名 <text class="remark-private">仅自己可见</text></view><button wx:if="{{!remarkEditing && !remarkLoading && !remarkError}}" class="remark-edit" bindtap="onEditRemark">{{remark ? '修改' : '添加'}}</button></view>
+    <view class="remark-state" wx:if="{{remarkLoading}}">正在读取备注…</view>
+    <view class="remark-state" wx:elif="{{remarkError}}">{{remarkError}}<button class="remark-edit" bindtap="loadRemark">重试</button></view>
+    <view wx:elif="{{remarkEditing}}">
+      <textarea class="remark-input" maxlength="200" value="{{remarkDraft}}" placeholder="例如：二姨、阿明；留空恢复原名" bindinput="onRemarkInput" disabled="{{remarkSaving}}" />
+      <view class="remark-count">{{remarkDraft.length}} / 200</view>
+      <view class="remark-actions"><button class="btn secondary" bindtap="onCancelRemark" disabled="{{remarkSaving}}">取消</button><button class="btn" bindtap="onSaveRemark" disabled="{{remarkSaving}}">{{remarkSaving ? '保存中…' : '保存备注'}}</button></view>
+    </view>
+    <view wx:else class="remark-text {{remark ? '' : 'remark-empty'}}">{{remark || '设置你熟悉的叫法，列表、地图和关系图都会显示。'}}</view>
+  </view>
+
   <view class="card relation-card" wx:if="{{circle.type === 'family'}}">
-    <view class="eyebrow">HOW WE CONNECT</view>
     <view class="section-title">{{person.isSelf ? '这就是你' : relationStatus === 'resolved' ? '你可以叫 TA：' + relationLabel : '关系：' + relationLabel}}</view>
-    <view class="relation-path">{{relationPath || '暂无已记录的连接路径'}}</view>
+    <view class="relation-path">{{relationPath || '还没补全你们之间的家人关系'}}</view>
     <view class="missing" wx:if="{{relationMissing}}">还需补充：{{relationMissing}}</view>
     <view class="small muted" wx:if="{{alternatives}}">也可称：{{alternatives}}</view>
   </view>
 
   <view class="card details-card">
-    <view class="section-title">现在的 TA</view>
+    <view class="section-title">{{person.isSelf ? '我的近况' : '现在的 TA'}}</view>
     <view class="detail-row" wx:for="{{rows}}" wx:key="label"><text class="detail-label">{{item.label}}</text><text class="detail-value">{{item.value}}</text></view>
     <view class="empty-details" wx:if="{{!rows.length}}">还没有填写更多资料。</view>
     <view class="update-time" wx:if="{{updated}}">{{updatedLabel}}：{{updated}}</view>
   </view>
 
-  <view class="card contact-card" wx:if="{{person.phone || person.wechatId}}"><view class="section-title">联系 TA</view><view class="detail-row" wx:if="{{person.phone}}"><text class="detail-label">手机号</text><text class="detail-value">{{person.phone}}</text><text class="text-action" bindtap="onCall">拨打</text></view><view class="detail-row" wx:if="{{person.wechatId}}"><text class="detail-label">微信号</text><text class="detail-value">{{person.wechatId}}</text><text class="text-action" bindtap="onCopyWechat">复制</text></view></view>
+  <view class="card contact-card" wx:if="{{person.phone || person.wechatId}}"><view class="section-title">{{person.isSelf ? '我的联系方式' : '联系 TA'}}</view><view class="detail-row" wx:if="{{person.phone}}"><text class="detail-label">手机号</text><text class="detail-value">{{person.phone}}</text><text class="text-action" bindtap="onCall">拨打</text></view><view class="detail-row" wx:if="{{person.wechatId}}"><text class="detail-label">微信号</text><text class="detail-value">{{person.wechatId}}</text><text class="text-action" bindtap="onCopyWechat">复制</text></view></view>
 
-  <view class="profile-actions"><button class="btn" wx:if="{{canEdit}}" bindtap="onEdit">{{person.isSelf ? '编辑我的资料' : '编辑人物卡'}}</button><button class="btn secondary" wx:if="{{person.isSelf}}" bindtap="onPrivacy">资料可见范围</button><button class="btn secondary" wx:if="{{canClaim}}" disabled="{{claimBusy}}" bindtap="onClaim">{{claimBusy ? '正在提交…' : '申请认领这张卡'}}</button><button class="btn ghost" bindtap="onSuggest">{{circle.type === 'family' ? '建议更正资料或关系' : '建议更正资料'}}</button><button class="btn danger" wx:if="{{isAdmin && !person.isClaimed}}" bindtap="onDelete">删除这张人物卡</button></view>
-  <view class="small muted" wx:if="{{claimPending && !person.isClaimed}}">你已有一份认领申请在审核中，请等待管理员处理。</view>
-  <view class="card suggestion-form" wx:if="{{showRelationSuggestion}}">
-    <view class="section-title">提出关系更正</view>
-    <view class="small muted suggestion-intro">请描述两个人之间的事实关系。管理员核对并采纳前，关系网不会改变。</view>
-    <view class="field"><text class="field-label">要做什么</text><picker mode="selector" range="{{suggestionModeOptions}}" value="{{suggestionModeIndex}}" data-field="suggestionModeIndex" bindchange="onSuggestionPick"><view class="field-control">{{suggestionModeOptions[suggestionModeIndex]}} ▾</view></picker></view>
-    <view class="field" wx:if="{{suggestionModeIndex !== 0}}"><text class="field-label">原关系</text><picker mode="selector" range="{{suggestionExistingNames}}" value="{{suggestionExistingIndex}}" data-field="suggestionExistingIndex" bindchange="onSuggestionPick"><view class="field-control">{{suggestionExistingNames[suggestionExistingIndex] || '暂无现有关系'}} ▾</view></picker></view>
-    <view wx:if="{{suggestionModeIndex !== 2}}">
-      <view class="field"><text class="field-label">建议关系</text><picker mode="selector" range="{{suggestionTypeOptions}}" value="{{suggestionTypeIndex}}" data-field="suggestionTypeIndex" bindchange="onSuggestionPick"><view class="field-control">{{suggestionTypeOptions[suggestionTypeIndex]}} ▾</view></picker></view>
-      <view class="field"><text class="field-label">{{suggestionTypeIndex === 0 ? '谁是父母' : '第一位人物'}}</text><picker mode="selector" range="{{personNames}}" value="{{suggestionFromIndex}}" data-field="suggestionFromIndex" bindchange="onSuggestionPick"><view class="field-control">{{personNames[suggestionFromIndex] || '请选择人物'}} ▾</view></picker></view>
-      <view class="field"><text class="field-label">{{suggestionTypeIndex === 0 ? '谁是子女' : '第二位人物'}}</text><picker mode="selector" range="{{personNames}}" value="{{suggestionToIndex}}" data-field="suggestionToIndex" bindchange="onSuggestionPick"><view class="field-control">{{personNames[suggestionToIndex] || '请选择人物'}} ▾</view></picker></view>
-      <view class="field" wx:if="{{suggestionTypeIndex === 2}}"><text class="field-label">谁较年长</text><picker mode="selector" range="{{suggestionOlderOptions}}" value="{{suggestionOlderIndex}}" data-field="suggestionOlderIndex" bindchange="onSuggestionPick"><view class="field-control">{{suggestionOlderOptions[suggestionOlderIndex]}} ▾</view></picker></view>
-    </view>
-    <view class="suggestion-preview">{{suggestionPreview}}</view>
-    <view class="field"><text class="field-label">更正理由</text><textarea class="field-control suggestion-message" maxlength="200" placeholder="例如：亲子方向写反了，陈志远是陈小满的父亲" value="{{suggestionMessage}}" bindinput="onSuggestionInput" /></view>
-    <button class="btn" disabled="{{submittingSuggestion}}" bindtap="onSubmitRelationSuggestion">{{submittingSuggestion ? '提交中…' : '提交给管理员核对'}}</button>
-    <button class="btn ghost" bindtap="onCancelRelationSuggestion">取消</button>
-  </view>
+  <view class="profile-actions" wx:if="{{person.isSelf || canClaim}}"><button class="btn" wx:if="{{person.isSelf}}" bindtap="onEdit">编辑我的资料</button><button class="btn secondary" wx:if="{{canClaim}}" disabled="{{claimBusy}}" bindtap="onClaim">{{claimBusy ? '正在提交…' : '这是我'}}</button></view>
+  <view class="small muted" wx:if="{{canClaim}}">如果这是你的资料，点一下，请管理员确认。</view>
+  <view class="small muted" wx:if="{{claimPending && !person.isClaimed}}">已提交，等待管理员确认。</view>
 </view>
-<view class="page profile-page" wx:else><view class="card empty"><view>{{loading ? '正在读取人物资料…' : '暂时无法打开人物卡：' + loadError}}</view><button class="btn secondary" wx:if="{{!loading}}" bindtap="onRetry">重试</button><button class="btn ghost" bindtap="onHome">返回我的圈子</button></view></view>
+<view class="page profile-page" wx:else><view class="card empty"><view>{{loading ? '正在读取资料…' : '暂时无法打开资料：' + loadError}}</view><button class="btn secondary" wx:if="{{!loading}}" bindtap="onRetry">重试</button><button class="btn ghost" bindtap="onHome">返回亲友录</button></view></view>

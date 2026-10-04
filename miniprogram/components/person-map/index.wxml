@@ -1,5 +1,17 @@
 <view class="person-map">
-  <map
+  <view class="person-map__overview-section" wx:if="{{scope === 'world' && !selectedKey}}">
+    <view class="person-map__section-heading"><text>全球分布概览</text><text class="person-map__section-tip">点城市标记，查看所在区域</text></view>
+    <view class="person-map__overview">
+      <image class="person-map__land" src="/components/person-map/world-land.png" mode="scaleToFill" />
+      <view class="person-map__pin {{item.selected ? 'is-selected' : ''}}" wx:for="{{overviewClusters}}" wx:key="id" style="left: {{item.x}}%; top: {{item.y}}%;" data-id="{{item.id}}" bindtap="onOverviewTap" aria-role="button" aria-label="{{item.summary}}">
+        <view class="person-map__pin-count">{{item.count}}</view><view class="person-map__pin-label">{{item.label}}</view>
+      </view>
+      <view class="person-map__overview-empty" wx:if="{{!overviewClusters.length}}">暂无可定位的城市</view>
+    </view>
+    <view class="person-map__choice" wx:if="{{overviewChoiceCities.length}}"><view class="person-map__choice-title">这里有 {{overviewChoiceCities.length}} 座城市，选一座查看</view><view class="person-map__choice-grid"><view class="person-map__choice-city" wx:for="{{overviewChoiceCities}}" wx:key="key" data-key="{{item.key}}" bindtap="onOverviewCityTap">{{item.city}} · {{item.count}} 人</view></view></view>
+  </view>
+  <view class="person-map__section-heading person-map__detail-heading" wx:if="{{scope === 'world' && selectedKey}}"><text>城市详细地图</text><text class="person-map__section-tip person-map__back" bindtap="onBackToOverview">返回世界概览 ›</text></view>
+  <view class="person-map__native-wrap" wx:if="{{scope !== 'world' || selectedKey}}"><map
     id="person-city-map"
     class="person-map__native"
     latitude="{{centerLatitude}}"
@@ -19,5 +31,5 @@
   >
     <cover-view wx:if="{{!markers.length}}" class="person-map__message">还没有可显示的城市</cover-view>
     <cover-view wx:if="{{mapError}}" class="person-map__message">地图暂时无法加载，请检查网络后重试</cover-view>
-  </map>
+  </map></view>
 </view>

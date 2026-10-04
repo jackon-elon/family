@@ -1,0 +1,25 @@
+.my-page { padding-top: 24rpx; padding-bottom: 70rpx; }
+.my-page { padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
+.hero { position: relative; overflow: hidden; padding: 44rpx 38rpx; border-radius: 34rpx; background: #e5f1e9; }
+.hero::after { content: ''; position: absolute; width: 230rpx; height: 230rpx; right: -80rpx; top: -85rpx; border-radius: 50%; background: #cce5d4; }
+.hero .eyebrow, .hero .title, .hero .subtitle { position: relative; z-index: 1; }
+.hero .title { color: #205940; margin: 14rpx 0 13rpx; }
+.hero .subtitle { color: #537266; max-width: 500rpx; }
+.state-chip { display: inline-block; margin: 22rpx 0 10rpx; padding: 10rpx 18rpx; border-radius: 999rpx; background: #ecf2ec; color: #5e776a; font-size: 22rpx; }
+.section-head { margin: 38rpx 2rpx 15rpx; display: flex; justify-content: space-between; align-items: end; }
+.section-head .section-title { margin: 0; }
+.empty.compact { padding: 34rpx; text-align: left; font-size: 24rpx; }
+.retry { margin-top: 20rpx; }
+.profile-entry, .admin-card { display: flex; align-items: center; gap: 20rpx; margin: 13rpx 0; padding: 22rpx 24rpx; background: #fff; border-radius: 23rpx; }
+.profile-entry { border: 1rpx solid #e2ebe4; }
+.profile-entry .avatar, .admin-icon { width: 80rpx; height: 80rpx; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 23rpx; font-size: 30rpx; font-weight: 750; }
+.profile-entry .avatar { color: #307356; background: #e1f0e6; }
+.profile-name, .link-name { font-size: 28rpx; font-weight: 720; }
+.profile-meta, .link-meta { margin-top: 7rpx; color: #71847a; font-size: 22rpx; }
+.admin-card { border: 1rpx solid #dcece1; }
+.admin-icon { color: #267457; background: #e8f3eb; }
+.settings { margin-top: 48rpx; color: #6d8175; }
+.settings-title { margin: 0 3rpx 12rpx; font-size: 23rpx; font-weight: 650; }
+.settings-row { display: flex; justify-content: space-between; align-items: center; padding: 24rpx; margin: 1rpx 0; background: #fff; font-size: 26rpx; }
+.settings-row:first-of-type { border-radius: 18rpx 18rpx 0 0; }
+.settings-row:last-of-type { border-radius: 0 0 18rpx 18rpx; }

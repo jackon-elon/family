@@ -1,1 +1,1 @@
-{"navigationBarTitleText":"圈子","enablePullDownRefresh":true,"usingComponents":{"person-map":"../../components/person-map/index","star-network":"../../components/star-network/index"}}
+{"navigationBarTitleText":"亲友录","enablePullDownRefresh":true,"usingComponents":{"person-map":"../../components/person-map/index","star-network":"../../components/star-network/index"}}

@@ -1,3 +1,4 @@
+import { cityChoices, cityCountries, cityOptionInProvince, cityProvinces, CityOption } from '../../utils/geography';
 import { toast } from '../../utils/navigation';
 
 interface InitialCityLocation {
@@ -8,23 +9,21 @@ interface InitialCityLocation {
   longitude?: number | null;
 }
 
-// This map has no GPS entry point. The user names a city and pans the map to a
-// representative center; only a point rounded to 0.1 degree is passed back.
-const REGIONS = [
-  {label: '中国', latitude: 35, longitude: 104},
-  {label: '亚洲', latitude: 25, longitude: 85},
-  {label: '欧洲', latitude: 49, longitude: 15},
-  {label: '非洲', latitude: 2, longitude: 20},
-  {label: '美洲', latitude: 39, longitude: -98},
-  {label: '大洋洲', latitude: -25, longitude: 135}
-];
+type Stage = 'country' | 'province' | 'city' | 'custom';
+interface Choice { label: string; value?: string; latitude?: number; longitude?: number }
+
+function optionsFor(stage: Stage, country: string, province: string): Choice[] {
+  if (stage === 'country') return cityCountries().map(label => ({label}));
+  if (stage === 'province') return cityProvinces(country).map(value => ({label: value || '不分省 / 州', value}));
+  if (stage === 'city') return cityChoices(country, province).map(city => ({label: city.city, latitude: city.latitude, longitude: city.longitude}));
+  return [];
+}
 
 Page({
   data: {
-    city: '', country: '', province: '',
-    latitude: 35, longitude: 104, scale: 5,
-    regions: REGIONS,
-    selecting: false, hasOpener: true
+    country: '', province: '', city: '', latitude: null as number | null, longitude: null as number | null,
+    stage: 'country' as Stage, options: [] as Choice[], shownOptions: [] as Choice[], search: '',
+    selecting: false, hasOpener: true, selected: false
   },
   onLoad(this: any) {
     let channel: any;
@@ -35,51 +34,63 @@ Page({
     }
     this.openerChannel = channel;
     channel.on('initialCityLocation', (initial: InitialCityLocation) => {
-      const hasPoint = typeof initial.latitude === 'number' && typeof initial.longitude === 'number' &&
-        Number.isFinite(initial.latitude) && Number.isFinite(initial.longitude);
-      this.setData({
-        city: initial.city || '', country: initial.country || '', province: initial.province || '',
-        latitude: hasPoint ? initial.latitude : 35,
-        longitude: hasPoint ? initial.longitude : 104,
-        scale: hasPoint ? 10 : 5
-      });
+      const country = initial.country || '';
+      const province = initial.province || '';
+      const city = initial.city || '';
+      const known = cityOptionInProvince(city, country, province);
+      const stage: Stage = city && !known ? 'custom' : country && city && cityProvinces(country).includes(province) ? 'city' : country && cityProvinces(country).length ? 'province' : 'country';
+      const latitude = known?.latitude ?? (typeof initial.latitude === 'number' ? initial.latitude : null);
+      const longitude = known?.longitude ?? (typeof initial.longitude === 'number' ? initial.longitude : null);
+      this.setData({country, province, city, latitude, longitude, selected: !!city && !!known, stage, search: ''});
+      this.refreshOptions();
     });
+    this.refreshOptions();
   },
-  onReady(this: any) { if (this.data.hasOpener) this.mapContext = wx.createMapContext('cityMap', this); },
   onBackHome() { wx.reLaunch({url: '/pages/circles/index'}); },
-  onInput(this: any, event: any) {
-    const field = event.currentTarget.dataset.field;
-    if (field === 'city' || field === 'country' || field === 'province') this.setData({[field]: event.detail.value});
+  refreshOptions(this: any) {
+    const options = optionsFor(this.data.stage, this.data.country, this.data.province);
+    const search = this.data.search.trim().toLocaleLowerCase();
+    this.setData({options, shownOptions: search ? options.filter(item => item.label.toLocaleLowerCase().includes(search)) : options});
   },
-  onRegion(this: any, event: any) {
-    const region = REGIONS[Number(event.currentTarget.dataset.index)];
-    if (region) this.setData({latitude: region.latitude, longitude: region.longitude, scale: 5});
+  onSearch(this: any, event: any) { this.setData({search: String(event.detail.value || '')}); this.refreshOptions(); },
+  onSelect(this: any, event: any) {
+    const choice: Choice | undefined = this.data.shownOptions[Number(event.currentTarget.dataset.index)];
+    if (!choice) return;
+    const stage: Stage = this.data.stage;
+    if (stage === 'country') this.setData({country: choice.label, province: '', city: '', latitude: null, longitude: null, selected: false, stage: cityProvinces(choice.label).length === 1 && cityProvinces(choice.label)[0] === '' ? 'city' : 'province', search: ''});
+    else if (stage === 'province') this.setData({province: choice.value ?? choice.label, city: '', latitude: null, longitude: null, selected: false, stage: 'city', search: ''});
+    else if (stage === 'city') this.setData({city: choice.label, latitude: choice.latitude, longitude: choice.longitude, selected: true, search: ''});
+    this.refreshOptions();
+  },
+  onBackLevel(this: any) {
+    const stage: Stage = this.data.stage;
+    this.setData({stage: stage === 'city' && !(cityProvinces(this.data.country).length === 1 && cityProvinces(this.data.country)[0] === '') ? 'province' : 'country', search: ''});
+    this.refreshOptions();
+  },
+  onCustom(this: any) { this.setData({stage: 'custom', search: '', selected: false, latitude: null, longitude: null}); this.refreshOptions(); },
+  onCustomInput(this: any, event: any) {
+    const field = event.currentTarget.dataset.field;
+    if (field === 'country' || field === 'province' || field === 'city') this.setData({[field]: event.detail.value, latitude: null, longitude: null, selected: false});
   },
   onConfirm(this: any) {
     if (this.data.selecting) return;
-    if (!this.openerChannel?.emit) return toast('请从人物资料编辑页打开城市地图');
+    if (!this.openerChannel?.emit) return toast('请从资料编辑页打开城市选择');
     const city = this.data.city.trim();
     const country = this.data.country.trim();
     const province = this.data.province.trim();
-    if (!city) return toast('请填写城市名称');
-    if (!country) return toast('请填写国家或地区');
-    if (!this.mapContext) return toast('地图还在加载，请稍后重试');
+    if (!country) return toast('请选择或填写国家 / 地区');
+    if (!city) return toast('请选择或填写城市');
+    if (this.data.stage !== 'custom' && !this.data.selected) return toast('请从列表中选择城市');
+    const known: CityOption | undefined = this.data.stage === 'custom' ? undefined : cityOptionInProvince(city, country, province);
+    const existingPoint = this.data.stage === 'custom' && typeof this.data.latitude === 'number' && Number.isFinite(this.data.latitude) && Math.abs(this.data.latitude) <= 90 &&
+      typeof this.data.longitude === 'number' && Number.isFinite(this.data.longitude) && Math.abs(this.data.longitude) <= 180 &&
+      (this.data.latitude !== 0 || this.data.longitude !== 0);
     this.setData({selecting: true});
-    this.mapContext.getCenterLocation({
-      success: (point: {latitude: number; longitude: number}) => {
-        if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude) ||
-          Math.abs(point.latitude) > 90 || Math.abs(point.longitude) > 180) {
-          this.setData({selecting: false});
-          return toast('地图位置无效，请重新选择');
-        }
-        this.openerChannel.emit('cityLocationSelected', {
-          city, country, province,
-          latitude: Math.round(point.latitude * 10) / 10,
-          longitude: Math.round(point.longitude * 10) / 10
-        });
-        wx.navigateBack();
-      },
-      fail: () => { this.setData({selecting: false}); toast('无法读取地图中心，请重试'); }
+    this.openerChannel.emit('cityLocationSelected', {
+      city, country, province,
+      latitude: known?.latitude ?? (existingPoint ? Math.round(this.data.latitude * 10) / 10 : null),
+      longitude: known?.longitude ?? (existingPoint ? Math.round(this.data.longitude * 10) / 10 : null)
     });
+    wx.navigateBack();
   }
 });

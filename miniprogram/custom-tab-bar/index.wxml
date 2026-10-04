@@ -1,0 +1,8 @@
+<view class="bottom-navigation">
+  <view class="tab-items">
+    <button wx:for="{{tabs}}" wx:key="path" class="tab-item {{selected === index ? 'is-selected' : ''}}" data-index="{{index}}" bindtap="onSwitch" aria-label="{{item.label}}{{selected === index ? '，当前页面' : ''}}">
+      <text class="tab-label">{{item.label}}</text>
+      <view class="tab-indicator" wx:if="{{selected === index}}"></view>
+    </button>
+  </view>
+</view>

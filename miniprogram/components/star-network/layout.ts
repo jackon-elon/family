@@ -1,10 +1,10 @@
 /** Pure family graph geometry. Coordinates are rpx and each node is centered on x/y. */
-export interface StarPerson { id: string; name: string; photoUrl?: string; isDimmed?: boolean }
+export interface StarPerson { id: string; name: string; originalName?: string; photoUrl?: string; isDimmed?: boolean }
 export interface StarRelation { id?: string; from: string; to: string; type: 'parent' | 'spouse' | 'sibling' }
 export interface StarNode {
   id: string; name: string; initial: string; photoUrl: string; label: string;
   x: number; y: number; ring: number; generation: number | null; connected: boolean;
-  isFocus: boolean; isSelf: boolean; isDimmed: boolean; isConflicted: boolean;
+  isFocus: boolean; isSelf: boolean; isSelected: boolean; isDimmed: boolean; isConflicted: boolean;
   tone: number; style: string;
 }
 export interface StarEdge { id: string; type: StarRelation['type']; style: string }
@@ -27,7 +27,8 @@ const SIDE_PADDING = 210; // Leave a gutter for generation labels.
 const MIN_WIDTH = 690;
 
 function nameOrder(byId: ReadonlyMap<string, StarPerson>, a: string, b: string): number {
-  return (byId.get(a)?.name || '').localeCompare(byId.get(b)?.name || '', 'zh-CN') || a.localeCompare(b);
+  const left = byId.get(a); const right = byId.get(b);
+  return (left?.originalName || left?.name || '').localeCompare(right?.originalName || right?.name || '', 'zh-CN') || a.localeCompare(b);
 }
 function toneFor(id: string): number {
   let value = 0;
@@ -113,7 +114,7 @@ function orderRow(
 /** Parent goes one row above child; spouse and sibling remain in the same row. */
 export function buildStarLayout(
   persons: readonly StarPerson[], relations: readonly StarRelation[],
-  focusId = '', selfId = '', relationLabels: Readonly<Record<string, string>> = {}
+  focusId = '', selfId = '', relationLabels: Readonly<Record<string, string>> = {}, selectedId = ''
 ): StarLayout {
   const byId = new Map<string, StarPerson>();
   for (const person of persons || []) {
@@ -179,9 +180,10 @@ export function buildStarLayout(
   }
   const focusComponent = component.get(find(anchorId))!;
   const focusOffset = offset.get(find(anchorId))!;
+  const anchorHasRelation = clean.some(relation => relation.from === anchorId || relation.to === anchorId);
   const isConflicted = (id: string) => conflicted.has(component.get(find(id))!);
   const generation = (id: string): number | null =>
-    component.get(find(id)) === focusComponent && !isConflicted(id) ? offset.get(find(id))! - focusOffset : null;
+    (Boolean(focus) || anchorHasRelation) && component.get(find(id)) === focusComponent && !isConflicted(id) ? offset.get(find(id))! - focusOffset : null;
 
   const near = new Map(allIds.map(id => [id, new Set<string>()]));
   for (const relation of clean) { near.get(relation.from)!.add(relation.to); near.get(relation.to)!.add(relation.from); }
@@ -236,7 +238,7 @@ export function buildStarLayout(
     const hasConflict = unknown.some(isConflicted);
     const hasMissing = unknown.some(id => !isConflicted(id));
     place(unknown, levels.length, null,
-      hasConflict && hasMissing ? '待补／核实关系' : hasConflict ? '待核实关系' : '待补关系');
+      hasConflict && hasMissing ? '关系待补充／核实' : hasConflict ? '待核实关系' : '关系待补充');
   }
   const nodes: StarNode[] = selected.map(id => {
     const person = byId.get(id)!;
@@ -247,9 +249,10 @@ export function buildStarLayout(
     return {
       id, name: person.name || '未命名', initial: (person.name || '人').slice(-1),
       photoUrl: person.photoUrl || '',
-      label: self ? '我' : bad ? '待核实关系' : connected ? relationLabels[id] || '' : '待补关系',
+      label: self ? '我' : bad ? '待核实关系' : point.level !== null && connected ? relationLabels[id] || '' : '关系待补充',
       x: point.x, y: point.y, ring: point.level ?? 99, generation: point.level, connected,
-      isFocus: !!focus && id === focus.id, isSelf: self, isDimmed: !!person.isDimmed,
+      isFocus: !!focus && id === focus.id, isSelf: self,
+      isSelected: !!selectedId && id === selectedId, isDimmed: !!person.isDimmed,
       isConflicted: bad, tone: toneFor(id), style: `left:${point.x}rpx;top:${point.y}rpx;`
     };
   });

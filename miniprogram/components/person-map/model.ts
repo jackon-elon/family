@@ -1,5 +1,5 @@
 import { Person } from '../../services/api';
-import { cityOption } from '../../utils/geography';
+import { cityOptionInProvince } from '../../utils/geography';
 
 export type MapScope = 'china' | 'world';
 
@@ -57,13 +57,14 @@ function cityCoordinate(person: Person, city: string, country: string): { latitu
     latitude: Math.round(person.latitude * 10) / 10,
     longitude: Math.round(person.longitude! * 10) / 10
   };
-  const known = cityOption(city, country);
+  const known = cityOptionInProvince(city, country, person.province);
   return known ? { latitude: known.latitude, longitude: known.longitude } : null;
 }
 
 export function buildPersonMapModel(people: Person[], scope: MapScope, selectedKey = ''): PersonMapModel {
   const map = new Map<string, MapCity>();
   for (const person of people || []) {
+    if (person.profileComplete === false) continue;
     const city = (person.city || '').trim();
     if (!city) continue;
     const country = (person.country || '中国').trim() || '中国';

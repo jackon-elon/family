@@ -1,15 +1,15 @@
 .circles-page { padding-top: 24rpx; }
-.hero { position: relative; overflow: hidden; border-radius: 38rpx; padding: 55rpx 38rpx 65rpx; background: #dfeee4; margin-bottom: 24rpx; }
+.circles-page { padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
+.hero { position: relative; overflow: hidden; border-radius: 28rpx; padding: 32rpx; background: #e4eee5; margin-bottom: 22rpx; }
 .hero .eyebrow { position: relative; z-index: 1; color: #538674; }
-.hero .title { position: relative; z-index: 1; margin: 19rpx 0 20rpx; color: #1e5542; }
+.hero .title { position: relative; z-index: 1; margin: 14rpx 0 12rpx; color: #254e3e; font-size: 48rpx; letter-spacing: 1rpx; }
 .hero .subtitle { position: relative; z-index: 1; max-width: 500rpx; color: #4d7465; }
 .hero-ornament { position: absolute; border-radius: 50%; background: #c4e1ce; }
 .ornament-one { width: 280rpx; height: 280rpx; right: -105rpx; top: -70rpx; }
 .ornament-two { width: 170rpx; height: 170rpx; right: 25rpx; bottom: -98rpx; background: #add8be; }
-.mode-banner { display: flex; align-items: center; gap: 12rpx; margin: 10rpx 0 42rpx; font-size: 13px; color: #5f7068; }
+.mode-banner { display: flex; align-items: center; gap: 12rpx; margin: 10rpx 0 24rpx; font-size: 12px; color: #5f7068; }
 .mode-dot { width: 13rpx; height: 13rpx; border-radius: 50%; background: #6faf7a; }
 .mode-dot.cloud { background: #49a8d2; }
-.mode-link { color: #2d7859; font-weight: 650; }
 .group-heading { margin: 31rpx 3rpx 14rpx; align-items: end; }
 .group-heading .section-title { margin: 7rpx 0 0; }
 .group-count { font-size: 13px; color: #5f7068; padding-bottom: 5rpx; }
@@ -19,7 +19,17 @@
 .circle-name { font-weight: 730; font-size: 30rpx; }
 .circle-meta { font-size: 13px; color: #5f7068; margin-top: 8rpx; }
 .empty.compact { padding: 36rpx; font-size: 24rpx; text-align: left; }
-.sticky-bottom { margin-top: 35rpx; }
-.demo-footer { text-align: center; margin-top: 20rpx; font-size: 12px; color: #61736b; }
 .application-section { margin-bottom: 24rpx; }.application-card { display: flex; align-items: center; gap: 14rpx; padding: 22rpx 24rpx; border-radius: 22rpx; background: #fff; margin: 12rpx 0; box-shadow: 0 7rpx 22rpx rgba(14, 49, 34, .04); }.application-name { font-size: 27rpx; font-weight: 690; }.application-date { margin-top: 7rpx; color: #839288; font-size: 21rpx; }.application-card .pill { flex-shrink: 0; }
 .application-error { margin: 3rpx 0 20rpx; padding: 18rpx; background: #fff7eb; color: #946c39; border-radius: 15rpx; text-align: center; font-size: 22rpx; }
+.birthday-heading { margin-top: 34rpx; }
+.birthday-link { align-self: end; padding-bottom: 5rpx; color: #a66442; font-size: 24rpx; font-weight: 700; }
+.birthday-card { background: #fff9f3; border: 1rpx solid #f6e9dc; border-radius: 27rpx; padding: 4rpx 23rpx; }
+.birthday-row { display: flex; align-items: center; gap: 19rpx; min-height: 105rpx; padding: 15rpx 0; }
+.birthday-row + .birthday-row { border-top: 1rpx solid #f2e8dc; }
+.birthday-date { width: 103rpx; min-width: 103rpx; text-align: center; color: #a4613e; font-size: 24rpx; font-weight: 750; }
+.birthday-countdown { display: block; font-size: 20rpx; font-weight: 600; color: #a78771; margin-top: 4rpx; }
+.birthday-name { font-size: 28rpx; font-weight: 720; }
+.birthday-meta { font-size: 21rpx; color: #917966; margin-top: 5rpx; }
+.birthday-empty { color: #8d725e; background: #fff9f3; font-size: 23rpx; }
+.create-button { width: 100%; margin: 30rpx 0 24rpx; white-space: nowrap; }
+.circles-page .create-button { width: 100%; }

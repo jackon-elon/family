@@ -1,45 +1,114 @@
 <view class="page manage-page" wx:if="{{circle && !loading && !loadError}}">
-  <view class="eyebrow">CIRCLE ADMIN</view><view class="title">管理 {{circle.name}}</view><view class="subtitle intro">邀请熟人、核对申请，帮圈子里的关系保持清楚。</view>
-  <view class="action-tile" bindtap="onInvite"><view class="tile-icon">邀</view><view class="grow"><view class="strong">邀请真人加入圈子</view><view class="small muted">分享一次性邀请；通过审核后才有访问权</view></view><text class="chevron">›</text></view>
-  <view class="action-tile placeholder-tile" bindtap="onAddPerson"><view class="tile-icon">人</view><view class="grow"><view class="strong">添加未加入的人物卡</view><view class="small muted">先记录家人或同学；不会给对方访问权</view></view><text class="chevron">›</text></view>
+  <view class="title">管理</view><view class="subtitle intro">{{circle.name}}</view>
+  <view class="quick-actions"><button class="btn" bindtap="onAddPerson">＋ 添加{{circle.type === 'family' ? '家人' : '同学'}}</button><button class="btn secondary" bindtap="onInvite">微信邀请 / 扫码</button></view>
+  <view class="manage-tabs">
+    <button class="manage-tab {{activeTab === 'people' ? 'active' : ''}}" data-tab="people" bindtap="onTab">人物</button>
+    <button wx:if="{{circle.type === 'family'}}" class="manage-tab {{activeTab === 'relations' ? 'active' : ''}}" data-tab="relations" bindtap="onTab">关系</button>
+    <button class="manage-tab {{activeTab === 'pending' ? 'active' : ''}}" data-tab="pending" bindtap="onTab">待办<text class="pending-badge" wx:if="{{pendingCount}}">{{pendingCount}}</text></button>
+    <button class="manage-tab {{activeTab === 'settings' ? 'active' : ''}}" data-tab="settings" bindtap="onTab">设置</button>
+  </view>
+  <view wx:if="{{activeTab === 'people'}}">
+  <view class="row between block-title"><view class="section-title">{{circle.type === 'family' ? '家人' : '同学'}} <text class="muted small">{{people.length}} 人</text></view></view>
+  <view class="search-box"><input placeholder="搜索姓名或城市" value="{{personSearch}}" bindinput="onPersonSearch" confirm-type="search" /></view>
 
-  <view class="section-title block-title">加入申请 <text class="count">{{applications.length}}</text></view>
-  <view class="card" wx:if="{{applications.length}}"><view class="review-row" wx:for="{{applications}}" wx:key="id"><view class="row between"><view class="person-name">{{item.applicantName || item.name}}</view><text class="small muted">{{item.createdText}}</text></view><view class="review-note">{{item.note || '未填写身份说明'}}</view><view class="invite-expiry {{item.inviteUnavailable || item.inviteExpiringSoon ? 'warning' : ''}}" wx:if="{{item.inviteStatusText}}">{{item.inviteStatusText}}</view><view class="review-actions"><button class="btn secondary small-btn" data-id="{{item.id}}" data-decision="reject" bindtap="onJoin">拒绝</button><button class="btn small-btn" disabled="{{item.inviteUnavailable}}" data-id="{{item.id}}" data-decision="approve" bindtap="onJoin">确认加入</button></view></view></view>
-  <view class="card empty compact" wx:else>暂时没有待审核的加入申请。</view>
+  <view class="card" wx:if="{{visiblePersonRows.length}}"><view class="member-row person-record-row" wx:for="{{visiblePersonRows}}" wx:key="id"><view class="avatar" data-id="{{item.personId}}" bindtap="onPerson">{{item.initial}}</view><view class="grow"><view class="person-name" data-id="{{item.personId}}" bindtap="onPerson">{{item.name}}</view><view class="person-meta"><text wx:if="{{item.roleLabel}}">{{item.roleLabel}} · </text>{{item.profileText}}</view><view class="record-actions"><text class="text-action" data-id="{{item.personId}}" bindtap="onEditPerson">编辑资料</text><text class="text-action" wx:if="{{circle.type === 'family'}}" data-id="{{item.personId}}" bindtap="onManagePersonRelation">编辑关系</text><text class="text-action" wx:if="{{item.canDelete}}" data-id="{{item.personId}}" bindtap="onPersonMenu">更多</text></view></view></view></view>
+  <view class="card empty compact" wx:else>{{personSearch ? '没有找到，试试其他姓名或城市。' : '还没有人物，先添加一位吧。'}}</view>
 
-  <view class="section-title block-title" wx:if="{{claimRequests.length}}">认领申请 <text class="count">{{claimRequests.length}}</text></view>
-  <view class="card" wx:if="{{claimRequests.length}}"><view class="review-row" wx:for="{{claimRequests}}" wx:key="id"><view class="person-name">{{item.applicantName}} <text class="small muted">申请认领 {{item.targetName}}</text></view><view class="review-note">请核对本人身份和人物卡原有关系。批准后，这张卡会绑定该成员。</view><view class="review-actions"><button class="btn secondary small-btn" data-id="{{item.id}}" data-decision="reject" bindtap="onClaim">拒绝</button><button class="btn small-btn" data-id="{{item.id}}" data-decision="approve" bindtap="onClaim">确认认领</button></view></view></view>
-
-  <view class="section-title block-title" wx:if="{{suggestions.length}}">更正建议 <text class="count">{{suggestions.length}}</text></view>
-  <view class="card" wx:if="{{suggestions.length}}"><view class="review-row" wx:for="{{suggestions}}" wx:key="id"><view class="pill grey">{{item.type === 'relation' ? '关系建议' : item.type === 'invite' ? '邀请推荐' : '资料建议'}}</view><view class="review-note">{{item.message}}</view><view class="suggestion-change" wx:if="{{item.structuredRelation}}"><view wx:if="{{item.beforeText}}">原关系：{{item.beforeText}}</view><view wx:if="{{item.afterText}}">建议改为：{{item.afterText}}</view><view wx:else>建议删除这条关系</view></view><view class="review-actions"><button class="btn secondary small-btn" data-id="{{item.id}}" data-status="rejected" bindtap="onSuggestion">拒绝</button><button class="btn small-btn" wx:if="{{item.structuredRelation}}" data-id="{{item.id}}" data-status="accepted" bindtap="onSuggestion">预览并采纳</button><button class="btn small-btn" wx:else data-id="{{item.id}}" bindtap="onSuggestionTarget">去核实更正</button></view></view></view>
-
-  <view class="row between block-title"><view class="section-title">未认领的人物卡</view><text class="text-action" bindtap="onAddPerson">＋ 添加</text></view>
-  <view class="small muted section-help">这些是关系网中的人物，不代表 TA 已加入。认领后由本人管理私人资料。</view>
-  <view class="card" wx:if="{{unclaimedPeople.length}}"><view class="member-row" wx:for="{{unclaimedPeople}}" wx:key="id"><view class="avatar">{{item.initial}}</view><view class="grow"><view class="person-name">{{item.name}}</view><view class="person-meta">未认领 · 无账号访问权</view></view><text class="text-action" data-id="{{item.id}}" bindtap="onPerson">查看 ›</text></view></view>
-  <view class="card empty compact" wx:else>暂无未认领人物卡。</view>
-
-  <view class="section-title block-title">已加入的成员</view>
-  <view class="small muted section-help">移出成员会撤销访问权；人物节点和关系保留。错误认领可在「管理」中解绑。</view>
-  <view class="card"><view class="member-row" wx:for="{{members}}" wx:key="id"><view class="avatar">{{item.initial}}</view><view class="grow"><view class="person-name">{{item.name}}</view><view class="person-meta">{{item.role === 'owner' ? '圈主' : item.role === 'admin' ? '管理员' : '成员'}} · {{item.personId ? '已认领人物卡' : '尚未认领'}}</view></view><text class="text-action" wx:if="{{item.canManage}}" data-id="{{item.id}}" bindtap="onMemberMenu">管理 ›</text></view></view>
-
-  <view wx:if="{{circle.type === 'family'}}">
-    <view class="section-title block-title">整理家庭关系</view>
-    <view class="card relation-form" id="relation-editor">
+  </view>
+  <view wx:if="{{activeTab === 'relations' && circle.type === 'family'}}">
+    <view class="row between block-title"><view class="section-title">{{relationFocusName ? relationFocusName + '的关系' : '家庭关系'}}</view><text class="text-action" wx:if="{{relationFocusName}}" bindtap="onClearRelationFocus">查看全部</text></view>
+    <view class="card relation-list" wx:if="{{relationRows.length}}"><view class="relation-row" wx:for="{{relationRows}}" wx:key="id"><view class="grow"><view class="strong">{{item.text}}</view></view><text class="text-action" data-id="{{item.id}}" bindtap="onEditRelation">修改</text><text class="text-action danger-text" data-id="{{item.id}}" bindtap="onDeleteRelation">删除</text></view></view>
+    <view class="card empty compact" wx:else>{{relationFocusName ? relationFocusName + '还没有已记录的关系。' : '还没有记录关系。'}}</view>
+    <button class="btn secondary add-relation" wx:if="{{!showRelationEditor}}" disabled="{{!canCreateRelation}}" bindtap="onStartRelation">＋ 添加关系</button>
+    <view class="card relation-form" id="relation-editor" wx:if="{{showRelationEditor}}">
       <view class="strong form-caption">{{editingRelationId ? '修改已记录的关系' : '添加一条关系'}}</view>
-      <view class="small muted form-caption">只记录两人之间的事实，称呼由系统按每位成员的本人卡计算。</view>
+      <view class="small muted form-caption">选好两位家人，下面会显示关系预览。</view>
       <view class="field"><text class="field-label">关系类型</text><picker mode="selector" range="{{relationTypes}}" value="{{relationIndex}}" data-field="relationIndex" bindchange="onPick"><view class="field-control">{{relationTypes[relationIndex]}} ▾</view></picker></view>
       <view class="field"><text class="field-label">{{relationIndex === 0 ? '谁是父母' : '第一位人物'}}</text><picker mode="selector" range="{{personNames}}" value="{{fromIndex}}" data-field="fromIndex" bindchange="onPick"><view class="field-control">{{personNames[fromIndex] || '先添加人物'}} ▾</view></picker></view>
       <view class="field"><text class="field-label">{{relationIndex === 0 ? '谁是子女' : '第二位人物'}}</text><picker mode="selector" range="{{personNames}}" value="{{toIndex}}" data-field="toIndex" bindchange="onPick"><view class="field-control">{{personNames[toIndex] || '先添加人物'}} ▾</view></picker></view>
-      <view class="field" wx:if="{{relationIndex === 2}}"><text class="field-label">谁较年长</text><picker mode="selector" range="{{olderOptions}}" value="{{olderIndex}}" data-field="olderIndex" bindchange="onPick"><view class="field-control">{{olderOptions[olderIndex]}} ▾</view></picker></view>
+      <text class="hint" wx:if="{{relationIndex === 2}}">长幼按双方完整出生日期自动判断，无需另填排行。</text>
       <view class="relation-preview" wx:if="{{relationPreview}}"><view class="small muted">保存前请核对</view><view class="strong">{{relationPreview}}</view><view class="small muted">{{relationImpact}}</view></view>
-      <button class="btn secondary" disabled="{{busy || !canCreateRelation}}" bindtap="onAddRelation">{{editingRelationId ? '预览并保存修改' : '预览并添加关系'}}</button>
-      <text class="text-action cancel-edit" wx:if="{{editingRelationId}}" bindtap="onCancelEdit">取消修改</text>
+      <button class="btn secondary" disabled="{{busy || !canCreateRelation || !fromIndex || !toIndex || fromIndex === toIndex}}" bindtap="onAddRelation">{{busy ? '正在保存…' : editingRelationId ? '保存修改' : '保存关系'}}</button>
+      <text class="text-action cancel-edit" bindtap="onCancelEdit">取消</text>
     </view>
-    <view class="card relation-list" wx:if="{{relationRows.length}}"><view class="relation-row" wx:for="{{relationRows}}" wx:key="id"><view class="grow"><view class="strong">{{item.text}}</view></view><text class="text-action" data-id="{{item.id}}" bindtap="onEditRelation">修改</text><text class="text-action danger-text" data-id="{{item.id}}" bindtap="onDeleteRelation">删除</text></view></view>
   </view>
-  <view class="section-title block-title">操作记录</view>
-  <view class="card audit-card" wx:if="{{auditRows.length}}"><view class="audit-row" wx:for="{{auditRows}}" wx:key="id"><view class="audit-dot"></view><view class="grow"><view class="strong">{{item.title}}</view><view class="small muted" wx:if="{{item.detail}}">{{item.detail}}</view></view><text class="audit-time">{{item.when}}</text></view></view>
-  <view class="card empty compact" wx:else>还没有操作记录。</view>
-  <view class="audit-more" wx:if="{{auditEvents.length > 6}}" bindtap="onMoreAudit">{{showAllAudit ? '收起记录' : '查看全部 ' + auditEvents.length + ' 条记录'}}</view>
+  <view wx:if="{{activeTab === 'pending'}}">
+  <view class="small muted review-note" wx:if="{{reviewBusy}}">正在处理，请稍候…</view>
+  <view wx:if="{{applications.length}}"><view class="section-title block-title">加入申请 <text class="count">{{applications.length}}</text></view>
+  <view class="card" wx:if="{{applications.length}}">
+    <view class="review-row" wx:for="{{applications}}" wx:key="id">
+      <view class="row between"><view class="person-name">{{item.applicantName || item.name}}</view><text class="small muted">{{item.createdText}}</text></view>
+      <view class="review-note">{{item.note || '未填写身份说明'}}</view>
+      <view class="small muted">当前资料：{{item.profileText}}</view>
+      <view class="invite-expiry warning" wx:if="{{item.profileChanged}}">申请人提交后修改过资料，请按上方当前资料重新核对身份。</view>
+      <view class="invite-expiry warning" wx:if="{{item.profileIncomplete}}">申请人的当前资料不完整；请让对方补齐姓名、城市和生日后刷新。</view>
+      <view class="field" wx:if="{{item.profile}}">
+        <text class="field-label">这里是否已记录这个人？</text>
+        <picker disabled="{{reviewBusy}}" mode="selector" range="{{joinTargetLabels}}" value="{{item.targetIndex}}" data-id="{{item.id}}" bindchange="onJoinTarget"><view class="field-control">{{joinTargetLabels[item.targetIndex]}} ▾</view></picker>
+        <text class="hint" wx:if="{{item.sameNameInCircle}}">这里已有同名人物。请核对是否为同一人，不要只凭姓名确认。</text>
+        <text class="hint" wx:else>核对本人身份；若是已记录的家人或同学，请选对应资料，原有关系会保留。</text>
+        <view class="join-compare" wx:if="{{item.targetIndex > 1}}">
+          <view class="strong">请核对是不是同一人</view>
+          <view>已记录：{{item.targetProfileText}}</view>
+          <view>申请人：{{item.applicantName}} · {{item.profileText}}</view>
+          <view class="join-compare-warning" wx:if="{{item.targetDataMismatch}}">资料有差异，请先核实身份；请确认这份资料确实属于申请人。</view>
+          <view class="small muted">批准后以申请人的资料更新这里，原有关系保留。</view>
+        </view>
+        <view class="join-relation" wx:if="{{circle.type === 'family' && item.targetIndex === 1}}">
+          <text class="field-label">新成员与家人的关系</text>
+          <block wx:if="{{joinRelationAnchorIds.length}}">
+            <view wx:if="{{!item.deferRelation}}">
+            <picker disabled="{{reviewBusy}}" mode="selector" range="{{joinRelationAnchorLabels}}" value="{{item.relationAnchorIndex}}" data-id="{{item.id}}" bindchange="onJoinRelationAnchor"><view class="field-control">{{joinRelationAnchorLabels[item.relationAnchorIndex]}} ▾</view></picker>
+            <picker disabled="{{reviewBusy}}" wx:if="{{item.relationAnchorIndex > 0}}" mode="selector" range="{{item.relationKindOptions}}" value="{{item.relationKindIndex}}" data-id="{{item.id}}" bindchange="onJoinRelationKind"><view class="field-control">{{item.relationKindOptions[item.relationKindIndex]}} ▾</view></picker>
+            <text class="hint">选一位已记录的家人即可，无需对方先登录。长幼会按生日判断。</text>
+            </view>
+            <view class="defer-relation"><view>稍后补关系<text class="hint">{{item.deferRelation ? '先记录人物，在关系待补充区显示。' : '暂时说不清关系时可以开启。'}}</text></view><switch disabled="{{reviewBusy}}" checked="{{item.deferRelation}}" data-id="{{item.id}}" bindchange="onJoinDeferRelation" color="#526f60" /></view>
+          </block>
+          <text class="hint" wx:else>这是这里的第一位家人，批准后可再添加关系。</text>
+        </view>
+      </view>
+      <view class="invite-expiry {{item.inviteUnavailable || item.inviteExpiringSoon ? 'warning' : ''}}" wx:if="{{item.inviteStatusText}}">{{item.inviteStatusText}}</view>
+      <view class="review-actions"><button disabled="{{reviewBusy}}" class="btn secondary small-btn" data-id="{{item.id}}" data-decision="reject" bindtap="onJoin">拒绝</button><button class="btn small-btn" disabled="{{reviewBusy || item.inviteUnavailable || item.profileIncomplete || !item.profile || !item.targetIndex || !item.reviewToken || (circle.type === 'family' && item.targetIndex === 1 && !item.deferRelation && joinRelationAnchorIds.length && (!item.relationAnchorIndex || !item.relationKindIndex))}}" data-id="{{item.id}}" data-decision="approve" bindtap="onJoin">批准加入</button></view>
+    </view>
+  </view>
+  </view>
+
+  <view class="section-title block-title" wx:if="{{claimRequests.length}}">确认本人资料 <text class="count">{{claimRequests.length}}</text></view>
+  <view class="card" wx:if="{{claimRequests.length}}"><view class="review-row" wx:for="{{claimRequests}}" wx:key="id"><view class="person-name">{{item.applicantName}}</view><view class="review-note">TA 说「{{item.targetName}}」是自己，请核对是否为同一人。确认后可使用和修改这份资料，原有关系保留。</view><view class="review-actions"><button disabled="{{reviewBusy}}" class="btn secondary small-btn" data-id="{{item.id}}" data-decision="reject" bindtap="onClaim">不是本人</button><button disabled="{{reviewBusy}}" class="btn small-btn" data-id="{{item.id}}" data-decision="approve" bindtap="onClaim">确认是本人</button></view></view></view>
+
+  <view class="section-title block-title" wx:if="{{suggestions.length}}">更正建议 <text class="count">{{suggestions.length}}</text></view>
+  <view class="card" wx:if="{{suggestions.length}}"><view class="review-row" wx:for="{{suggestions}}" wx:key="id"><view class="pill grey">{{item.type === 'relation' ? '关系建议' : item.type === 'invite' ? '邀请推荐' : '资料建议'}}</view><view class="review-note">{{item.message}}</view><view class="suggestion-change" wx:if="{{item.structuredRelation}}"><view wx:if="{{item.beforeText}}">原关系：{{item.beforeText}}</view><view wx:if="{{item.afterText}}">建议改为：{{item.afterText}}</view><view wx:else>建议删除这条关系</view></view><view class="review-actions"><button disabled="{{reviewBusy}}" class="btn secondary small-btn" data-id="{{item.id}}" data-status="rejected" bindtap="onSuggestion">拒绝</button><button disabled="{{reviewBusy}}" class="btn small-btn" wx:if="{{item.structuredRelation}}" data-id="{{item.id}}" data-status="accepted" bindtap="onSuggestion">预览并采纳</button><button disabled="{{reviewBusy}}" class="btn small-btn" wx:if="{{!item.structuredRelation}}" data-id="{{item.id}}" bindtap="onSuggestionTarget">去核实更正</button><button disabled="{{reviewBusy}}" class="btn small-btn" wx:if="{{!item.structuredRelation}}" data-id="{{item.id}}" data-status="handled" bindtap="onSuggestion">标记已处理</button></view></view></view>
+
+  <view class="card empty compact" wx:if="{{!pendingCount}}">暂时没有需要处理的申请或建议。</view>
+  </view>
+  <view wx:if="{{activeTab === 'settings'}}">
+  <view class="section-title block-title" wx:if="{{members.length}}">成员管理</view>
+  <view class="small muted section-help" wx:if="{{members.length}}">{{isOwner ? '可设置多位管理员，一起邀请成员、修改资料和关系。' : '可移出普通成员；管理员由创建者设置。'}}</view>
+  <view class="card" wx:if="{{members.length}}">
+    <view class="member-access-item" wx:for="{{members}}" wx:key="id">
+      <view class="member-row"><view class="avatar">{{item.initial}}</view><view class="grow"><view class="person-name">{{item.name}}<text class="small muted" wx:if="{{item.isSelf}}">（我）</text></view><view class="person-meta">{{item.role === 'owner' || item.role === 'admin' ? '管理员' : '成员'}}</view></view><button class="member-settings" disabled="{{memberActionBusy || removeBusy || transferBusy}}" wx:if="{{item.canManage}}" data-id="{{item.id}}" bindtap="onMemberMenu">管理</button></view>
+      <view class="remove-confirm" wx:if="{{removeCandidateId === item.id}}"><view class="strong">移出 {{removeCandidateName}}？</view><view class="small">对方将不能再进入。<block wx:if="{{item.personId}}">此处{{circle.type === 'family' ? '姓名和家庭关系' : '姓名'}}保留，照片、生日、所在地等资料删除且无法恢复。</block></view><view class="review-actions"><button class="btn secondary small-btn" disabled="{{removeBusy}}" bindtap="onCancelRemove">取消</button><button class="btn danger small-btn" disabled="{{removeBusy}}" bindtap="onConfirmRemove">{{removeBusy ? '正在移出…' : '确认移出'}}</button></view></view>
+    </view>
+  </view>
+
+  <view class="card transfer-settings" wx:if="{{isOwner}}">
+    <button class="transfer-toggle" bindtap="onToggleTransferSettings" disabled="{{transferBusy}}"><text>更换创建者</text><text class="muted">{{showTransferSettings ? '收起' : ownerTransfer ? '等待确认' : '展开'}}</text></button>
+    <view wx:if="{{showTransferSettings}}">
+      <view class="small muted transfer-help">把创建者身份交给别人，你仍保留管理员权限。</view>
+      <view wx:if="{{ownerTransfer}}"><view class="review-note">等待 {{ownerTransfer.targetName}} 确认，{{ownerTransferExpiry}} 前有效。</view><button class="btn secondary" disabled="{{transferBusy}}" bindtap="onCancelOwnerTransfer">取消更换</button></view>
+      <view wx:elif="{{transferMemberIds.length}}"><picker mode="selector" range="{{transferMemberNames}}" value="{{transferMemberIndex}}" disabled="{{transferBusy}}" bindchange="onTransferMember"><view class="field-control">{{transferMemberNames[transferMemberIndex]}} ▾</view></picker><button class="btn secondary" disabled="{{transferBusy || memberActionBusy || removeBusy || !transferMemberIndex}}" bindtap="onRequestOwnerTransfer">{{transferBusy ? '正在发送…' : '请对方确认'}}</button></view>
+      <view class="small muted" wx:else>先邀请一位家人或同学加入，再选择对方。</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <button class="transfer-toggle" bindtap="onToggleAudit"><text>操作记录</text><text class="muted">{{showAudit ? '收起' : '查看'}}</text></button>
+    <view wx:if="{{showAudit}}">
+      <view class="audit-card" wx:if="{{auditRows.length}}"><view class="audit-row" wx:for="{{auditRows}}" wx:key="id"><view class="audit-dot"></view><view class="grow"><view class="strong">{{item.title}}</view><view class="small muted" wx:if="{{item.detail}}">{{item.detail}}</view></view><text class="audit-time">{{item.when}}</text></view></view>
+      <view class="empty compact" wx:else>还没有操作记录。</view>
+      <view class="audit-more" wx:if="{{auditEvents.length > 6}}" bindtap="onMoreAudit">{{showAllAudit ? '收起记录' : '查看全部 ' + auditEvents.length + ' 条记录'}}</view>
+    </view>
+  </view>
+  </view>
 </view>
-<view class="page manage-page" wx:else><view class="card empty"><view>{{loading ? '正在读取管理资料…' : '暂时无法打开管理页：' + loadError}}</view><button class="btn secondary" wx:if="{{!loading}}" bindtap="onRetry">重试</button><button class="btn ghost" bindtap="onHome">返回我的圈子</button></view></view>
+<view class="page manage-page" wx:else><view class="card empty"><view>{{loading ? '正在读取管理资料…' : '暂时无法打开管理页：' + loadError}}</view><button class="btn secondary" wx:if="{{!loading}}" bindtap="onRetry">重试</button><button class="btn ghost" bindtap="onHome">返回亲友录</button></view></view>

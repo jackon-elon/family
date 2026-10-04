@@ -3,10 +3,10 @@ import { CLOUD_ENV_ID } from './config';
 
 App({
   onLaunch() {
-    // touristappid 可以直接运行演示。配置云环境后在首页手动切换到云端。
+    // 没有云环境时使用本地演示；配置云环境后优先进入真实服务。
     if (!isDemoMode() && CLOUD_ENV_ID && wx.cloud && wx.cloud.init) {
       wx.cloud.init({ env: CLOUD_ENV_ID, traceUser: true });
     }
   },
-  globalData: { appName: '亲友关系网' }
+  globalData: { appName: '人间星图' }
 });

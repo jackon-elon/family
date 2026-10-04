@@ -1,0 +1,23 @@
+<view class="page events-page">
+  <view class="events-hero">
+    <view class="eyebrow">UPCOMING BIRTHDAYS</view>
+    <view class="title">最近谁过生日</view>
+    <view class="subtitle">家人和同学的生日汇在这里。农历生日会换算成下一次对应的公历日期。</view>
+  </view>
+
+  <view class="card empty" wx:if="{{loading}}">正在读取生日日程…</view>
+  <view class="card empty" wx:elif="{{error}}"><view>生日暂时无法加载：{{error}}</view><button class="btn secondary retry" bindtap="onRetry">重试</button></view>
+  <block wx:else>
+    <view class="row between events-heading"><view class="section-title">未来一年</view><text class="small muted">{{rows.length}} 条</text></view>
+    <view class="card event-list" wx:if="{{rows.length}}">
+      <view class="event-row" wx:for="{{rows}}" wx:key="personId" data-person-id="{{item.personId}}" data-circle-id="{{item.circleId}}" bindtap="onPerson">
+        <view class="date-badge"><text>{{item.dateLabel}}</text><text class="date-sub">{{item.countdownLabel}}</text></view>
+        <view class="avatar"><text>{{item.initial}}</text></view>
+        <view class="grow"><view class="person-name">{{item.personName}}</view><view class="person-meta">{{item.circleName}} · {{item.sourceLabel}}</view></view>
+        <text class="chevron">›</text>
+      </view>
+    </view>
+    <view class="card empty" wx:else>未来一年暂无已填写的生日。家人或同学补上生日后，就会出现在这里。</view>
+    <view class="small muted event-note">只展示已填写姓名、城市和生日的人；下次打开时会更新日期和倒计时。</view>
+  </block>
+</view>

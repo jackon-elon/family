@@ -10,7 +10,7 @@ function pageDefinition(pageName, invoke) {
   const compiled = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2018}}).outputText;
   const navigation = {confirm: async () => true, dateText: () => '', go() {}, q: value => value, toast() {}};
   const modules = {
-    '../../services/api': {invoke, showApiError() {}},
+    '../../services/api': {invoke, isDemoMode: () => true, showApiError() {}},
     '../../utils/navigation': navigation,
     '../../components/star-network/layout': {buildStarLayout: () => ({nodes: []})},
     '../../utils/relationship': {relationshipFor: () => ({label: '', path: ''})}
@@ -73,5 +73,5 @@ test('privacy page retries a failed administrator list before offering delegatio
   await page.onRetry();
   assert.equal(page.data.loadError, '');
   assert.equal(page.data.person.id, 'me');
-  assert.equal(page.data.settings.length, 9);
+  assert.equal(page.data.delegable.length, 10);
 });

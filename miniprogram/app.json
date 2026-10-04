@@ -1,6 +1,10 @@
 {
   "pages": [
+    "pages/login/index",
     "pages/circles/index",
+    "pages/my/index",
+    "pages/profile/index",
+    "pages/events/index",
     "pages/create/index",
     "pages/circle/index",
     "pages/person/index",
@@ -12,12 +16,23 @@
     "pages/privacy/index"
   ],
   "window": {
-    "navigationBarTitleText": "亲友关系网",
+    "navigationBarTitleText": "人间星图",
     "navigationBarBackgroundColor": "#F7F8F5",
     "navigationBarTextStyle": "black",
     "backgroundColor": "#F7F8F5",
     "backgroundTextStyle": "light"
   },
   "style": "v2",
+  "tabBar": {
+    "custom": true,
+    "color": "#718077",
+    "selectedColor": "#1d684e",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      { "pagePath": "pages/circles/index", "text": "亲友录" },
+      { "pagePath": "pages/my/index", "text": "我的" }
+    ]
+  },
   "sitemapLocation": "sitemap.json"
 }

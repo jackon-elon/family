@@ -10,3 +10,45 @@
 .relation-row .text-action { flex-shrink: 0; }
 .invite-expiry { color: #6e8375; font-size: 22rpx; margin: -5rpx 0 16rpx; }
 .invite-expiry.warning { color: #a76036; }
+.join-relation { display: flex; flex-direction: column; gap: 12rpx; margin-top: 19rpx; padding: 18rpx; border-radius: 16rpx; background: #f5f8f3; }
+.person-record-row { align-items: flex-start; }
+.person-record-row .grow { min-width: 0; }
+.record-actions { display: flex; flex-wrap: wrap; gap: 28rpx; margin-top: 12rpx; }
+.record-actions .text-action { display: inline-flex; padding: 8rpx 0; }
+.member-access-item + .member-access-item { border-top: 1rpx solid #edf2ed; }
+.remove-confirm { margin: 2rpx 0 16rpx; padding: 20rpx; border-radius: 16rpx; background: #fff4ef; color: #542d24; line-height: 1.5; }
+.remove-confirm .small { display: block; margin: 9rpx 0 17rpx; color: #542d24; }
+.remove-confirm .btn.danger { color: #842b25; background: #ffe5df; }
+.join-compare { margin-top: 18rpx; padding: 19rpx; border-radius: 16rpx; background: #f5f8f3; color: #2b4938; font-size: 23rpx; line-height: 1.6; }
+.join-compare .strong { margin-bottom: 8rpx; }
+.join-compare .small { margin-top: 9rpx; }
+.join-compare-warning { margin-top: 8rpx; color: #95542c; font-weight: 700; }
+.manage-page .title { font-size: 46rpx; letter-spacing: 0; }
+.manage-page .intro { margin: 9rpx 0 26rpx; }
+.quick-actions { display: flex; gap: 16rpx; margin-bottom: 28rpx; }
+.quick-actions .btn { flex: 1; margin: 0; font-size: 26rpx; }
+.manage-tabs { display: flex; padding: 7rpx; gap: 4rpx; border-radius: 21rpx; background: #eaf0e9; }
+.manage-tab { flex: 1; margin: 0; padding: 0 5rpx; min-height: 42px; line-height: 42px; border-radius: 16rpx; background: transparent; color: #66756d; font-size: 26rpx; }
+.manage-tab::after { border: 0; }
+.manage-tab.active { background: #fff; color: #286244; font-weight: 700; }
+.pending-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 29rpx; height: 29rpx; margin-left: 7rpx; padding: 0 4rpx; border-radius: 18rpx; background: #c5543d; color: white; font-size: 18rpx; line-height: 1; }
+.search-box { border: 1rpx solid #dce5dc; border-radius: 18rpx; padding: 18rpx 23rpx; margin: 0 0 18rpx; background: #fff; }
+.search-box input { height: 44rpx; font-size: 26rpx; }
+.record-actions { gap: 12rpx; margin-top: 8rpx; }
+.record-actions .text-action { align-items: center; min-height: 40px; padding: 0 18rpx; background: #f0f5ef; border-radius: 14rpx; }
+.person-record-row { padding: 22rpx 0; }
+.person-record-row .avatar { margin-top: 4rpx; }
+.relation-row .text-action { display: flex; align-items: center; min-height: 40px; padding: 0 8rpx; }
+.add-relation { margin: 20rpx 0; }
+.relation-form { margin-top: 20rpx; }
+.manage-page .card { box-shadow: none; border: 1rpx solid #e5ebe3; }
+
+.defer-relation { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin-top: 18rpx; font-size: 27rpx; }
+.defer-relation .hint { display: block; }
+.member-settings { margin: 0; padding: 0 24rpx; min-height: 44px; line-height: 44px; font-size: 26rpx; border-radius: 14rpx; color: #286244; background: #f0f5ef; flex-shrink: 0; }
+.member-settings::after, .transfer-toggle::after { border: 0; }
+.transfer-settings { margin-top: 24rpx; }
+.transfer-toggle { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin: 0; padding: 0; min-height: 44px; line-height: 1.5; text-align: left; font-size: 28rpx; color: #40534a; background: transparent; }
+.transfer-toggle .muted { font-size: 24rpx; }
+.transfer-help { margin: 14rpx 0 22rpx; line-height: 1.6; }
+.transfer-settings .btn { margin-top: 20rpx; }

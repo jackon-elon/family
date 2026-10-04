@@ -10,6 +10,39 @@ require.extensions['.ts'] = (module, filename) => {
 };
 
 const { buildPersonMapModel } = require('../components/person-map/model.ts');
+const { buildWorldOverview, projectWorldCoordinate } = require('../components/person-map/world-overview-model.ts');
+const { groupCities } = require('../utils/geography.ts');
+
+test('map counts reconcile every list member across China and world views', () => {
+  const people = [
+    {id: 'a', city: '北京', country: '中国', profileComplete: true},
+    {id: 'b', city: '上海', country: '中国', profileComplete: true},
+    {id: 'c', city: '深圳', country: '中国', profileComplete: true},
+    {id: 'd', city: '广州', country: '中国', profileComplete: true},
+    {id: 'e', city: '杭州', country: '中国', profileComplete: true},
+    {id: 'f', city: '武汉', country: '中国', profileComplete: true},
+    {id: 'g', city: '旧金山', country: '美国', profileComplete: true}
+  ];
+  const china = groupCities(people, 'china');
+  assert.equal(china.mappedPeople, 6);
+  assert.equal(china.overseas, 1);
+  assert.equal(china.mappedPeople + china.overseas + china.missingCity + china.incomplete + china.unmapped, people.length);
+  const world = groupCities(people, 'world');
+  assert.equal(world.mappedPeople, 7);
+  assert.equal(buildPersonMapModel(people, 'world').cities.reduce((count, city) => count + city.count, 0), 7);
+});
+
+test('map explains incomplete, missing and unlocated cards rather than silently dropping them', () => {
+  const people = [
+    {id: 'a', city: '北京', country: '中国', profileComplete: true},
+    {id: 'b', city: '奥斯陆郊区', country: '挪威', profileComplete: true},
+    {id: 'c', profileComplete: false, city: '上海', country: '中国'},
+    {id: 'd'}
+  ];
+  const world = groupCities(people, 'world');
+  assert.deepEqual([world.mappedPeople, world.unmapped, world.incomplete, world.missingCity], [1, 1, 1, 1]);
+  assert.equal(buildPersonMapModel(people, 'world').cities.reduce((count, city) => count + city.count, 0), 1);
+});
 
 test('real map markers group visible city cards and switch China/world scope', () => {
   const people = [
@@ -84,4 +117,70 @@ test('marker tap emits its grouped city and member ids', () => {
   component.methods.rebuild.call(instance);
   component.methods.onMarkerTap.call(instance, { detail: { markerId: 1 } });
   assert.deepEqual(events, [{ name: 'citytap', detail: { key: '中国/北京', city: '北京', country: '中国', personIds: ['one'] } }]);
+});
+
+test('world overview projects distant continents and groups nearby cities without losing people', () => {
+  const people = [
+    {id: 'bj', city: '北京', country: '中国'},
+    {id: 'sh1', city: '上海', country: '中国'},
+    {id: 'sh2', city: '上海', country: '中国'},
+    {id: 'ln', city: '伦敦', country: '英国'},
+    {id: 'pa', city: '巴黎', country: '法国'},
+    {id: 'sf', city: '旧金山', country: '美国'}
+  ];
+  const cities = buildPersonMapModel(people, 'world').cities;
+  const overview = buildWorldOverview(cities, '中国/上海');
+  assert.equal(overview.length, 3, 'China, western Europe and California should be visible separately');
+  assert.equal(overview.reduce((total, group) => total + group.count, 0), people.length);
+  const china = overview.find(group => group.cities.some(city => city.key === '中国/上海'));
+  const europe = overview.find(group => group.cities.some(city => city.key === '英国/伦敦'));
+  const california = overview.find(group => group.cities.some(city => city.key === '美国/旧金山'));
+  assert.equal(china.cityCount, 2);
+  assert.equal(china.count, 3);
+  assert.equal(china.selected, true);
+  assert.equal(europe.cityCount, 2);
+  assert.ok(california.x < europe.x && europe.x < china.x);
+  assert.ok(overview.every(group => group.x >= 3.5 && group.x <= 96.5 && group.y >= 6 && group.y <= 94));
+  assert.deepEqual(projectWorldCoordinate(0, 0), {x: 50, y: Math.min(94, (85 / 145) * 100)});
+  const png = fs.readFileSync(require('node:path').join(__dirname, '../components/person-map/world-land.png'));
+  assert.equal(png.toString('ascii', 1, 4), 'PNG');
+  assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1200, 520]);
+});
+
+test('world overview cluster reveals its cities and city choice focuses the native map', () => {
+  let component;
+  global.Component = definition => {component = definition;};
+  delete require.cache[require.resolve('../components/person-map/index.ts')];
+  require('../components/person-map/index.ts');
+  const events = [];
+  const instance = {
+    properties: {people: [
+      {id: 'bj', city: '北京', country: '中国'},
+      {id: 'sh', city: '上海', country: '中国'},
+      {id: 'sf', city: '旧金山', country: '美国'}
+    ], scope: 'world', selectedKey: ''},
+    data: {},
+    setData(patch) {this.data = {...this.data, ...patch};},
+    triggerEvent(name, detail) {events.push({name, detail});}
+  };
+  component.methods.rebuild.call(instance);
+  const china = instance.data.overviewClusters.find(group => group.cityCount === 2);
+  component.methods.onOverviewTap.call(instance, {currentTarget: {dataset: {id: china.id}}});
+  assert.deepEqual(instance.data.overviewChoiceCities.map(city => city.city).sort(), ['上海', '北京']);
+  assert.equal(events.length, 0, 'a cluster asks which city rather than choosing one arbitrarily');
+  component.methods.onOverviewCityTap.call(instance, {currentTarget: {dataset: {key: '中国/上海'}}});
+  assert.equal(instance.data.overviewChoiceCities.length, 0);
+  assert.deepEqual(events[0].detail.personIds, ['sh']);
+  instance.properties.selectedKey = '中国/上海';
+  component.methods.refreshSelection.call(instance);
+  assert.equal(instance.data.centerLongitude, 121.5);
+  assert.equal(instance.data.overviewClusters.find(group => group.id === china.id).selected, true);
+  instance.properties.selectedKey = '';
+  component.methods.refreshSelection.call(instance);
+  const defaultView = buildPersonMapModel(instance.properties.people, 'world', '');
+  assert.equal(instance.data.centerLongitude, defaultView.centerLongitude, 'clearing the city should restore the default map view');
+  assert.equal(instance.data.scale, defaultView.scale);
+  const sf = instance.data.overviewClusters.find(group => group.cityCount === 1);
+  component.methods.onOverviewTap.call(instance, {currentTarget: {dataset: {id: sf.id}}});
+  assert.equal(events[1].detail.city, '旧金山');
 });

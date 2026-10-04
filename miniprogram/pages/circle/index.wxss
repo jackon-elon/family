@@ -15,17 +15,31 @@
 .network-heading { margin: 28rpx 3rpx 16rpx; }
 .network-heading .section-title { margin-bottom: 7rpx; }
 .network-tip { margin: 17rpx 6rpx; line-height: 1.5; }
-.star-person-card { margin-top: 18rpx; padding: 25rpx; border: 1rpx solid #dcebe1; box-shadow: 0 10rpx 28rpx rgba(10, 32, 22, .08); }
+.star-person-card { position: fixed; z-index: 100; left: 24rpx; right: 24rpx; box-sizing: border-box; max-height: 40vh; overflow-y: auto; padding: 20rpx 24rpx 14rpx; border: 1rpx solid #d9e1d4; border-radius: 24rpx; background: #fffefa; box-shadow: 0 10rpx 32rpx rgba(42, 59, 38, .15); }
+.star-card-bottom { bottom: calc(18rpx + env(safe-area-inset-bottom)); }
+.star-card-top { top: 16rpx; }
 .star-person-card .row.between { gap: 12rpx; align-items: flex-start; }
 .star-person-heading { flex: 1; min-width: 0; }
+.star-person-heading .avatar { width: 66rpx; height: 66rpx; flex-shrink: 0; }
 .star-person-title { flex: 1; min-width: 0; }
-.star-person-title .section-title { word-break: break-all; line-height: 1.25; }
-.star-person-card .section-title { margin: 6rpx 0 0; }
-.star-close { flex-shrink: 0; width: 44rpx; height: 44rpx; line-height: 40rpx; text-align: center; font-size: 40rpx; color: #526b5b; }
-.star-term { margin-top: 16rpx; color: #245c40; font-size: 30rpx; font-weight: 700; }
-.star-relation { margin: 22rpx 0 12rpx; border-radius: 15rpx; padding: 14rpx 17rpx; background: #eef5ef; color: #315e49; font-size: 24rpx; }
-.star-person-card .small { margin-top: 9rpx; }
-.star-open { margin-top: 22rpx; font-size: 24rpx; }
+.star-person-title .section-title { margin: 2rpx 0 0; font-size: 31rpx; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.star-original { margin-top: 3rpx; color: #84917c; font-size: 22rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.star-close { flex-shrink: 0; width: 80rpx; min-height: 80rpx; line-height: 70rpx; text-align: center; font-size: 42rpx; color: #73836e; }
+.star-person-card .star-close { margin: -12rpx -15rpx -8rpx 0; }
+.star-term { margin-top: 10rpx; color: #365d43; font-size: 27rpx; font-weight: 600; }
+.star-relation { margin: 8rpx 0 0; color: #74846b; font-size: 23rpx; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.star-missing { margin-top: 5rpx; color: #8a8d7a; font-size: 22rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.star-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin-top: 8rpx; }
+.star-card-footer .small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.star-open { flex-shrink: 0; margin: 0; padding: 0 12rpx; min-height: 68rpx; line-height: 68rpx; font-size: 25rpx; font-weight: 600; color: #3c7150; background: transparent; border: 0; border-radius: 10rpx; }
+.star-open::after { border: 0; }
+.remark-notice { display: flex; align-items: center; gap: 18rpx; color: #8c795f; font-size: 23rpx; margin: -8rpx 4rpx 12rpx; }
+.remark-retry { padding: 14rpx 6rpx; color: #3c7150; }
+.person-row .grow { min-width: 0; }
+.person-name-row { min-width: 0; }
+.person-name-row .pill { flex-shrink: 0; }
+.person-row .person-name,.city-row .person-name { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.original-name { margin-top: 4rpx; color: #84917c; font-size: 22rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-heading { margin: 30rpx 3rpx 11rpx; align-items: baseline; }.list-heading .section-title { margin: 0; }
 .filter-row { display: flex; gap: 12rpx; overflow-x: auto; white-space: nowrap; margin-bottom: 25rpx; }
 .filter-chip { border-radius: 999rpx; background: #eaf1eb; color: #557064; font-size: 22rpx; padding: 13rpx 18rpx; }
@@ -35,5 +49,4 @@
 .map-note { color: #5b806c; background: #e8f2e7; border-radius: 15rpx; padding: 16rpx 18rpx; margin-top: 15rpx; font-size: 23rpx; }
 .city-sheet { position: fixed; z-index: 30; left: 24rpx; right: 24rpx; bottom: calc(24rpx + env(safe-area-inset-bottom)); max-height: 62vh; overflow-y: auto; box-shadow: 0 15rpx 45rpx rgba(10, 32, 22, 0.22); }.city-sheet .section-title { margin: 0; }
 .city-heading { margin-top: 30rpx; }.city-row { display: flex; align-items: center; gap: 13rpx; padding: 19rpx 0; border-bottom: 1rpx solid #eef2ee; font-weight: 660; }.city-row:last-child { border-bottom: 0; }.city-pin { color: #3b916a; }
-.bottom-actions { display: flex; gap: 13rpx; margin-top: 40rpx; }.bottom-actions .btn { flex: 1; font-size: 24rpx; }
-.leave-link { text-align: center; padding: 30rpx 0 12rpx; color: #a16b65; font-size: 23rpx; }
+.leave-entry { margin: 42rpx 0 8rpx; }.leave-entry .btn { width: 100%; color: #7e544b; }

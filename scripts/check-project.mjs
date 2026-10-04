@@ -30,4 +30,14 @@ for (const page of app.pages) {
     await access(join(mini, `${page}.${extension}`));
   }
 }
+if (app.tabBar?.custom) {
+  for (const extension of ['ts', 'wxml', 'wxss', 'json']) {
+    await access(join(mini, `custom-tab-bar/index.${extension}`));
+  }
+  const component = JSON.parse(await readFile(join(mini, 'custom-tab-bar/index.json'), 'utf8'));
+  if (!component.component) throw new Error('Custom tab bar must be a component');
+  for (const tab of app.tabBar.list || []) {
+    if (!app.pages.includes(tab.pagePath)) throw new Error(`Unregistered tab page: ${tab.pagePath}`);
+  }
+}
 console.log(`Checked ${checked} mini-program JSON files and ${app.pages.length} complete pages`);

@@ -67,6 +67,19 @@ test('generation and coordinates do not depend on input order', () => {
   assert.deepEqual(a.bands, b.bands);
 });
 
+test('selecting a person highlights that card without moving generations or hiding others', () => {
+  const normal = buildStarLayout(demoPeople, demoRelations, 'me', 'me');
+  const selected = buildStarLayout(demoPeople, demoRelations, 'me', 'me', {}, 'uncle');
+  const n = byId(selected);
+  assert.equal(n.get('uncle').isSelected, true);
+  assert.equal(n.get('me').isSelected, false);
+  assert.equal(n.get('me').isSelf, true);
+  assert.deepEqual(
+    selected.nodes.map(({id, x, y, label}) => ({id, x, y, label})),
+    normal.nodes.map(({id, x, y, label}) => ({id, x, y, label}))
+  );
+});
+
 test('generation headings have a clear row above cards and stay inside the board', () => {
   const graph = buildStarLayout([...demoPeople, {id: 'other', name: '远亲'}], demoRelations, 'me', 'me');
   const cardHalfHeight = 87; // .person-node is 174rpx high.
@@ -88,13 +101,14 @@ test('unlinked people have a separate unknown row; no claim has no fake self foc
   const graph = buildStarLayout([...demoPeople, {id: 'friend', name: '老同学'}], demoRelations, 'me', 'me');
   const n = byId(graph);
   assert.equal(n.get('friend').generation, null);
-  assert.equal(n.get('friend').label, '待补关系');
-  assert.equal(graph.bands.at(-1).label, '待补关系');
+  assert.equal(n.get('friend').label, '关系待补充');
+  assert.equal(graph.bands.at(-1).label, '关系待补充');
   assert.ok(n.get('friend').y > n.get('me').y);
 
   const neutral = buildStarLayout([{id: 'a', name: '阿姨'}, {id: 'b', name: '舅舅'}], [], '', '');
   assert.equal(neutral.centerId, '');
   assert.ok(neutral.nodes.every(node => !node.isSelf && !node.isFocus && node.label !== '我'));
+  assert.ok(neutral.nodes.every(node => node.generation === null && node.label === '关系待补充'));
 });
 
 test('contradictory generation paths move the affected connected region to verification row', () => {
@@ -113,8 +127,15 @@ test('contradictory generation paths move the affected connected region to verif
   assert.equal(n.get('outsider').generation, null);
   assert.equal(n.get('outsider').isConflicted, false);
   assert.equal(graph.conflictCount, 3);
-  assert.equal(graph.bands.at(-1).label, '待补／核实关系');
+  assert.equal(graph.bands.at(-1).label, '关系待补充／核实');
   assert.ok(graph.nodes.every(node => Number.isFinite(node.x) && Number.isFinite(node.y)));
+});
+
+test('personal display names do not rearrange the family generation layout', () => {
+  const original = buildStarLayout(demoPeople, demoRelations, 'me', 'me');
+  const renamed = buildStarLayout(demoPeople.map(person => ({...person, originalName: person.name, name: person.id === 'uncle' ? '我最亲的大伯' : person.name})), demoRelations, 'me', 'me');
+  assert.deepEqual(renamed.nodes.map(({id, x, y}) => ({id, x, y})), original.nodes.map(({id, x, y}) => ({id, x, y})));
+  assert.equal(renamed.nodes.find(node => node.id === 'uncle').name, '我最亲的大伯');
 });
 
 test('wide generations scroll horizontally without node overlap, preserve search dimming and budget', () => {

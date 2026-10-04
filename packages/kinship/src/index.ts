@@ -10,7 +10,9 @@ export interface Person {
   id: string;
   name?: string;
   gender?: Gender;
-  /** 仅用于在年份不同时判断长幼；同年不能推断先后。 */
+  /** 标准公历出生日期 YYYY-MM-DD；农历应由调用方先按出生年转换。 */
+  birthDate?: string;
+  /** 兼容旧资料。只有年份且年份相同时，不能推断先后。 */
   birthYear?: number;
 }
 
@@ -130,11 +132,26 @@ function positiveRank(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
-function olderFromBirthYear(from: Person, to: Person): 'older' | 'younger' | undefined {
-  if (from.birthYear === undefined || to.birthYear === undefined || from.birthYear === to.birthYear) {
+function validBirthDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  if (year < 1800 || year > 2200) return false;
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === value;
+}
+
+function olderFromBirthday(from: Person, to: Person): 'older' | 'younger' | undefined {
+  if (from.birthDate && to.birthDate) {
+    if (from.birthDate === to.birthDate) return undefined;
+    return to.birthDate < from.birthDate ? 'older' : 'younger';
+  }
+  const fromYear = from.birthDate ? Number(from.birthDate.slice(0, 4)) : from.birthYear;
+  const toYear = to.birthDate ? Number(to.birthDate.slice(0, 4)) : to.birthYear;
+  if (fromYear === undefined || toYear === undefined || fromYear === toYear) {
     return undefined;
   }
-  return to.birthYear < from.birthYear ? 'older' : 'younger';
+  return toYear < fromYear ? 'older' : 'younger';
 }
 
 function olderFromSiblingRank(from: Person, to: Person, fromRank?: number, toRank?: number): 'older' | 'younger' | undefined {
@@ -159,6 +176,12 @@ function validate(input: KinshipInput): string | undefined {
     }
     if (person.birthYear !== undefined && (!Number.isInteger(person.birthYear) || person.birthYear < 1800 || person.birthYear > 2200)) {
       return `人物 ${person.id} 的出生年份不正确`;
+    }
+    if (person.birthDate !== undefined && (typeof person.birthDate !== 'string' || !validBirthDate(person.birthDate))) {
+      return `人物 ${person.id} 的出生日期不正确`;
+    }
+    if (person.birthDate && person.birthYear !== undefined && Number(person.birthDate.slice(0, 4)) !== person.birthYear) {
+      return `人物 ${person.id} 的出生日期与年份冲突`;
     }
     ids.add(person.id);
     byId.set(person.id, person);
@@ -199,7 +222,7 @@ function validate(input: KinshipInput): string | undefined {
       }
       if (ids.has(a) && ids.has(b)) {
         const rankOrder = olderFromSiblingRank(byId.get(a)!, byId.get(b)!, relation.rankOfA, relation.rankOfB);
-        const birthOrder = olderFromBirthYear(byId.get(a)!, byId.get(b)!);
+        const birthOrder = olderFromBirthday(byId.get(a)!, byId.get(b)!);
         const explicitOrder = relation.olderPersonId === b ? 'older' : relation.olderPersonId === a ? 'younger' : undefined;
         if (gender(byId.get(a)) === gender(byId.get(b)) && gender(byId.get(a)) !== 'unknown' &&
           relation.rankOfA !== undefined && relation.rankOfA === relation.rankOfB) {
@@ -208,7 +231,7 @@ function validate(input: KinshipInput): string | undefined {
         if ((rankOrder && birthOrder && rankOrder !== birthOrder) ||
           (explicitOrder && rankOrder && explicitOrder !== rankOrder) ||
           (explicitOrder && birthOrder && explicitOrder !== birthOrder)) {
-          return '兄弟姐妹的长幼、排行与出生年份冲突';
+          return '兄弟姐妹的长幼、排行与出生日期冲突';
         }
       }
     } else {
@@ -265,7 +288,7 @@ function buildGraph(people: Person[], relations: Relation[]): Graph {
       explicitSiblings.add([a, b].sort().join('\u0000'));
       const ageAtoB = relation.olderPersonId === b ? 'older' : relation.olderPersonId === a ? 'younger' :
         olderFromSiblingRank(byId.get(a)!, byId.get(b)!, relation.rankOfA, relation.rankOfB) ??
-        olderFromBirthYear(byId.get(a)!, byId.get(b)!);
+        olderFromBirthday(byId.get(a)!, byId.get(b)!);
       const ageBtoA = ageAtoB === 'older' ? 'younger' : ageAtoB === 'younger' ? 'older' : undefined;
       const kind = relation.kind ?? 'unspecified';
       add({ fromId: a, toId: b, relation: 'sibling', relationKind: kind, ageOrder: ageAtoB, rank: relation.rankOfB, inferred: false });
@@ -285,7 +308,7 @@ function buildGraph(people: Person[], relations: Relation[]): Graph {
         const key = [a, b].sort().join('\u0000');
         if (explicitSiblings.has(key) || inferredPairs.has(key)) continue;
         inferredPairs.add(key);
-        const ageAtoB = olderFromBirthYear(byId.get(a)!, byId.get(b)!);
+        const ageAtoB = olderFromBirthday(byId.get(a)!, byId.get(b)!);
         const ageBtoA = ageAtoB === 'older' ? 'younger' : ageAtoB === 'younger' ? 'older' : undefined;
         add({ fromId: a, toId: b, relation: 'sibling', relationKind: 'unspecified', ageOrder: ageAtoB, inferred: true });
         add({ fromId: b, toId: a, relation: 'sibling', relationKind: 'unspecified', ageOrder: ageBtoA, inferred: true });
@@ -400,8 +423,8 @@ function siblingAge(step: KinshipPathStep, role: string, missing: string[]): 'ol
 }
 
 function ageBetween(perspective: Person, target: Person, missing: string[]): 'older' | 'younger' | undefined {
-  const age = olderFromBirthYear(perspective, target);
-  if (!age) missing.push('双方的长幼（可补充不同的出生年份）');
+  const age = olderFromBirthday(perspective, target);
+  if (!age) missing.push('双方的长幼（可补充完整出生日期；同日出生需家人确认）');
   return age;
 }
 

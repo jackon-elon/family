@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MemoryRepository = void 0;
-const names = ['circles', 'members', 'persons', 'relations', 'invites', 'applications', 'delegations', 'suggestions', 'claimRequests', 'audit', 'photoUploadBudgets'];
+const names = ['circles', 'members', 'persons', 'relations', 'invites', 'applications', 'delegations', 'suggestions', 'claimRequests', 'audit', 'photoUploadBudgets', 'phoneMatches', 'phoneIdentities', 'userProfiles', 'personRemarks'];
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 class MemoryRepository {
     data = Object.fromEntries(names.map(name => [name, new Map()]));
@@ -19,6 +19,12 @@ class MemoryRepository {
             },
             find: async (collection, match) => {
                 return [...draft[collection].values()].filter(value => Object.entries(match).every(([key, expected]) => value[key] === expected)).map(value => clone(value));
+            },
+            findByIds: async (collection, ids) => {
+                return [...new Set(ids)].flatMap(id => {
+                    const value = draft[collection].get(id);
+                    return value === undefined ? [] : [clone(value)];
+                });
             },
             put: async (collection, entity) => { draft[collection].set(entity.id, clone(entity)); },
             delete: async (collection, id) => { draft[collection].delete(id); }

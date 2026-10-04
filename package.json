@@ -1,11 +1,26 @@
 {
-  "name": "family-class-network-miniprogram",
+  "name": "renjian-xingtu",
   "version": "0.1.0",
   "private": true,
-  "description": "亲友关系网微信小程序本地开发与测试",
+  "description": "人间星图：可独立部署的亲友关系网前端与后端",
+  "engines": {
+    "node": ">=22.16.0"
+  },
   "scripts": {
+    "dev": "npm run build:backend && node scripts/dev-web.mjs",
+    "dev:api": "npm run build:backend && node --watch server/index.cjs",
+    "dev:web": "vite --config frontend/vite.config.ts",
+    "start": "node server/index.cjs",
+    "seed:demo": "npm run build:backend && node server/seed.cjs",
+    "setup:family": "npm run build:backend && node server/setup.cjs",
+    "typecheck:web": "tsc -p frontend/tsconfig.json --noEmit",
+    "build:web": "npm run typecheck:web && vite build --config frontend/vite.config.ts",
+    "build": "npm run build:backend && npm run build:web",
+    "check:deploy": "npm run build:backend && node scripts/check-web-deploy.mjs",
+    "test:web": "npm run build:backend && node --test server/tests/*.test.cjs frontend/src/shared/*.test.cjs",
     "sync:kinship": "node scripts/sync-kinship.mjs",
-    "build:backend": "tsc -p backend/tsconfig.json",
+    "sync:lunar": "node scripts/sync-lunar-calendar.mjs",
+    "build:backend": "npm run sync:lunar && tsc -p backend/tsconfig.json",
     "build:cloud": "npm run build:backend && node backend/scripts/package-cloud-function.cjs && npm run check:cloud",
     "check:cloud": "node scripts/check-cloud-package.mjs",
     "test:backend": "npm run build:cloud && node --test backend/tests/*.test.cjs",
@@ -13,11 +28,28 @@
     "test:star": "node --experimental-strip-types --test miniprogram/components/star-network/layout.test.mjs",
     "test:frontend": "node --test miniprogram/tests/*.test.cjs",
     "typecheck:kinship": "tsc --noEmit --strict --target ES2022 --module CommonJS --skipLibCheck packages/kinship/src/index.ts",
-    "typecheck:frontend": "npm run sync:kinship && tsc -p miniprogram/tsconfig.json --noEmit",
+    "typecheck:frontend": "npm run sync:kinship && npm run sync:lunar && tsc -p miniprogram/tsconfig.json --noEmit",
     "check:project": "node scripts/check-project.mjs",
-    "test": "npm run typecheck:kinship && npm run test:kinship && npm run test:star && npm run test:backend && npm run typecheck:frontend && npm run test:frontend && npm run check:project"
+    "test:legacy": "npm run typecheck:kinship && npm run test:kinship && npm run test:star && npm run test:backend && npm run typecheck:frontend && npm run test:frontend && npm run check:project",
+    "test": "npm run test:legacy && npm run typecheck:web && npm run test:web"
   },
   "devDependencies": {
-    "typescript": "5.9.3"
+    "@types/leaflet": "1.9.22",
+    "@types/node": "22.20.5",
+    "@types/qrcode": "1.5.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "4.7.0",
+    "prettier": "3.9.9",
+    "typescript": "5.9.3",
+    "vite": "6.4.3"
+  },
+  "dependencies": {
+    "leaflet": "1.9.4",
+    "lucide-react": "1.51.0",
+    "qrcode": "1.5.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-router-dom": "7.18.4"
   }
 }

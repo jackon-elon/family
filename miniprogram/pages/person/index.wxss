@@ -6,8 +6,18 @@
 .relation-card .eyebrow { margin-bottom: 9rpx; }.relation-card .section-title { margin-bottom: 15rpx; }.relation-path { padding: 21rpx; border-radius: 17rpx; background: #f0f7f0; color: #416b53; font-size: 25rpx; line-height: 1.6; word-break: break-all; }.missing { color: #9a6329; background: #fff4e7; font-size: 23rpx; padding: 14rpx 18rpx; margin-top: 12rpx; border-radius: 13rpx; }
 .detail-row { display: flex; gap: 25rpx; padding: 18rpx 0; align-items: baseline; border-top: 1rpx solid #eef2ee; }.detail-label { width: 130rpx; flex-shrink: 0; font-size: 24rpx; color: #84948b; }.detail-value { flex: 1; min-width: 0; font-size: 25rpx; line-height: 1.5; word-break: break-all; }.update-time { color: #9aa99e; font-size: 21rpx; margin-top: 15rpx; }.empty-details { color: #9baa9f; padding: 20rpx 0; font-size: 24rpx; }.text-action { color: #26795b; font-size: 23rpx; font-weight: 700; }
 .profile-actions { display: flex; flex-direction: column; gap: 14rpx; margin-top: 31rpx; }
-.suggestion-form { margin-top: 18rpx; }
-.suggestion-intro { line-height: 1.55; margin: 8rpx 0 24rpx; }
-.suggestion-preview { border-radius: 14rpx; background: #f1f7f1; color: #2c694b; padding: 18rpx; line-height: 1.6; font-size: 24rpx; margin: 15rpx 0; }
-.suggestion-message { min-height: 115rpx; width: 100%; box-sizing: border-box; }
-.suggestion-form .btn { margin-top: 12rpx; }
+.remark-heading { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; margin-bottom: 10rpx; }
+.remark-heading .section-title { margin: 0; }
+.remark-private { display: inline-block; font-size: 23rpx; font-weight: 400; color: #7a8b80; margin-left: 12rpx; }
+.remark-edit { margin: 0; padding: 0 15rpx; min-height: 40px; line-height: 40px; background: transparent; color: #267553; font-size: 27rpx; }
+.remark-edit::after { border: 0; }
+.remark-text { white-space: pre-wrap; word-break: break-all; color: #3b5143; font-size: 28rpx; line-height: 1.65; }
+.remark-empty, .remark-state { color: #7a8b80; font-size: 26rpx; line-height: 1.6; }
+.remark-state { display: flex; align-items: center; justify-content: space-between; }
+.remark-input { display: block; box-sizing: border-box; width: 100%; min-height: 165rpx; padding: 20rpx; border: 1rpx solid #ceddce; background: #fbfcfa; border-radius: 16rpx; font-size: 28rpx; line-height: 1.6; }
+.remark-count { color: #85948b; font-size: 23rpx; text-align: right; margin-top: 10rpx; }
+.remark-actions { display: flex; gap: 15rpx; margin-top: 18rpx; }
+.remark-actions .btn { flex: 1; margin: 0; font-size: 27rpx; }
+
+.profile-name { max-width: 100%; text-align: center; overflow-wrap: break-word; word-break: break-all; }
+.profile-original { color: #7b8179; font-size: 26rpx; margin-top: 9rpx; }

@@ -1,8 +1,25 @@
 export type CircleType = 'family' | 'classmate';
 export type Role = 'owner' | 'admin' | 'member';
 export type Visibility = 'self' | 'circle';
+export interface Birthday {
+  calendar: 'solar' | 'lunar';
+  month: number;
+  day: number;
+  /** Optional: members may share a birthday without disclosing their age. */
+  year?: number;
+  /** A lunar leap-month birthday is distinct from the ordinary month. */
+  leapMonth?: boolean;
+}
+export interface JoinProfile {
+  country: string;
+  province?: string;
+  city: string;
+  latitude?: number;
+  longitude?: number;
+  birthday: Birthday;
+}
 export type PersonField =
-  | 'name' | 'nickname' | 'gender' | 'birthOrder'
+  | 'name' | 'nickname' | 'gender' | 'birthOrder' | 'birthday'
   | 'country' | 'province' | 'city' | 'latitude' | 'longitude' | 'status' | 'school'
   | 'industry' | 'occupation' | 'bio' | 'phone' | 'wechatId' | 'photoFileId';
 
@@ -21,6 +38,14 @@ export interface Circle {
   updatedAt: number;
   /** Internal fingerprint for retrying a create request after a lost response. */
   createPayloadHash?: string;
+  /** Pending ownership handoff; never included in public circle views. */
+  ownerTransfer?: {
+    id: string;
+    targetMemberId: string;
+    targetJoinedAt: number;
+    createdAt: number;
+    expiresAt: number;
+  };
 }
 
 export interface Member {
@@ -42,6 +67,7 @@ export interface Person {
   nickname?: string;
   gender?: 'male' | 'female' | 'unknown';
   birthOrder?: number;
+  birthday?: Birthday;
   country?: string;
   province?: string;
   city?: string;
@@ -54,8 +80,13 @@ export interface Person {
   occupation?: string;
   bio?: string;
   phone?: string;
+  /** Administrator-entered match key; never included in a circle-visible person view. */
+  matchPhone?: string;
   wechatId?: string;
   photoFileId?: string;
+  /** Per-record administrator corrections. An account edit to a field retires
+   * that field's correction, without letting one record edit another. */
+  profileOverrides?: Partial<Record<PersonField, {baseRevision: number; value: unknown}>>;
   visibility: Partial<Record<PersonField, Visibility>>;
   claimedBy?: string;
   relationCount?: number;
@@ -64,6 +95,41 @@ export interface Person {
   lastConfirmedAt?: number;
   /** Internal fingerprint for retrying a create request after a lost response. */
   createPayloadHash?: string;
+}
+
+/** One unclaimed card per phone in a circle, guarded by a deterministic ID. */
+export interface PhoneMatch {
+  id: string;
+  circleId: string;
+  personId: string;
+  phone: string;
+  createdAt: number;
+}
+
+/** Phone number obtained by a cloud-only WeChat code exchange. */
+export interface PhoneIdentity {
+  id: string;
+  userId: string;
+  phone: string;
+  verifiedAt: number;
+}
+
+/** One account-owned profile shared by every claimed person in every circle. */
+export interface UserProfile extends Partial<Pick<Person,
+  'name' | 'nickname' | 'gender' | 'birthday' | 'country' | 'province' | 'city' |
+  'latitude' | 'longitude' | 'status' | 'school' | 'industry' | 'occupation' |
+  'bio' | 'phone' | 'wechatId' | 'photoFileId'>> {
+  id: string;
+  userId: string;
+  createdAt: number;
+  updatedAt: number;
+  /** Empty profile created after linking a pre-recorded card; its missing
+   * fields must not hide that card or import card data into the account. */
+  cardFallback?: boolean;
+  /** Incremented whenever the account owner edits a field, including when
+   * changing it back, so older per-record corrections cannot reappear. */
+  fieldRevisions?: Partial<Record<PersonField, number>>;
+  clearedFields?: PersonField[];
 }
 
 export interface Relation {
@@ -100,6 +166,10 @@ export interface Application {
   inviteId: string;
   userId: string;
   name: string;
+  /** Self-entered details, reviewed before membership is granted. Legacy rows lack this. */
+  profile?: JoinProfile;
+  /** Hash of the account profile at submission, for detecting later edits during review. */
+  profileVersion?: string;
   note?: string;
   /** Legacy field only. Join approval never binds a person card from it. */
   claimPersonId?: string;
@@ -130,10 +200,11 @@ export interface Suggestion {
   relationChange?: RelationChange;
   /** Snapshot guard so approval cannot silently replace a newer relation. */
   expectedRelationHash?: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: 'pending' | 'accepted' | 'handled' | 'rejected';
   createdAt: number;
   resolvedAt?: number;
   resolvedBy?: string;
+  resolutionNote?: string;
 }
 
 export interface ClaimRequest {
@@ -164,6 +235,18 @@ export interface PhotoUploadBudget {
   reservationIds: string[];
 }
 
+/** A viewer's private note; never part of a person or shared account profile. */
+export interface PersonRemark {
+  id: string;
+  circleId: string;
+  personId: string;
+  userId: string;
+  memberJoinedAt: number;
+  personCreatedAt: number;
+  remark: string;
+  updatedAt: number;
+}
+
 export interface EntityMap {
   circles: Circle;
   members: Member;
@@ -176,6 +259,10 @@ export interface EntityMap {
   claimRequests: ClaimRequest;
   audit: AuditEvent;
   photoUploadBudgets: PhotoUploadBudget;
+  phoneMatches: PhoneMatch;
+  phoneIdentities: PhoneIdentity;
+  userProfiles: UserProfile;
+  personRemarks: PersonRemark;
 }
 
 export type CollectionName = keyof EntityMap;

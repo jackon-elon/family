@@ -1,7 +1,7 @@
 import type { CollectionName, EntityMap } from './model';
 import type { Repository, UnitOfWork } from './repository';
 
-const names: CollectionName[] = ['circles', 'members', 'persons', 'relations', 'invites', 'applications', 'delegations', 'suggestions', 'claimRequests', 'audit', 'photoUploadBudgets'];
+const names: CollectionName[] = ['circles', 'members', 'persons', 'relations', 'invites', 'applications', 'delegations', 'suggestions', 'claimRequests', 'audit', 'photoUploadBudgets', 'phoneMatches', 'phoneIdentities', 'userProfiles', 'personRemarks'];
 
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
 
@@ -22,6 +22,12 @@ export class MemoryRepository implements Repository {
       },
       find: async <K extends CollectionName>(collection: K, match: Partial<EntityMap[K]>) => {
         return [...draft[collection].values()].filter(value => Object.entries(match).every(([key, expected]) => (value as Record<string, unknown>)[key] === expected)).map(value => clone(value) as EntityMap[K]);
+      },
+      findByIds: async <K extends CollectionName>(collection: K, ids: string[]) => {
+        return [...new Set(ids)].flatMap(id => {
+          const value = draft[collection].get(id);
+          return value === undefined ? [] : [clone(value) as EntityMap[K]];
+        });
       },
       put: async <K extends CollectionName>(collection: K, entity: EntityMap[K]) => { draft[collection].set(entity.id, clone(entity)); },
       delete: async <K extends CollectionName>(collection: K, id: string) => { draft[collection].delete(id); }

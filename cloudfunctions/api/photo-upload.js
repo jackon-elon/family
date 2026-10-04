@@ -105,30 +105,20 @@ async function handlePhotoUpload(event, actorId, api, storage) {
   catch (_) { return invalid('照片 JPEG 内容无效，请重新选择'); }
   const allowed = await api.reservePhotoUpload({circleId: payload.circleId, personId: payload.personId}, actorId);
   if (!allowed.ok) return allowed;
-  // Bind the file and its intended visibility in one person.update transaction.
-  // Older self-upload clients are private by default; delegated admins retain
-  // the owner's current setting and may not change it through this route.
-  if (payload.visibility !== undefined && payload.visibility !== 'self' && payload.visibility !== 'circle') {
-    await api.refundPhotoUpload(actorId, allowed.data.reservationId).catch(() => undefined);
-    return {ok: false, error: {code: 'INVALID_INPUT', message: '照片可见范围不支持'}};
-  }
-  if (!allowed.data.isSelf && payload.visibility !== undefined) {
-    await api.refundPhotoUpload(actorId, allowed.data.reservationId).catch(() => undefined);
-    return {ok: false, error: {code: 'FORBIDDEN', message: '代维护不能修改资料可见范围'}};
-  }
-  const visibility = allowed.data.isSelf ? {photoFileId: payload.visibility || 'self'} : undefined;
+  // Legacy visibility input is ignored. Every active member of this circle
+  // can read a bound portrait; upload and access still require membership.
   let fileID;
   try {
     const uploaded = await storage.uploadFile({cloudPath: allowed.data.cloudPath, fileContent: cleanedBytes});
     fileID = uploaded.fileID;
     if (!fileID) throw new Error('Cloud storage returned no file ID');
-    const changed = await api.bindUploadedPhoto({circleId: payload.circleId, personId: payload.personId, fileID, ...(visibility ? {visibility: visibility.photoFileId} : {})}, actorId);
+    const changed = await api.bindUploadedPhoto({circleId: payload.circleId, personId: payload.personId, fileID}, actorId);
     if (!changed.ok) {
       const cleaned = await storage.deleteFile({fileList: [fileID]}).then(result => deletionSucceeded(result, fileID), () => false);
       if (cleaned) await api.refundPhotoUpload(actorId, allowed.data.reservationId).catch(() => undefined);
       return changed;
     }
-    return {ok: true, data: {person: changed.data.person}};
+    return {ok: true, data: changed.data};
   } catch {
     if (fileID) {
       const cleaned = await storage.deleteFile({fileList: [fileID]}).then(result => deletionSucceeded(result, fileID), () => false);

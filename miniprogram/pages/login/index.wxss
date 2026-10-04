@@ -1,0 +1,12 @@
+.login-page { position: relative; padding-top: 96rpx; overflow: hidden; }
+.login-art { position: absolute; right: -90rpx; top: 55rpx; width: 560rpx; height: 520rpx; opacity: .72; pointer-events: none; }
+.orbit { position: absolute; border: 2rpx solid #dbe9df; border-radius: 50%; transform: rotate(-25deg); }
+.orbit-one { width: 450rpx; height: 200rpx; top: 130rpx; left: 20rpx; }
+.orbit-two { width: 260rpx; height: 420rpx; top: 30rpx; left: 130rpx; transform: rotate(34deg); }
+.star { position: absolute; color: #4d9174; font-size: 56rpx; }
+.star-one { top: 60rpx; left: 210rpx; font-size: 80rpx; color: #ca9a4f; }
+.star-two { top: 175rpx; left: 18rpx; }.star-three { top: 345rpx; left: 146rpx; font-size: 42rpx; }.star-four { top: 250rpx; left: 397rpx; color: #d2a15b; }.star-five { top: 54rpx; left: 424rpx; font-size: 35rpx; }.star-six { top: 432rpx; left: 338rpx; font-size: 34rpx; }
+.login-page > .eyebrow,.login-page > .title,.login-page > .subtitle { position: relative; z-index: 1; }
+.login-page > .eyebrow { color: #33775d; }.login-page > .title { margin-top: 30rpx; font-size: 56rpx; line-height: 1.35; }.login-page > .subtitle { margin-top: 30rpx; max-width: 570rpx; }
+.login-panel { position: relative; z-index: 1; margin-top: 165rpx; padding: 42rpx 34rpx; }
+.login-panel .section-title { margin-bottom: 16rpx; }.login-panel .small { line-height: 1.65; }.login-button { width: 100%; margin-top: 36rpx; }.login-loading { margin-top: 40rpx; text-align: center; }.demo-note { margin-top: 24rpx; color: #7d8b82; text-align: center; font-size: 23rpx; line-height: 1.5; }.retry { margin-top: 18rpx; width: 100%; }

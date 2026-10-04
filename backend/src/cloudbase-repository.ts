@@ -39,6 +39,20 @@ export class CloudBaseRepository implements Repository {
         }
         return all;
       },
+      findByIds: async <K extends CollectionName>(collection: K, ids: string[]) => {
+        const unique = [...new Set(ids)];
+        if (unique.length > 5000) throw new QueryResultLimitError(collection);
+        const all: EntityMap[K][] = [];
+        // Only explicit IDs are queried; never scan the account profile table.
+        // Small batches stay within the query operand/result limits and do not
+        // consume the transaction's per-document read/write budget.
+        for (let offset = 0; offset < unique.length; offset += 20) {
+          const batch = unique.slice(offset, offset + 20);
+          const result = await this.db.collection(collection).where({_id: this.db.command.in(batch)}).limit(batch.length).get();
+          all.push(...(result.data ?? []).filter((row: EntityMap[K]) => batch.includes(row.id)));
+        }
+        return all;
+      },
       put: async <K extends CollectionName>(collection: K, entity: EntityMap[K]) => {
         await transaction.collection(collection).doc(entity.id).set({ data: entity });
       },

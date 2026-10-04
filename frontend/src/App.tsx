@@ -36,6 +36,8 @@ import {
   Heart,
   KeyRound,
   MonitorSmartphone,
+  Camera,
+  ZoomIn,
 } from "lucide-react";
 import {
   auth,
@@ -76,6 +78,7 @@ import ProfileForm, {
   profilePhone,
 } from "./components/ProfileForm";
 import FamilyGraph from "./components/FamilyGraph";
+import ContactActions from "./components/ContactActions";
 import { relationshipFor } from "./shared/relationship";
 import { citySummary } from "./shared/geography";
 import {
@@ -84,6 +87,7 @@ import {
   type AlbumTab,
 } from "./shared/album-view";
 import { useCircle } from "./hooks";
+import { useFamilyBirthdays } from "./use-family-birthdays";
 import { guestBrowseData } from "./shared/guest-view";
 import {
   birthdayCountdown,
@@ -1089,7 +1093,9 @@ export function GuestBirthdayList({
   stale,
   onSelect,
   onRetry,
+  people = [],
 }: {
+  people?: BrowsePerson[];
   birthdays: GuestBirthdays;
   stale: boolean;
   onSelect: (personId: string) => void;
@@ -1117,7 +1123,7 @@ export function GuestBirthdayList({
       {!stale &&
         (birthdays.events.length ? (
           <>
-            <div className="birthday-list">
+            <div className={`birthday-list${expanded ? " is-expanded" : ""}`}>
               {events.map((event) => (
                 <button
                   type="button"
@@ -1125,7 +1131,7 @@ export function GuestBirthdayList({
                   className={`birthday-item${event.daysUntil === 0 ? " is-today" : ""}`}
                   onClick={() => onSelect(event.personId)}
                 >
-                  <h3>{event.personName}</h3>
+                  <h3><Avatar person={people.find((p) => p.id === event.personId) || {name: event.personName}} />{people.find((p) => p.id === event.personId)?.name || event.personName}</h3>
                   <p>{birthdayDateDescription(event)}</p>
                   <span className="birthday-count">
                     {birthdayCountdown(event.daysUntil)}
@@ -1233,28 +1239,9 @@ export function InvitationHome({
 
 function MemberHome() {
   const { circles, circlesLoading, circlesError } = useApp();
-  const [events, setEvents] = useState<BirthdayEvent[]>([]),
-    [error, setError] = useState(""),
-    [eventsLoading, setEventsLoading] = useState(true),
-    [retry, setRetry] = useState(0);
-  useEffect(() => {
-    let active = true;
-    setEventsLoading(true);
-    setError("");
-    rpc<{ events: BirthdayEvent[] }>("birthday.upcoming", { days: 30 })
-      .then((d) => {
-        if (active) setEvents(d.events);
-      })
-      .catch((e) => {
-        if (active) setError(errorText(e));
-      })
-      .finally(() => {
-        if (active) setEventsLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [circles, retry]);
+  const { birthdays, loading: eventsLoading, load: reloadBirthdays } = useFamilyBirthdays(undefined, circles);
+  const events = birthdays?.events || [];
+  const error = birthdays?.error || "";
   return (
     <div className="page home-page">
       <header className="page-header">
@@ -1363,7 +1350,7 @@ function MemberHome() {
         ) : error ? (
           <button
             className="text-button"
-            onClick={() => setRetry((value) => value + 1)}
+            onClick={() => void reloadBirthdays()}
           >
             重新加载生日
           </button>
@@ -1405,8 +1392,12 @@ function MemberHome() {
 function Album() {
   const { circleId } = useParams();
   const { data, error, loading, load, setData } = useCircle(circleId);
+  const birthdayState = useFamilyBirthdays(circleId, data?.people);
   return (
     <FamilyAlbum
+      birthdays={birthdayState.birthdays}
+      birthdaysLoading={birthdayState.loading}
+      onBirthdayRetry={birthdayState.load}
       circleId={circleId}
       data={data}
       error={error}
@@ -1433,6 +1424,8 @@ export function FamilyAlbum({
   onRemark,
   birthdays,
   birthdaysStale = false,
+  birthdaysLoading = false,
+  onBirthdayRetry,
 }: {
   circleId?: string;
   data: FamilyBrowseData | null;
@@ -1443,6 +1436,8 @@ export function FamilyAlbum({
   onRemark?: (personId: string, remark: string) => void;
   birthdays?: GuestBirthdays;
   birthdaysStale?: boolean;
+  birthdaysLoading?: boolean;
+  onBirthdayRetry?: () => void;
 }) {
   const location = useLocation();
   const deepLinkPerson = new URLSearchParams(location.search).get("person");
@@ -1536,11 +1531,13 @@ export function FamilyAlbum({
         </div>
       </header>
       <Alert message={error} />
-      {readOnly && birthdays && (
+      {birthdaysLoading && <Loading label="正在查看近期生日…" />}
+      {birthdays && !birthdaysLoading && (
         <GuestBirthdayList
           birthdays={birthdays}
+          people={people}
           stale={birthdaysStale}
-          onRetry={load}
+          onRetry={onBirthdayRetry || load}
           onSelect={(id) => {
             if (!data.people.some((person) => person.id === id)) return;
             setSearch("");
@@ -1608,6 +1605,19 @@ export function FamilyAlbum({
       ) : activeTab === "graph" ? (
         <div className="graph-section">
           <p className="section-hint">同辈同行 · 拖动查看，点头像看资料</p>
+          {!!search.trim() && (
+            <section className="graph-search-results" aria-label="找到的家人">
+              <p>找到 {filtered.length} 位家人，点头像看资料</p>
+              <div>
+                {filtered.map((person) => (
+                  <button type="button" key={person.id} onClick={(event) => pick(person.id, event.currentTarget)}>
+                    <Avatar person={person} />
+                    <span><strong>{person.name}</strong><small>{[person.name !== person.originalName ? person.originalName : "", person.city || "城市待补充", labels[person.id]].filter(Boolean).join(" · ")}</small></span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
           <FamilyGraph
             people={
               search
@@ -1723,6 +1733,7 @@ export function PersonDetail({
   onClose: () => void;
   onRemark: (remark: string) => void;
 }) {
+  const [photoOpen, setPhotoOpen] = useState(false);
   const visibleRemark = readOnly ? "" : remark;
   const [text, setText] = useState(visibleRemark),
     [editing, setEditing] = useState(false),
@@ -1749,154 +1760,190 @@ export function PersonDetail({
   };
   const Panel = floating ? FloatingPanel : Modal;
   return (
-    <Panel
-      title={floating ? "近况与联系" : "熟悉的面孔"}
-      onClose={onClose}
-      busy={busy}
-      {...(floating ? { anchorElement, anchorSelector } : {})}
-    >
-      <div className={`person-detail${floating ? " compact-detail" : ""}`}>
-        <div className="detail-person-heading">
-          <Avatar person={person} large />
-          <div>
-            <h2>
-              {visibleRemark || person.nickname || person.name}
-              {!readOnly && person.isSelf && (
-                <span className="self-tag">我</span>
+    <>
+      <Panel
+        title={floating ? "近况与联系" : "熟悉的面孔"}
+        onClose={onClose}
+        busy={busy}
+        {...(floating ? { anchorElement, anchorSelector } : {})}
+      >
+        <div className={`person-detail${floating ? " compact-detail" : ""}`}>
+          <div className="detail-person-heading">
+            {person.photoUrl ? (
+              <button
+                type="button"
+                className="person-photo-button"
+                aria-label={`放大${person.name}的照片`}
+                onClick={() => setPhotoOpen(true)}
+              >
+                <Avatar person={person} large />
+                <span>
+                  <ZoomIn size={16} />
+                  看大图
+                </span>
+              </button>
+            ) : (
+              <Avatar person={person} large />
+            )}
+            <div>
+              <h2>
+                {visibleRemark || person.nickname || person.name}
+                {!readOnly && person.isSelf && (
+                  <span className="self-tag">我</span>
+                )}
+              </h2>
+              {(visibleRemark || person.nickname) && (
+                <p className="muted original-name">{person.name}</p>
               )}
-            </h2>
-            {(visibleRemark || person.nickname) && (
-              <p className="muted original-name">{person.name}</p>
-            )}
-            {floating && (
-              <p className="compact-location">
-                <MapPin size={13} />
-                {person.city || "城市待补充"}
-                {person.occupation || person.status
-                  ? ` · ${person.occupation || person.status}`
-                  : ""}
-              </p>
-            )}
-          </div>
-        </div>
-        {kinship && (
-          <div className="kinship-note">
-            <b>{kinship.label}</b>
-            <span>{kinship.path}</span>
-            {expanded && kinship.missing && <small>{kinship.missing}</small>}
-          </div>
-        )}
-        {expanded && (
-          <>
-            <div className="detail-grid">
-              <div>
-                <MapPin size={17} />
-                <span>所在城市</span>
-                <b>
-                  {[person.country, person.province, person.city]
-                    .filter(Boolean)
-                    .filter((value, index, all) => all.indexOf(value) === index)
-                    .join(" · ") || "尚未填写"}
-                </b>
-              </div>
-              <div>
-                <Cake size={17} />
-                <span>生日</span>
-                <b>
-                  {person.birthday
-                    ? `${person.birthday.calendar === "lunar" ? "农历" : "阳历"} ${person.birthday.year ? `${person.birthday.year}年` : ""}${person.birthday.leapMonth ? "闰" : ""}${person.birthday.month}月${person.birthday.day}日`
-                    : "尚未填写"}
-                </b>
-              </div>
-              {[
-                [
-                  "性别",
-                  person.gender === "male"
-                    ? "男"
-                    : person.gender === "female"
-                      ? "女"
-                      : "",
-                ],
-                ["目前", person.status],
-                ["学校", person.school],
-                ["行业", person.industry],
-                ["职业", person.occupation],
-                ["电话", person.phone],
-                ["微信", person.wechatId],
-              ]
-                .filter(([, value]) => value)
-                .map(([label, value]) => (
-                  <div key={label}>
-                    <span>{label}</span>
-                    <b>{value}</b>
-                  </div>
-                ))}
-            </div>
-            {person.bio && <p className="bio">{person.bio}</p>}
-          </>
-        )}
-        <Alert message={error} />
-        {editing && !readOnly ? (
-          <div className="remark-editor">
-            <label>
-              我对 TA 的备注
-              <input
-                maxLength={60}
-                value={text}
-                disabled={busy}
-                onChange={(event) => setText(event.target.value)}
-                placeholder="例如：大姑、小叔"
-              />
-            </label>
-            <p className="hint">只对你自己显示，留空可恢复原名。</p>
-            <div className="actions">
-              <button
-                className="button secondary small-button"
-                disabled={busy}
-                onClick={() => setEditing(false)}
-              >
-                取消
-              </button>
-              <button
-                className="button primary small-button"
-                disabled={busy}
-                onClick={save}
-              >
-                {busy ? "保存中…" : "保存备注"}
-              </button>
+              {floating && (
+                <p className="compact-location">
+                  <MapPin size={13} />
+                  {person.city || "城市待补充"}
+                  {person.occupation || person.status
+                    ? ` · ${person.occupation || person.status}`
+                    : ""}
+                </p>
+              )}
             </div>
           </div>
-        ) : (
-          <div className="detail-bottom-actions">
-            {floating && (
-              <button
-                className="text-button"
-                onClick={() => setExpanded((value) => !value)}
-              >
-                {expanded ? "收起资料" : "查看完整资料"}
-              </button>
-            )}
-            {!readOnly &&
-              (!person.isSelf ? (
+          <ContactActions
+            key={person.id}
+            phone={person.phone}
+            wechatId={person.wechatId}
+          />
+          {kinship && (
+            <div className="kinship-note">
+              <b>{kinship.label}</b>
+              <span>{kinship.path}</span>
+              {expanded && kinship.missing && <small>{kinship.missing}</small>}
+            </div>
+          )}
+          {expanded && (
+            <>
+              <div className="detail-grid">
+                <div>
+                  <MapPin size={17} />
+                  <span>所在城市</span>
+                  <b>
+                    {[person.country, person.province, person.city]
+                      .filter(Boolean)
+                      .filter(
+                        (value, index, all) => all.indexOf(value) === index,
+                      )
+                      .join(" · ") || "尚未填写"}
+                  </b>
+                </div>
+                <div>
+                  <Cake size={17} />
+                  <span>生日</span>
+                  <b>
+                    {person.birthday
+                      ? `${person.birthday.calendar === "lunar" ? "农历" : "阳历"} ${person.birthday.year ? `${person.birthday.year}年` : ""}${person.birthday.leapMonth ? "闰" : ""}${person.birthday.month}月${person.birthday.day}日`
+                      : "尚未填写"}
+                  </b>
+                </div>
+                {[
+                  [
+                    "性别",
+                    person.gender === "male"
+                      ? "男"
+                      : person.gender === "female"
+                        ? "女"
+                        : "",
+                  ],
+                  ["目前", person.status],
+                  ["学校", person.school],
+                  ["行业", person.industry],
+                  ["职业", person.occupation],
+                  ["电话", person.phone],
+                  ["微信", person.wechatId],
+                ]
+                  .filter(([, value]) => value)
+                  .map(([label, value]) => (
+                    <div key={label}>
+                      <span>{label}</span>
+                      <b>{value}</b>
+                    </div>
+                  ))}
+              </div>
+              {person.bio && <p className="bio">{person.bio}</p>}
+            </>
+          )}
+          <Alert message={error} />
+          {editing && !readOnly ? (
+            <div className="remark-editor">
+              <label>
+                我对 TA 的备注
+                <input
+                  maxLength={60}
+                  value={text}
+                  disabled={busy}
+                  onChange={(event) => setText(event.target.value)}
+                  placeholder="例如：大姑、小叔"
+                />
+              </label>
+              <p className="hint">只对你自己显示，留空可恢复原名。</p>
+              <div className="actions">
                 <button
                   className="button secondary small-button"
-                  onClick={() => setEditing(true)}
+                  disabled={busy}
+                  onClick={() => setEditing(false)}
                 >
-                  设置备注
+                  取消
                 </button>
-              ) : (
-                <Link
-                  className="button secondary small-button"
-                  to="/me"
-                  onClick={onClose}
+                <button
+                  className="button primary small-button"
+                  disabled={busy}
+                  onClick={save}
                 >
-                  修改我的资料
-                </Link>
-              ))}
-          </div>
-        )}
-      </div>
-    </Panel>
+                  {busy ? "保存中…" : "保存备注"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="detail-bottom-actions">
+              {floating && (
+                <button
+                  className="text-button"
+                  onClick={() => setExpanded((value) => !value)}
+                >
+                  {expanded ? "收起资料" : "查看完整资料"}
+                </button>
+              )}
+              {!readOnly &&
+                (!person.isSelf ? (
+                  <button
+                    className="button secondary small-button"
+                    onClick={() => setEditing(true)}
+                  >
+                    设置备注
+                  </button>
+                ) : (
+                  <Link
+                    className="button secondary small-button"
+                    to="/me"
+                    onClick={onClose}
+                  >
+                    修改我的资料
+                  </Link>
+                ))}
+            </div>
+          )}
+        </div>
+      </Panel>
+      {photoOpen && person.photoUrl && (
+        <Modal
+          title={`${person.name}的照片`}
+          onClose={() => setPhotoOpen(false)}
+        >
+          <img
+            className="person-photo-preview"
+            src={person.photoUrl}
+            alt={`${person.name}的照片`}
+          />
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -2036,7 +2083,8 @@ function Me() {
               </p>
             </div>
             <button className="button primary" onClick={() => setEditing(true)}>
-              {complete ? "编辑资料" : "完善资料"}
+              <Camera size={23} />
+              {complete ? "照片和资料" : "完善资料"}
             </button>
           </section>
           {managedCircles.length > 0 && (

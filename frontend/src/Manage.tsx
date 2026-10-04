@@ -21,6 +21,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import QRCode from "qrcode";
+import PersonSelect from "./components/PersonSelect";
 import { errorText, rpc, requestId, uploadPhoto, uncertainResult } from "./api";
 import { useApp } from "./app-context";
 import { useCircle } from "./hooks";
@@ -95,23 +96,14 @@ function RelationChoiceFields({
       </label>
       {value.mode === "linked" ? (
         <div className="form-grid">
-          <label>
-            已有家人
-            <select
-              required
-              value={value.anchorPersonId}
-              onChange={(e) =>
-                onChange({ ...value, anchorPersonId: e.target.value })
-              }
-            >
-              <option value="">选择一位家人</option>
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <PersonSelect
+            people={people}
+            label="已有家人"
+            value={value.anchorPersonId}
+            onChange={(anchorPersonId) =>
+              onChange({ ...value, anchorPersonId })
+            }
+          />
           <label>
             {name}是 TA 的
             <select
@@ -154,6 +146,7 @@ export default function Manage() {
       "people" | "invites" | "applications" | "relations" | "settings"
     >("people"),
     [search, setSearch] = useState(""),
+    [relationSearch, setRelationSearch] = useState(""),
     [editing, setEditing] = useState<PersonView | "new" | null>(null),
     [relationEdit, setRelationEdit] = useState<Relation | "new" | null>(null),
     [applications, setApplications] = useState<ApplicationView[]>([]),
@@ -299,6 +292,17 @@ export default function Manage() {
   const visiblePeople = data.people.filter((p) =>
     [p.name, p.nickname, p.city].some((v) => v?.includes(search)),
   );
+  const visibleRelations = data.relations.filter(
+    (r) =>
+      !relationSearch.trim() ||
+      data.people.some(
+        (p) =>
+          (p.id === r.from || p.id === r.to) &&
+          [p.name, p.city].some((text) =>
+            text?.includes(relationSearch.trim()),
+          ),
+      ),
+  );
   const activeInvite = !!(
     newInvite?.token &&
     newInvite.expiresAt > now &&
@@ -440,8 +444,17 @@ export default function Manage() {
           <p className="section-hint">
             只需连接父母与子女、配偶、兄弟姐妹，其他亲属称呼会自动推算。
           </p>
+          <label className="search-box">
+            <Search size={17} />
+            <input
+              aria-label="查找亲属关系"
+              placeholder="输入家人姓名或城市查关系"
+              value={relationSearch}
+              onChange={(e) => setRelationSearch(e.target.value)}
+            />
+          </label>
           <div className="relation-list">
-            {data.relations.map((r) => {
+            {visibleRelations.map((r) => {
               const from = data.people.find((p) => p.id === r.from),
                 to = data.people.find((p) => p.id === r.to);
               return (
@@ -500,6 +513,11 @@ export default function Manage() {
           {!data.relations.length && (
             <Empty title="从一条熟悉的关系开始">
               <p>例如：妈妈是我的母亲。以后随时可以补充。</p>
+            </Empty>
+          )}
+          {!!data.relations.length && !visibleRelations.length && (
+            <Empty title="没有找到匹配的关系">
+              <p>换个姓名或城市试试；尚未连接的家人可以点击「添加关系」。</p>
             </Empty>
           )}
         </section>
@@ -1092,21 +1110,13 @@ function RelationEditor({
         }}
       >
         <fieldset disabled={busy}>
-          <label>
-            这位家人
-            <select
-              required
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-            >
-              <option value="">选择家人</option>
-              {data.people.map((p) => (
-                <option key={p.id} value={p.id} disabled={p.id === to}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <PersonSelect
+            people={data.people}
+            label="这位家人"
+            value={from}
+            onChange={setFrom}
+            excludeId={to}
+          />
           <label>
             是下面这位家人的
             <select
@@ -1119,17 +1129,13 @@ function RelationEditor({
               <option value="sibling">兄弟姐妹</option>
             </select>
           </label>
-          <label>
-            关系对象
-            <select required value={to} onChange={(e) => setTo(e.target.value)}>
-              <option value="">选择家人</option>
-              {data.people.map((p) => (
-                <option key={p.id} value={p.id} disabled={p.id === from}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <PersonSelect
+            people={data.people}
+            label="关系对象"
+            value={to}
+            onChange={setTo}
+            excludeId={from}
+          />
         </fieldset>
         {from && to && (
           <p className="relation-preview">

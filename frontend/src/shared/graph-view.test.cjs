@@ -17,10 +17,10 @@ new Function("require", "module", "exports", compiled)(
   mod,
   mod.exports,
 );
-const { graphBounds, graphFit, graphScroll, GRAPH_UNIT, GRAPH_CARD } =
+const { graphBounds, graphScroll, GRAPH_UNIT, GRAPH_CARD, MIN_GRAPH_ZOOM } =
   mod.exports;
 
-test("phone overview includes every card and generation heading without mini program gutters", () => {
+test("scrollable graph bounds include every card and generation heading without mini program gutters", () => {
   const nodes = [
     { x: 350, y: 180 },
     { x: 175, y: 430 },
@@ -31,11 +31,7 @@ test("phone overview includes every card and generation heading without mini pro
     { x: 525, y: 680 },
   ];
   const bounds = graphBounds(nodes);
-  for (const width of [275, 345, 738]) {
-    const height = 290;
-    const zoom = graphFit(bounds, width, height);
-    assert.ok(bounds.width * zoom <= width);
-    assert.ok(bounds.height * zoom <= height);
+  for (const zoom of [MIN_GRAPH_ZOOM, 1, 1.6]) {
     for (const n of nodes) {
       const x = (n.x * GRAPH_UNIT - bounds.left) * zoom;
       const y = (n.y * GRAPH_UNIT - bounds.top) * zoom;
@@ -73,13 +69,30 @@ test("zooming an overview smaller than the viewport never introduces negative sc
     600,
   );
   assert.deepEqual(scroll, { left: 0, top: 0 });
-  assert.ok(Number.isFinite(graphFit(graphBounds([]), 320, 260)));
+  assert.ok(Number.isFinite(graphBounds([]).width));
 });
 
-test("overview can contain a large generation instead of stopping at an arbitrary 85 percent", () => {
+test("a large family can zoom out below 85 percent without negative scroll", () => {
   const bounds = graphBounds(
     Array.from({ length: 160 }, (_, i) => ({ x: 210 + i * 175, y: 180 })),
   );
-  const zoom = graphFit(bounds, 275, 290);
-  assert.ok(bounds.width * zoom <= 275);
+  assert.ok(MIN_GRAPH_ZOOM < 0.85);
+  assert.ok(bounds.width * MIN_GRAPH_ZOOM <= 275);
+  const center = {
+    x: (210 + 159 * 175) * GRAPH_UNIT - bounds.left,
+    y: 180 * GRAPH_UNIT - bounds.top,
+  };
+  const scroll = graphScroll(center, MIN_GRAPH_ZOOM, bounds, 275, 290);
+  assert.ok(
+    center.x * MIN_GRAPH_ZOOM -
+      scroll.left -
+      (GRAPH_CARD * MIN_GRAPH_ZOOM) / 2 >=
+      0,
+  );
+  assert.ok(
+    center.x * MIN_GRAPH_ZOOM -
+      scroll.left +
+      (GRAPH_CARD * MIN_GRAPH_ZOOM) / 2 <=
+      275,
+  );
 });

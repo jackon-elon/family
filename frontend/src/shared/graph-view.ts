@@ -26,17 +26,6 @@ export function graphBounds(nodes: ReadonlyArray<{ x: number; y: number }>) {
   };
 }
 
-export function graphFit(
-  bounds: { width: number; height: number },
-  width: number,
-  height: number,
-) {
-  return Math.max(
-    MIN_GRAPH_ZOOM,
-    Math.min(1, (width - 8) / bounds.width, (height - 8) / bounds.height),
-  );
-}
-
 export function graphScroll(
   center: { x: number; y: number },
   zoom: number,

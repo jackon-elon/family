@@ -2750,3 +2750,120 @@ form fieldset > label + label {
     display: none;
   }
 }
+
+/* Photo recognition and everyday actions for older family members. */
+.contact-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0 10px;
+}
+.contact-buttons > .button {
+  flex: 1;
+  min-height: 48px;
+  padding: 10px;
+  font-size: 17px;
+  white-space: nowrap;
+  gap: 8px;
+}
+.contact-feedback {
+  font-size: 15px;
+  color: #3d594d;
+  line-height: 1.6;
+}
+.contact-actions input {
+  width: 100%;
+  font-size: 18px;
+  padding: 12px;
+}
+.person-photo-button {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #3d594d;
+  cursor: pointer;
+}
+.person-photo-button > span:last-child {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
+}
+.person-photo-preview {
+  display: block;
+  width: 100%;
+  max-height: 70dvh;
+  object-fit: contain;
+}
+.modal-header .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: auto;
+  min-width: 72px;
+  min-height: 48px;
+  padding: 8px;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+.floating-person .modal-header .icon-button {
+  width: auto;
+  min-width: 72px;
+  height: 48px;
+}
+.floating-person .detail-person-heading .avatar.large {
+  width: 72px;
+  height: 72px;
+}
+.floating-person .compact-location {
+  font-size: 15px;
+  color: #52634b;
+}
+.floating-person .kinship-note b {
+  font-size: 18px;
+}
+.floating-person .kinship-note span {
+  font-size: 14px;
+  color: #52634b;
+}
+.detail-bottom-actions {
+  flex-wrap: wrap;
+}
+.detail-bottom-actions > .text-button,
+.detail-bottom-actions > .small-button {
+  min-height: 48px;
+  font-size: 16px;
+}
+@media (max-width: 680px), (max-width: 1000px) and (max-height: 500px) {
+  .person-detail .detail-grid {
+    font-size: 16px;
+  }
+  .person-detail .detail-grid > div > b {
+    font-size: 16px;
+    color: #354630;
+  }
+  .profile-summary > .button {
+    min-height: 48px;
+    font-size: 17px;
+  }
+}
+
+.guest-birthdays .birthday-list.is-expanded { grid-auto-flow: row; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); overflow-x: visible; }
+.guest-birthdays .birthday-item h3 { display: flex; align-items: center; gap: 9px; }
+.guest-birthdays .birthday-item h3 .avatar { width: 38px; height: 38px; min-width: 38px; font-size: 15px; }
+.graph-search-results { margin: 12px 0; }
+.graph-search-results > p { color: #53604d; font-size: 15px; }
+.graph-search-results > div { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; }
+.graph-search-results button { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 12px; border: 1px solid #e0e4d7; border-radius: 12px; background: #fffefb; text-align: left; color: #374330; }
+.graph-search-results button > span { min-width: 0; }
+.graph-search-results strong, .graph-search-results small { display: block; overflow-wrap: anywhere; }
+.graph-search-results strong { font-size: 17px; }
+.graph-search-results small { margin-top: 4px; color: #65705e; font-size: 14px; }
+.graph-overflow summary { min-height: 48px; padding: 12px 0; cursor: pointer; font-size: 16px; }
+.graph-overflow button { min-height: 48px; }

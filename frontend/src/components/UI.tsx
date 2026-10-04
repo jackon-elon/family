@@ -194,7 +194,8 @@ export function Modal({
             onClick={onClose}
             aria-label="关闭"
           >
-            <X />
+            <X size={20} />
+            <span>关闭</span>
           </button>
         </header>
         {children}
@@ -237,7 +238,7 @@ export function FloatingPanel({
   });
   useEffect(() => {
     const handle = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) onClose();
+      if (event.key === "Escape" && !busy && !modalStack.length) onClose();
     };
     document.addEventListener("keydown", handle);
     return () => document.removeEventListener("keydown", handle);
@@ -350,6 +351,7 @@ export function FloatingPanel({
           onClick={onClose}
         >
           <X size={20} />
+          <span>关闭</span>
         </button>
       </header>
       {children}

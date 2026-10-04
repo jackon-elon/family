@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { Minus, Plus, Scan, LocateFixed, Expand, Shrink } from "lucide-react";
+import {
+  Minus,
+  Plus,
+  RotateCcw,
+  LocateFixed,
+  Expand,
+  Shrink,
+} from "lucide-react";
 import { buildStarLayout } from "../shared/family-layout";
 import type {
   Person as StoredPerson,
@@ -7,7 +14,6 @@ import type {
 } from "../../../backend/src/model";
 import {
   graphBounds,
-  graphFit,
   graphScroll,
   GRAPH_UNIT as UNIT,
   MIN_GRAPH_ZOOM,
@@ -33,6 +39,14 @@ interface Props {
 }
 const CARD_WIDTH = 132;
 const CARD_HEIGHT = 132;
+function GraphPhoto({ url, initial }: { url?: string; initial: string }) {
+  const [failedUrl, setFailedUrl] = useState<string>();
+  return url && failedUrl !== url ? (
+    <img src={url} alt="" loading="lazy" onError={() => setFailedUrl(url)} />
+  ) : (
+    <span>{initial}</span>
+  );
+}
 
 export default function FamilyGraph({
   people,
@@ -46,7 +60,6 @@ export default function FamilyGraph({
   const [zoom, setZoom] = useState(1);
   const [expanded, setExpanded] = useState(false);
   const section = useRef<HTMLElement>(null);
-  const overview = useRef(false);
   const drag = useRef<{
     pointerId: number;
     x: number;
@@ -74,6 +87,7 @@ export default function FamilyGraph({
   const nodeMap = new Map(layout.nodes.map((node) => [node.id, node]));
   const visibleIds = new Set(layout.nodes.map((node) => node.id));
   const omitted = people.filter((person) => !visibleIds.has(person.id));
+  const unlinked = layout.nodes.filter((node) => node.generation === null);
 
   const positionAt = (next: number, center: { x: number; y: number }) => {
     setZoom(next);
@@ -85,32 +99,21 @@ export default function FamilyGraph({
         );
     });
   };
-  const fit = () => {
-    const el = viewport.current;
-    if (!el) return;
-    overview.current = true;
-    positionAt(graphFit(bounds, el.clientWidth, el.clientHeight), {
-      x: bounds.width / 2,
-      y: bounds.height / 2,
-    });
-  };
   const focusNode = (node: { x: number; y: number }, next = 1) => {
-    overview.current = false;
     positionAt(next, {
       x: node.x * UNIT - bounds.left,
       y: node.y * UNIT - bounds.top,
     });
   };
+  const resetView = () => {
+    const node =
+      layout.nodes.find((n) => n.id === (selfId || layout.centerId)) ||
+      layout.nodes.find((n) => n.connected) ||
+      layout.nodes[0];
+    if (node) focusNode(node);
+  };
   useEffect(() => {
-    const el = viewport.current;
-    if (!el) return;
-    const node = layout.nodes.find((n) => n.id === selfId);
-    if (node)
-      focusNode(
-        node,
-        Math.max(0.85, graphFit(bounds, el.clientWidth, el.clientHeight)),
-      );
-    else fit();
+    resetView();
   }, [bounds.width, bounds.height, bounds.left, bounds.top, selfId]);
 
   // Retain the same person when rotating a phone or expanding the canvas.
@@ -133,8 +136,7 @@ export default function FamilyGraph({
             : (el.scrollTop + previous.height / 2) / zoom,
       };
       previous = size;
-      if (overview.current) fit();
-      else positionAt(zoom, center);
+      positionAt(zoom, center);
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -149,7 +151,6 @@ export default function FamilyGraph({
   const changeZoom = (difference: number) => {
     const el = viewport.current;
     if (!el) return;
-    overview.current = false;
     positionAt(
       Math.max(MIN_GRAPH_ZOOM, Math.min(MAX_GRAPH_ZOOM, zoom + difference)),
       {
@@ -269,12 +270,12 @@ export default function FamilyGraph({
           <button
             type="button"
             className="visual-text-button"
-            aria-label="查看亲缘全图"
-            title="查看全图"
-            onClick={fit}
+            aria-label="重置亲缘图"
+            title="恢复初始大小和位置"
+            onClick={resetView}
           >
-            <Scan size={17} />
-            全图
+            <RotateCcw size={17} />
+            重置
           </button>
           {selfId && nodeMap.has(selfId) && (
             <button
@@ -330,9 +331,18 @@ export default function FamilyGraph({
               className={`graph-generation${band.isSelf ? " is-mine" : ""}${band.isUnlinked ? " is-unlinked" : ""}`}
               style={{
                 top: (band.y * UNIT - bounds.top - CARD_HEIGHT / 2 - 34) * zoom,
+                fontSize: 11 * zoom,
+                gap: 12 * zoom,
               }}
             >
-              <span>{band.label}</span>
+              <span
+                style={{
+                  padding: `${3 * zoom}px ${9 * zoom}px`,
+                  borderRadius: 5 * zoom,
+                }}
+              >
+                {band.label}
+              </span>
             </div>
           ))}
           <svg
@@ -365,7 +375,7 @@ export default function FamilyGraph({
                   className={`line-${relation.type}`}
                   d={d}
                   fill="none"
-                  strokeWidth={1.5}
+                  strokeWidth={1.5 * zoom}
                   vectorEffect="non-scaling-stroke"
                 />
               );
@@ -383,11 +393,13 @@ export default function FamilyGraph({
               style={{
                 left: (node.x * UNIT - bounds.left - CARD_WIDTH / 2) * zoom,
                 top: (node.y * UNIT - bounds.top - CARD_HEIGHT / 2) * zoom,
-                width: CARD_WIDTH * zoom,
-                height: CARD_HEIGHT * zoom,
-                fontSize: Math.max(9, 14 * Math.min(zoom + 0.15, 1.3)),
-                gap: zoom < 0.65 ? 1 : 4,
-                padding: 10 * zoom,
+                width: CARD_WIDTH,
+                height: CARD_HEIGHT,
+                transform: `scale(${zoom})`,
+                transformOrigin: "top left",
+                fontSize: 16,
+                gap: 3,
+                padding: 8,
               }}
               onPointerDown={(event) => {
                 drag.current = null;
@@ -403,39 +415,20 @@ export default function FamilyGraph({
               <span
                 className="graph-avatar"
                 style={{
-                  width: 46 * zoom,
-                  height: 46 * zoom,
-                  fontSize: 23 * zoom,
-                  display: zoom < 0.35 ? "none" : undefined,
+                  width: 62,
+                  height: 62,
+                  fontSize: 23,
                 }}
               >
-                <span>{node.initial}</span>
-                {node.photoUrl && (
-                  <img
-                    src={node.photoUrl}
-                    alt=""
-                    loading="lazy"
-                    onLoad={(event) => {
-                      event.currentTarget.style.display = "";
-                    }}
-                    onError={(event) => {
-                      event.currentTarget.style.display = "none";
-                    }}
-                  />
-                )}
+                <GraphPhoto url={node.photoUrl} initial={node.initial} />
               </span>
-              <span
-                className="graph-person-name"
-                style={{ display: zoom < 0.35 ? "none" : undefined }}
-                title={node.name}
-              >
+              <span className="graph-person-name" title={node.name}>
                 {node.name}
               </span>
               <span
                 className="graph-person-relation"
                 style={{
-                  fontSize: Math.max(8, 12 * zoom),
-                  display: zoom < 0.5 ? "none" : undefined,
+                  fontSize: 14,
                 }}
                 title={node.label}
               >
@@ -450,10 +443,30 @@ export default function FamilyGraph({
       </div>
       <div className="graph-footer">
         <span>{people.length} 位家人</span>
-        <span>
-          {zoom < 0.5 ? "全图预览 · 放大看姓名" : "拖动看家人 · 点头像看资料"}
-        </span>
+        <span>拖动看家人 · 点头像看资料</span>
       </div>
+      {!!unlinked.length && (
+        <details className="graph-overflow">
+          <summary>关系待补充 · {unlinked.length} 位家人</summary>
+          <p className="visual-note">
+            这些家人已记录，暂时单独放在图中。管理员补好关系后会自动连接。
+          </p>
+          <div>
+            {unlinked.map((node) => (
+              <button
+                type="button"
+                key={node.id}
+                onClick={(event) => {
+                  focusNode(node);
+                  onSelect(node.id, event.currentTarget);
+                }}
+              >
+                {node.name}
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
       {!!layout.conflictCount && (
         <p className="visual-note graph-warning">
           有 {layout.conflictCount} 位家人的关系需要核实，可在管理中调整。

@@ -1015,7 +1015,9 @@ export class ApiService {
     for (const candidate of candidates) {
       const person = currentPeople.get(candidate.person.id);
       if (!person || person.claimedBy === actorId) continue;
-      if (!profileComplete(person)) continue;
+      // A legacy record may be missing its city but still have a usable birthday.
+      // The reminder depends on the birthday, not on unrelated profile fields.
+      try { if (!parseBirthday(person.birthday)) continue; } catch { continue; }
       if (p.circleId === undefined && person.claimedBy) {
         if (seenOwners.has(person.claimedBy)) continue;
         seenOwners.add(person.claimedBy);

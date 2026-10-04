@@ -395,6 +395,12 @@ function createApp(options = {}) {
           ? sessionApi(current, body.action, body.payload)
           : api;
         const result = await requestApi.invoke(body, current?.user.id);
+        if (result.ok && body.action === "birthday.upcoming") {
+          const serverTime = now();
+          const asOf = new Date(serverTime + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+          Object.assign(result.data, { serverTime, asOf,
+            refreshAt: Date.parse(`${asOf}T00:00:00+08:00`) + 86400000 });
+        }
         if (!result.ok && result.error.code === "ACCOUNT_NOT_INVITED")
           await auth.invalidateIneligible(current);
         if (result.ok && body.action === "invite.preview")

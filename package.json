@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "npm run build:backend && node scripts/dev-web.mjs",
+    "dev:scale": "npm run build:backend && node scripts/dev-scale.cjs",
     "dev:api": "npm run build:backend && node --watch server/index.cjs",
     "dev:web": "vite --config frontend/vite.config.ts",
     "start": "node server/index.cjs",

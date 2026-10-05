@@ -638,6 +638,24 @@ export function resolveKinship(input: KinshipInput): KinshipResult {
   if (error) return { status: 'invalid', paths: [], missing: [], reason: error, source: 'none', truncated: false };
   const byId = new Map(input.people.map((p) => [p.id, p]));
   const found = findShortestPaths(buildGraph(input.people, input.relations), input.perspectiveId, input.targetId, byId);
+  return assessResult(input, byId, found);
+}
+
+/** One authorized snapshot: validate and build its graph once, with no global cache. */
+export function resolveKinships(input: Omit<KinshipInput, 'targetId'>): Record<string, KinshipResult> {
+  const error = validate({ ...input, targetId: input.perspectiveId });
+  if (error) return Object.fromEntries(input.people.map(person => [person.id, {
+    status: 'invalid', paths: [], missing: [], reason: error, source: 'none', truncated: false,
+  } as KinshipResult]));
+  const byId = new Map(input.people.map(person => [person.id, person]));
+  const graph = buildGraph(input.people, input.relations);
+  return Object.fromEntries(input.people.map(person => {
+    const target = { ...input, targetId: person.id };
+    return [person.id, assessResult(target, byId, findShortestPaths(graph, input.perspectiveId, person.id, byId))];
+  }));
+}
+
+function assessResult(input: KinshipInput, byId: Map<string, Person>, found: PathSearch): KinshipResult {
   const override = preferredOverride(input);
   const base: KinshipResult = {
     status: 'unrelated', paths: found.paths, path: found.paths[0], missing: [], source: 'none', truncated: found.truncated,

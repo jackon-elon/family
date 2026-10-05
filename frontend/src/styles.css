@@ -3024,6 +3024,11 @@ form fieldset > label + label {
 .album-page .view-tabs button:hover:not(.active) { background: #edf3e8; border-color: #58765c; }
 .album-page .view-tabs button:active { transform: translateY(2px); box-shadow: none; }
 .album-page .view-tabs button:focus-visible { outline: 3px solid #976c35; outline-offset: 3px; }
+@media (prefers-reduced-motion: no-preference) {
+  .button, .album-page .view-tabs button, .graph-person, .graph-family-card { transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
+  .modal, .floating-person, .toast { animation: family-panel-appear 160ms ease-out; }
+}
+@keyframes family-panel-appear { from { opacity: 0; } to { opacity: 1; } }
 @media (max-width: 680px) {
   .album-page .view-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 8px; }
   .album-page .view-tabs button { flex-direction: column; min-width: 0; min-height: 78px; padding: 10px 4px; gap: 6px; font-size: 16px; }

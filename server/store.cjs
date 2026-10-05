@@ -24,6 +24,39 @@ const collections = new Set([
   "personRemarks",
 ]);
 
+// Literal paths match SQLite expression indexes. Only these fixed paths are
+// interpolated; arbitrary keys and all values remain bound parameters.
+function documentMatchConditions(collection, match) {
+  const clauses = ["collection = ?"],
+    values = [collection];
+  const indexed = {
+    circleId: "json_extract(body, '$.circleId')",
+    userId: "json_extract(body, '$.userId')",
+  };
+  for (const [key, value] of Object.entries(match)) {
+    if (
+      !/^[A-Za-z][A-Za-z0-9]*$/.test(key) ||
+      (value !== null &&
+        value !== undefined &&
+        !["string", "number", "boolean"].includes(typeof value))
+    )
+      throw new Error("Invalid query");
+    if (Object.hasOwn(indexed, key)) clauses.push(`${indexed[key]} IS ?`);
+    else {
+      clauses.push("json_extract(body, ?) IS ?");
+      values.push(`$.${key}`);
+    }
+    values.push(
+      value === undefined
+        ? null
+        : typeof value === "boolean"
+          ? Number(value)
+          : value,
+    );
+  }
+  return { clauses, values };
+}
+
 /** One shared queue covers domain transactions and authentication writes. */
 class SqliteStore {
   constructor(directory) {
@@ -39,6 +72,8 @@ class SqliteStore {
       );
       CREATE INDEX IF NOT EXISTS document_circle ON documents(collection, json_extract(body, '$.circleId'));
       CREATE INDEX IF NOT EXISTS document_user ON documents(collection, json_extract(body, '$.userId'));
+      CREATE INDEX IF NOT EXISTS document_circle_order ON documents(collection, json_extract(body, '$.circleId'), id);
+      CREATE INDEX IF NOT EXISTS document_user_order ON documents(collection, json_extract(body, '$.userId'), id);
       CREATE TABLE IF NOT EXISTS accounts (
         id TEXT PRIMARY KEY, phone TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at INTEGER NOT NULL
       );
@@ -153,26 +188,10 @@ class SqliteStore {
         get,
         find: async (collection, match) => {
           validate(collection);
-          const clauses = ["collection = ?"];
-          const values = [collection];
-          for (const [key, value] of Object.entries(match)) {
-            if (
-              !/^[A-Za-z][A-Za-z0-9]*$/.test(key) ||
-              (value !== null &&
-                value !== undefined &&
-                !["string", "number", "boolean"].includes(typeof value))
-            )
-              throw new Error("Invalid query");
-            clauses.push("json_extract(body, ?) IS ?");
-            values.push(
-              `$.${key}`,
-              value === undefined
-                ? null
-                : typeof value === "boolean"
-                  ? Number(value)
-                  : value,
-            );
-          }
+          const { clauses, values } = documentMatchConditions(
+            collection,
+            match,
+          );
           // Apply the web product scope in SQL, before the result cap. Archived
           // classmate rows must not consume a family query's pagination/budget.
           if (familyOnlyFind)
@@ -234,4 +253,4 @@ class SqliteStore {
   }
 }
 
-module.exports = { SqliteStore };
+module.exports = { SqliteStore, documentMatchConditions };

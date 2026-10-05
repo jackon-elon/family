@@ -9,6 +9,8 @@ export type Person = Pick<
 export type Relation = Pick<StoredRelation, "from" | "to" | "type" | "olderId">;
 import {
   resolveKinship,
+  resolveKinships,
+  type KinshipResult,
   type Relation as KinshipRelation,
 } from "../../../packages/kinship/src/index";
 import { birthDateForBirthday } from "./birth-date";
@@ -22,12 +24,12 @@ export interface RelationshipView {
 }
 
 /** Map the backend relation shape to the shared kinship engine. */
-export function relationshipFor(
+function engineInput(
   people: Person[],
   relations: Relation[],
   perspectiveId: string,
-  targetId: string,
-): RelationshipView {
+) {
+  const peopleById = new Map(people.map((person) => [person.id, person]));
   const engineRelations: KinshipRelation[] = relations.map((r) => {
     if (r.type === "parent")
       return { type: "parent_child", parentId: r.from, childId: r.to };
@@ -38,11 +40,11 @@ export function relationshipFor(
       personAId: r.from,
       personBId: r.to,
       olderPersonId: r.olderId,
-      rankOfA: people.find((p) => p.id === r.from)?.birthOrder,
-      rankOfB: people.find((p) => p.id === r.to)?.birthOrder,
+      rankOfA: peopleById.get(r.from)?.birthOrder,
+      rankOfB: peopleById.get(r.to)?.birthOrder,
     };
   });
-  const result = resolveKinship({
+  return {
     people: people.map((p) => ({
       id: p.id,
       name: p.name,
@@ -51,8 +53,36 @@ export function relationshipFor(
     })),
     relations: engineRelations,
     perspectiveId,
-    targetId,
-  });
+  };
+}
+
+export function relationshipFor(
+  people: Person[],
+  relations: Relation[],
+  perspectiveId: string,
+  targetId: string,
+): RelationshipView {
+  return relationshipView(
+    resolveKinship({
+      ...engineInput(people, relations, perspectiveId),
+      targetId,
+    }),
+  );
+}
+
+export function relationshipsFor(
+  people: Person[],
+  relations: Relation[],
+  perspectiveId: string,
+): Record<string, RelationshipView> {
+  return Object.fromEntries(
+    Object.entries(
+      resolveKinships(engineInput(people, relations, perspectiveId)),
+    ).map(([id, result]) => [id, relationshipView(result)]),
+  );
+}
+
+function relationshipView(result: KinshipResult): RelationshipView {
   const label =
     result.term ||
     result.category ||

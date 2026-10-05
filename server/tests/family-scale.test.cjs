@@ -94,15 +94,14 @@ test("four generations and 100 relatives survive relation changes, role checks, 
       const { clusterCityMarkers } = pureModule(
         path.join(__dirname, "../../frontend/src/shared/map-clusters.ts"),
       );
-      const { relationshipFor } = pureModule(
+      const { relationshipsFor } = pureModule(
         path.join(__dirname, "../../frontend/src/shared/relationship.ts"),
       );
       const start = performance.now();
       const labels = Object.fromEntries(
-        people.map((p) => [
-          p.id,
-          relationshipFor(people, edges, ids[14], p.id).label,
-        ]),
+        Object.entries(relationshipsFor(people, edges, ids[14])).map(
+          ([id, value]) => [id, value.label],
+        ),
       );
       const graph = buildStarLayout(
         people,
@@ -182,8 +181,17 @@ test("four generations and 100 relatives survive relation changes, role checks, 
       assert.equal(family.ok, true, JSON.stringify(family));
       assert.equal(family.data.persons.length, 100);
       assert.equal(family.data.family.personCount, 100);
-      assert.ok(upcoming.events.some(event => event.personId === ids[99]), "a missing city must not hide an otherwise valid birthday");
-      assert.deepEqual(upcoming.events.map(event => event.personId).sort(), family.data.birthdays.events.filter(event => event.personId !== ids[14]).map(event => event.personId).sort());
+      assert.ok(
+        upcoming.events.some((event) => event.personId === ids[99]),
+        "a missing city must not hide an otherwise valid birthday",
+      );
+      assert.deepEqual(
+        upcoming.events.map((event) => event.personId).sort(),
+        family.data.birthdays.events
+          .filter((event) => event.personId !== ids[14])
+          .map((event) => event.personId)
+          .sort(),
+      );
       const denied = await rpc(
         "relation.create",
         { from: ids[0], to: ids[90], type: "parent" },
@@ -308,12 +316,19 @@ test("four generations and 100 relatives survive relation changes, role checks, 
       assert.equal((await list()).persons.length, 100);
     },
   );
-  await t.test("birthdays advance with the Beijing date and return the next refresh deadline", async () => {
-    clock = Date.parse("2026-10-04T16:00:01Z");
-    const next = await ok("birthday.upcoming", { days: 30 });
-    assert.equal(next.asOf, "2026-10-05");
-    assert.equal(next.refreshAt, Date.parse("2026-10-05T16:00:00Z"));
-    assert.ok(next.events.every(event => event.date >= next.asOf));
-    assert.ok(next.events.some(event => event.date === "2026-10-05" && event.daysUntil === 0));
-  });
+  await t.test(
+    "birthdays advance with the Beijing date and return the next refresh deadline",
+    async () => {
+      clock = Date.parse("2026-10-04T16:00:01Z");
+      const next = await ok("birthday.upcoming", { days: 30 });
+      assert.equal(next.asOf, "2026-10-05");
+      assert.equal(next.refreshAt, Date.parse("2026-10-05T16:00:00Z"));
+      assert.ok(next.events.every((event) => event.date >= next.asOf));
+      assert.ok(
+        next.events.some(
+          (event) => event.date === "2026-10-05" && event.daysUntil === 0,
+        ),
+      );
+    },
+  );
 });

@@ -81,7 +81,7 @@ import FamilyGraph from "./components/FamilyGraph";
 import ContactActions from "./components/ContactActions";
 import PersonSpeech from "./components/PersonSpeech";
 import { personSpeechText } from "./shared/person-speech";
-import { relationshipFor } from "./shared/relationship";
+import { relationshipsFor } from "./shared/relationship";
 import { citySummary } from "./shared/geography";
 import { matchesPerson } from "./shared/person-search";
 import {
@@ -1510,19 +1510,30 @@ export function FamilyAlbum({
       })) || [],
     [data, readOnly],
   );
-  const labels = useMemo(() => {
+  const kinships = useMemo(() => {
     if (!data || readOnly) return {};
     const self = data.people.find((p) => p.isSelf);
-    return Object.fromEntries(
-      data.people.map((p) => [
-        p.id,
-        self
-          ? relationshipFor(data.people, data.relations, self.id, p.id).label
-          : "",
-      ]),
-    );
-  }, [data, readOnly]);
-  const filtered = people.filter((p) => matchesPerson(p, search, labels[p.id]));
+    return self ? relationshipsFor(data.people, data.relations, self.id) : {};
+  }, [data?.people, data?.relations, readOnly]);
+  const labels = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(kinships).map(([id, value]) => [id, value.label]),
+      ),
+    [kinships],
+  );
+  const filtered = useMemo(
+    () => people.filter((p) => matchesPerson(p, search, labels[p.id])),
+    [people, search, labels],
+  );
+  const graphPeople = useMemo(() => {
+    if (!search) return people;
+    const matches = new Set(filtered.map((person) => person.id));
+    return people.map((person) => ({
+      ...person,
+      isDimmed: !matches.has(person.id),
+    }));
+  }, [people, search, filtered]);
   const canManageRelations =
     !readOnly &&
     (data?.circle.role === "owner" || data?.circle.role === "admin");
@@ -1691,14 +1702,7 @@ export function FamilyAlbum({
             </section>
           )}
           <FamilyGraph
-            people={
-              search
-                ? people.map((p) => ({
-                    ...p,
-                    isDimmed: !filtered.some((f) => f.id === p.id),
-                  }))
-                : people
-            }
+            people={graphPeople}
             relations={data.relations}
             selfId={
               readOnly ? undefined : data.people.find((p) => p.isSelf)?.id
@@ -1772,16 +1776,7 @@ export function FamilyAlbum({
             )
           }
           remark={readOnly ? "" : data.remarks[current.id] || ""}
-          kinship={
-            !readOnly && data.people.some((p) => p.isSelf)
-              ? relationshipFor(
-                  data.people,
-                  data.relations,
-                  data.people.find((p) => p.isSelf)!.id,
-                  current.id,
-                )
-              : undefined
-          }
+          kinship={kinships[current.id]}
           onClose={() => dispatchView({ type: "close" })}
           onRemark={(remark) => onRemark?.(current.id, remark)}
         />

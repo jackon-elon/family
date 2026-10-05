@@ -25,7 +25,9 @@ function load(file) {
   );
   return mod.exports;
 }
-const { relationshipFor } = load(path.join(__dirname, "relationship.ts"));
+const { relationshipFor, relationshipsFor } = load(
+  path.join(__dirname, "relationship.ts"),
+);
 const person = (id, gender, year) => ({
   id,
   name: id,
@@ -35,6 +37,21 @@ const person = (id, gender, year) => ({
 const parent = (from, to) => ({ type: "parent", from, to });
 const sibling = (from, to) => ({ type: "sibling", from, to });
 const spouse = (from, to) => ({ type: "spouse", from, to });
+
+test("batch adapter preserves lunar dates and every single-person display result", () => {
+  const people = [
+    person("me", "male", 1990),
+    person("dad", "male", 1960),
+    person("sister", "female", 1992),
+    person("unlinked", "male", 1980),
+  ];
+  people[2].birthday = { calendar: "lunar", year: 1992, month: 2, day: 1 };
+  const edges = [parent("dad", "me"), parent("dad", "sister")];
+  const batch = relationshipsFor(people, edges, "me");
+  for (const p of people)
+    assert.deepEqual(batch[p.id], relationshipFor(people, edges, "me", p.id));
+  assert.equal(relationshipsFor(people, [], "me").sister.status, "unrelated");
+});
 
 test("fixed uncle and aunt terms are calculated from recorded relationships and birth dates", () => {
   const people = [

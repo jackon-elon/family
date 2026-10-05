@@ -60,7 +60,13 @@ const CARD_HEIGHT = 132;
 function GraphPhoto({ url, initial }: { url?: string; initial: string }) {
   const [failedUrl, setFailedUrl] = useState<string>();
   return url && failedUrl !== url ? (
-    <img src={url} alt="" loading="lazy" onError={() => setFailedUrl(url)} />
+    <img
+      src={url}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailedUrl(url)}
+    />
   ) : (
     <span>{initial}</span>
   );

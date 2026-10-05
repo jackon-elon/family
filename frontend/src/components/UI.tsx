@@ -57,6 +57,8 @@ export function Avatar({
         <img
           src={person.photoUrl}
           alt=""
+          loading={large ? "eager" : "lazy"}
+          decoding="async"
           onError={() => setFailedUrl(person.photoUrl)}
         />
       ) : (

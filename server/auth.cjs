@@ -73,18 +73,8 @@ function normalizePhone(value) {
 }
 
 function validatePassword(value) {
-  if (
-    typeof value !== "string" ||
-    value.length < 10 ||
-    value.length > 128 ||
-    !/[A-Za-z]/.test(value) ||
-    !/[0-9]/.test(value)
-  )
-    throw new HttpError(
-      400,
-      "INVALID_PASSWORD",
-      "密码须为 10–128 位，包含字母和数字",
-    );
+  if (typeof value !== "string" || value.length < 6 || value.length > 128)
+    throw new HttpError(400, "INVALID_PASSWORD", "密码须为 6–128 位");
 }
 
 async function passwordHash(password) {

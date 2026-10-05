@@ -910,14 +910,9 @@ export function Auth({
                       mode === "login" ? "current-password" : "new-password"
                     }
                     required
-                    minLength={10}
+                    minLength={6}
                     maxLength={128}
-                    pattern={
-                      mode === "register"
-                        ? "(?=.*[A-Za-z])(?=.*[0-9]).{10,128}"
-                        : undefined
-                    }
-                    placeholder="至少 10 位，包含字母和数字"
+                    placeholder="至少 6 位"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
@@ -2776,9 +2771,8 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
             <input
               type="password"
               autoComplete="new-password"
-              minLength={10}
+              minLength={6}
               maxLength={128}
-              pattern="(?=.*[A-Za-z])(?=.*[0-9]).{10,128}"
               required
               value={next}
               onChange={(e) => setNext(e.target.value)}
@@ -2796,7 +2790,7 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
           </label>
         </fieldset>
         <p className="hint">
-          至少 10 位，包含字母和数字。修改后其他设备会退出登录。
+          至少 6 位。修改后其他设备会退出登录。
         </p>
         <Alert message={error} />
         <button className="button primary full" disabled={busy}>

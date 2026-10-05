@@ -122,7 +122,7 @@ async function main() {
     prompt.close();
   }
   const password = await secret(
-    "管理员密码（10–128 位，含字母和数字，输入隐藏）：",
+    "管理员密码（6–128 位，输入隐藏）：",
   );
   const confirmation = await secret("再次输入密码：");
   if (password !== confirmation) throw new Error("两次密码不一致，未初始化。");

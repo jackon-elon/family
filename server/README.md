@@ -44,7 +44,7 @@ Node.js 22.16+，仅使用 Node 内建 HTTP、加密与 SQLite；复用 `backend
 - `POST /api/auth/register`，body `{ phone, password, inviteToken, remember?: boolean }`；没有有效、未占用的家庭邀请则拒绝注册。
 - `POST /api/onboarding/preview`，body `{ inviteToken }` → `{ loginPhone, match: { status, confirmed, personId?, personUpdatedAt?, message?, person? }, profileVersion }`。须登录且有有效邀请；`status` 为 `none | unique | conflict | bound | verification-required`。仅预览不占用新邀请；返回匹配人物的允许导入字段，不返回原照片文件标识或授予照片权限。
 - `POST /api/onboarding/import`，body `{ inviteToken, personId, personUpdatedAt, profileVersion }` → `{ profile }`。原子复核邀请归属、唯一号码匹配与双方资料版本，显式确认后补充本人资料并记录确认版本。未占用的新邀请在确认时绑定账号。
-- `POST /api/auth/login`，body `{ phone, password, remember?: boolean, inviteToken?: string }`。注册和登录返回同上 `user`，并设置 HttpOnly 会话 Cookie。密码须 10–128 位并包含字母和数字。手机号规范化为带国家码格式。没有家庭成员或有效受邀资格的旧账号返回 HTTP 403 `ACCOUNT_NOT_INVITED`，不签发登录会话；旧账号可通过管理员的新邀请，使用原手机号与密码重新进入加入流程，无需重复注册。
+- `POST /api/auth/login`，body `{ phone, password, remember?: boolean, inviteToken?: string }`。注册和登录返回同上 `user`，并设置 HttpOnly 会话 Cookie。密码须 6–128 位。手机号规范化为带国家码格式。没有家庭成员或有效受邀资格的旧账号返回 HTTP 403 `ACCOUNT_NOT_INVITED`，不签发登录会话；旧账号可通过管理员的新邀请，使用原手机号与密码重新进入加入流程，无需重复注册。
 - `POST /api/auth/logout`，body `{}` → `{}`，撤销当前账号会话、游客会话并清两类 Cookie；成功登录、注册及修改密码同样清除当前游客会话。
 - `POST /api/auth/password`，body `{ currentPassword, newPassword }` → `{ user }`，更新密码、撤销全部旧会话并为当前浏览器发新会话。
 - `GET /api/auth/sessions` → `{ sessions: [{ id, isCurrent, deviceName, createdAt, lastSeenAt, expiresAt }] }`；只列本人未到期会话。`id` 是随机公开标识，不能充当登录令牌；不返回 Cookie、令牌哈希或完整 User-Agent。

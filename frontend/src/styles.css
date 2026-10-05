@@ -3139,14 +3139,27 @@ form fieldset > label + label {
   display: flex; flex-direction: column; align-items: center;
   padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
   overflow: auto; overscroll-behavior: contain;
-  background: radial-gradient(ellipse at 50% 42%, #fff5df 0%, #f5f2e7 45%, #eef0e5 100%);
+  background: radial-gradient(ellipse at 50% 40%, #faf5e6 0%, #f3f2e7 48%, #e9eee3 100%);
   color: #52684a; text-align: center;
 }
+.welcome-screen > :not(.welcome-sky) { position: relative; z-index: 1; }
+.welcome-sky { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.welcome-sky i { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: #91a37b; box-shadow: 0 0 12px 4px #c6d3af66; }
+.welcome-sky i:nth-child(1) { left: 12%; top: 19%; }
+.welcome-sky i:nth-child(2) { left: 84%; top: 16%; }
+.welcome-sky i:nth-child(3) { left: 24%; top: 38%; width: 2px; height: 2px; }
+.welcome-sky i:nth-child(4) { left: 91%; top: 49%; }
+.welcome-sky i:nth-child(5) { left: 9%; top: 66%; width: 2px; height: 2px; }
+.welcome-sky i:nth-child(6) { left: 79%; top: 73%; width: 2px; height: 2px; }
+.welcome-sky i:nth-child(7) { left: 40%; top: 12%; width: 2px; height: 2px; }
+.welcome-sky i:nth-child(8) { left: 32%; top: 83%; width: 2px; height: 2px; }
 .welcome-brand { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-size: 19px; letter-spacing: 2px; }
 .welcome-brand > span { font-size: 32px; color: #829271; }
-.welcome-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 28px 0; }
-.welcome-house { width: clamp(110px, 26vh, 200px); height: clamp(110px, 26vh, 200px); flex: none; overflow: visible; }
-.welcome-halo { opacity: .5; transform-origin: 60px 65px; }
+.welcome-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 18px 0; }
+.welcome-constellation { width: min(78vw, 330px, 40vh); height: auto; flex: none; overflow: visible; }
+.welcome-orbits { opacity: .5; transform-origin: 160px 140px; }
+.welcome-star-glow, .welcome-heart-star { transform-origin: 160px 140px; }
+.welcome-star-dust { opacity: .7; }
 .welcome-message {
   display: flex; justify-content: center; flex-wrap: wrap; margin: 0;
   font-family: var(--serif); font-size: clamp(32px, 6vw, 48px); font-weight: 500;
@@ -3166,26 +3179,34 @@ form fieldset > label + label {
 .welcome-footer p { margin: 14px 0 0; font-size: 14px; line-height: 1.6; color: #737b62; }
 @media (prefers-reduced-motion: no-preference) {
   .welcome-screen { animation: welcome-screen-reveal var(--welcome-duration) linear both; }
-  .welcome-house-outline { stroke-dasharray: 1; animation: welcome-house-draw var(--welcome-duration) ease-in-out both; }
-  .welcome-window { animation: welcome-window-light var(--welcome-duration) ease-in-out both; }
-  .welcome-halo { animation: welcome-halo-grow var(--welcome-duration) ease-in-out both; }
+  .welcome-star-links path { stroke-dasharray: 1; animation: welcome-links-draw var(--welcome-duration) ease-in-out both; }
+  .welcome-star-node { animation: welcome-node-light 1.4s ease both; animation-delay: var(--star-delay); }
+  .welcome-heart-star { animation: welcome-center-star var(--welcome-duration) ease both; }
+  .welcome-star-glow { animation: welcome-glow-grow var(--welcome-duration) ease-in-out both; }
+  .welcome-orbits { animation: welcome-orbit-turn var(--welcome-duration) ease-out both; }
+  .welcome-sky i, .welcome-star-dust { animation: welcome-starlight var(--welcome-duration) ease both; }
   .welcome-message > span { animation: welcome-line var(--welcome-duration) ease both; }
   .welcome-message > span + span, .welcome-caption { animation: welcome-second-line var(--welcome-duration) ease both; }
 }
 @keyframes welcome-screen-reveal { 0%, 82% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes welcome-house-draw {
-  0% { stroke-dashoffset: 1; }
-  36%, 100% { stroke-dashoffset: 0; }
+@keyframes welcome-links-draw {
+  0%, 8% { stroke-dashoffset: 1; opacity: 0; }
+  18% { opacity: 1; }
+  55%, 100% { stroke-dashoffset: 0; opacity: 1; }
 }
-@keyframes welcome-window-light {
-  0%, 20% { opacity: 0; }
-  46%, 100% { opacity: 1; }
+@keyframes welcome-node-light { from { opacity: 0; } to { opacity: 1; } }
+@keyframes welcome-center-star {
+  0% { opacity: 0; transform: scale(.65); }
+  38% { opacity: 1; transform: scale(1.08); }
+  70%, 100% { opacity: 1; transform: scale(1); }
 }
-@keyframes welcome-halo-grow {
-  0%, 15% { opacity: 0; transform: scale(.65); }
-  50% { opacity: .7; transform: scale(1.1); }
-  75%, 100% { opacity: .45; transform: scale(1); }
+@keyframes welcome-glow-grow {
+  0% { opacity: 0; transform: scale(.6); }
+  50% { opacity: 1; transform: scale(1.12); }
+  100% { opacity: .7; transform: scale(1); }
 }
+@keyframes welcome-orbit-turn { from { opacity: 0; transform: rotate(-12deg); } to { opacity: .5; transform: rotate(0); } }
+@keyframes welcome-starlight { 0% { opacity: .15; } 55% { opacity: .8; } 100% { opacity: .5; } }
 @keyframes welcome-line {
   0%, 8% { opacity: 0; transform: translateY(12px); }
   30%, 100% { opacity: 1; transform: translateY(0); }
@@ -3197,7 +3218,7 @@ form fieldset > label + label {
 @media (max-height: 500px) and (min-width: 560px) {
   .welcome-screen { padding-top: 12px; padding-bottom: 12px; }
   .welcome-center { flex-direction: row; gap: 24px; padding: 12px 0; }
-  .welcome-house { width: 100px; height: 100px; }
+  .welcome-constellation { width: 160px; height: 140px; }
   .welcome-message { font-size: 30px; }
   .welcome-caption { margin-top: 6px; }
   .welcome-footer p { margin-top: 8px; }

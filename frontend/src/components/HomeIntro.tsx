@@ -73,17 +73,49 @@ function WelcomeScreen({ onClose }: { onClose: () => void }) {
 
   return createPortal(
     <div className="welcome-screen" role="dialog" aria-modal="true" aria-label="回家了，真好" style={welcomeStyle}>
+      <div className="welcome-sky" aria-hidden="true">
+        <i /><i /><i /><i /><i /><i /><i /><i />
+      </div>
       <div className="welcome-brand"><span aria-hidden="true">✧</span> 人间星图</div>
       <div className="welcome-center">
-        <svg className="welcome-house" viewBox="0 0 120 120" fill="none" aria-hidden="true">
-          <circle className="welcome-halo" cx="60" cy="65" r="48" fill="#f4d88c" />
-          <path className="welcome-house-outline" pathLength="1" d="M16 54 60 18 104 54 M28 45V100H92V45 M50 100V72H70V100" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          <rect className="welcome-window" x="45" y="46" width="30" height="20" rx="3" fill="#e5b553" />
-          <path className="welcome-house-outline" pathLength="1" d="M60 46V66 M45 56H75 M18 101H102" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <svg className="welcome-constellation" viewBox="0 0 320 280" fill="none" aria-hidden="true">
+          <defs>
+            <radialGradient id="welcome-star-glow">
+              <stop stopColor="#e9ca82" stopOpacity=".55" />
+              <stop offset="1" stopColor="#e9ca82" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+          <circle className="welcome-star-glow" cx="160" cy="140" r="85" fill="url(#welcome-star-glow)" />
+          <g className="welcome-orbits" stroke="#849174" strokeWidth=".7">
+            <ellipse cx="160" cy="140" rx="137" ry="83" transform="rotate(-28 160 140)" />
+            <ellipse cx="160" cy="140" rx="104" ry="120" transform="rotate(25 160 140)" strokeDasharray="2 7" />
+            <circle cx="160" cy="140" r="109" strokeDasharray="1 10" />
+          </g>
+          <g className="welcome-star-links" stroke="#859774" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+            <path pathLength="1" d="M51 130 92 65 172 40 251 92 160 140 51 130 105 213 160 140 216 226 272 178 251 92" />
+            <path pathLength="1" d="M92 65 160 140 172 40 M105 213 216 226 M160 140 272 178" strokeOpacity=".45" />
+          </g>
+          {[[51, 130], [92, 65], [172, 40], [251, 92], [272, 178], [216, 226], [105, 213]].map(([x, y], index) => (
+            <g className="welcome-star-node" key={index} style={{ "--star-delay": `${index * 85}ms` } as CSSProperties}>
+              <circle cx={x} cy={y} r="10" fill="#d7deca" fillOpacity=".65" />
+              <circle cx={x} cy={y} r="4" fill="#8c9d77" stroke="#fffdf5" strokeWidth="1.5" />
+            </g>
+          ))}
+          <g className="welcome-star-dust" fill="#b09b70">
+            <circle cx="40" cy="69" r="1.6" /><circle cx="232" cy="34" r="1.8" />
+            <circle cx="286" cy="116" r="1.5" /><circle cx="54" cy="218" r="1.7" />
+            <circle cx="145" cy="248" r="1.5" /><circle cx="288" cy="223" r="1.3" />
+            <path d="m60 37 2 6 6 2-6 2-2 6-2-6-6-2 6-2Z M282 56l2 6 6 2-6 2-2 6-2-6-6-2 6-2Z" />
+          </g>
+          <g className="welcome-heart-star">
+            <circle cx="160" cy="140" r="27" fill="#fff9e9" fillOpacity=".8" />
+            <path d="M160 115Q165 135 185 140Q165 145 160 165Q155 145 135 140Q155 135 160 115Z" fill="#b99b5f" />
+            <path d="M160 124Q163 137 176 140Q163 143 160 156Q157 143 144 140Q157 137 160 124Z" fill="#fff2bf" />
+          </g>
         </svg>
         <div>
           <h1 className="welcome-message"><span>回家了，</span><span>真好。</span></h1>
-          <p className="welcome-caption">总有一盏灯，为你留着。</p>
+          <p className="welcome-caption">天南海北，彼此相连。</p>
         </div>
       </div>
       <div className="welcome-footer">

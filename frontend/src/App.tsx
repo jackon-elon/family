@@ -79,7 +79,7 @@ import ProfileForm, {
   profilePhone,
 } from "./components/ProfileForm";
 import FamilyGraph from "./components/FamilyGraph";
-import HomeIntro, { ArrivalGreeting } from "./components/HomeIntro";
+import HomeIntro from "./components/HomeIntro";
 import ContactActions from "./components/ContactActions";
 import PersonSpeech from "./components/PersonSpeech";
 import { personSpeechText } from "./shared/person-speech";
@@ -1368,7 +1368,7 @@ export function FamilyHomeContent({
           </Link>
         </div>
       )}
-      <HomeIntro familyId={family?.id} />
+      <HomeIntro />
       <section>
         <div className="section-heading">
           <h2>我们的家</h2>
@@ -1622,14 +1622,12 @@ export function FamilyAlbum({
           <p className="eyebrow">家人相伴 · 枝叶相连</p>
           <h1>{data.circle.name}</h1>
           <p className="muted">
-            <ArrivalGreeting familyId={data.circle.id}>
             {data.people.length} 位家人 ·{" "}
             {
               citySummary(data.people).groups.filter((group) => group.city)
                 .length
             }{" "}
             座城市
-            </ArrivalGreeting>
           </p>
         </div>
       </header>

@@ -9,10 +9,15 @@
       name="description"
       content="一本亲友录，记下家人的关系、近况与彼此的所在。"
     />
+    <style>
+      html, body { margin: 0; background: #f3f2e7; }
+      .entry-placeholder { position: fixed; inset: 0; background: radial-gradient(ellipse at 50% 40%, #faf5e6, #f3f2e7 48%, #e9eee3); text-align: center; padding-top: max(24px, env(safe-area-inset-top)); color: #52684a; font: 19px/1.6 "Songti SC", "SimSun", serif; letter-spacing: 2px; }
+      .entry-placeholder span { font-size: 32px; vertical-align: middle; margin-right: 10px; }
+    </style>
     <title>人间星图 · 亲友录</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="entry-placeholder" role="status" aria-label="正在打开亲友录"><span aria-hidden="true">✧</span>人间星图</div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

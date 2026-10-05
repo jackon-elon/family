@@ -3142,6 +3142,7 @@ form fieldset > label + label {
   background: radial-gradient(ellipse at 50% 40%, #faf5e6 0%, #f3f2e7 48%, #e9eee3 100%);
   color: #52684a; text-align: center;
 }
+.welcome-screen[data-paused="true"], .welcome-screen[data-paused="true"] * { animation-play-state: paused !important; }
 .welcome-screen > :not(.welcome-sky) { position: relative; z-index: 1; }
 .welcome-sky { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .welcome-sky i { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: #91a37b; box-shadow: 0 0 12px 4px #c6d3af66; }

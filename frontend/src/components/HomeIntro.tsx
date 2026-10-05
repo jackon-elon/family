@@ -1,48 +1,37 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { createWelcomeGate, WELCOME_DURATION_MS } from "../shared/home-welcome";
+import { createWelcomeTimer, WELCOME_DURATION_MS } from "../shared/home-welcome";
 
-const claimWelcome = createWelcomeGate();
 const welcomeStyle = { "--welcome-duration": `${WELCOME_DURATION_MS}ms` } as CSSProperties;
 
-function useWelcome(familyId?: string) {
-  const [welcoming, setWelcoming] = useState(false);
-  const started = useRef<string | undefined>(undefined);
-  const finished = useRef(false);
-  const dismiss = useCallback(() => {
-    finished.current = true;
-    setWelcoming(false);
-  }, []);
+function useWelcome() {
+  // The first React render already contains the overlay, before App can paint.
+  const [welcoming, setWelcoming] = useState(true);
+  const [paused, setPaused] = useState(() => document.visibilityState !== "visible");
+  const dismiss = useCallback(() => setWelcoming(false), []);
   useEffect(() => {
-    setWelcoming(false);
-    if (!familyId) return;
-    let timer: number | undefined;
-    if (started.current !== familyId) finished.current = false;
-    const showWhenVisible = () => {
-      window.clearTimeout(timer);
-      setWelcoming(false);
-      if (finished.current || document.visibilityState !== "visible") return;
-      // Claim only in the foreground. StrictMode retains this mount's claim.
-      if (started.current !== familyId && !claimWelcome(familyId)) return;
-      started.current = familyId;
-      setWelcoming(true);
-      timer = window.setTimeout(() => {
-        finished.current = true;
-        setWelcoming(false);
-      }, WELCOME_DURATION_MS);
+    if (!welcoming) return;
+    const timer = createWelcomeTimer(dismiss, {
+      now: () => performance.now(),
+      schedule: (callback, delay) => window.setTimeout(callback, delay),
+      cancel: (id) => window.clearTimeout(id),
+    });
+    const updateVisibility = () => {
+      const visible = document.visibilityState === "visible";
+      setPaused(!visible);
+      timer.setVisible(visible);
     };
-    showWhenVisible();
-    document.addEventListener("visibilitychange", showWhenVisible);
+    updateVisibility();
+    document.addEventListener("visibilitychange", updateVisibility);
     return () => {
-      window.clearTimeout(timer);
-      document.removeEventListener("visibilitychange", showWhenVisible);
+      timer.dispose();
+      document.removeEventListener("visibilitychange", updateVisibility);
     };
-  }, [familyId]);
-
-  return { welcoming, dismiss };
+  }, [welcoming, dismiss]);
+  return { welcoming, paused, dismiss };
 }
 
-function WelcomeScreen({ onClose }: { onClose: () => void }) {
+function WelcomeScreen({ onClose, paused }: { onClose: () => void; paused: boolean }) {
   const screen = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const root = document.getElementById("root");
@@ -72,7 +61,7 @@ function WelcomeScreen({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   return createPortal(
-    <div ref={screen} tabIndex={-1} className="welcome-screen" role="dialog" aria-modal="true" aria-label="回家了，真好" style={welcomeStyle}>
+    <div ref={screen} tabIndex={-1} className="welcome-screen" data-paused={paused} role="dialog" aria-modal="true" aria-label="回家了，真好" style={welcomeStyle}>
       <div className="welcome-sky" aria-hidden="true">
         <i /><i /><i /><i /><i /><i /><i /><i />
       </div>
@@ -122,19 +111,14 @@ function WelcomeScreen({ onClose }: { onClose: () => void }) {
   );
 }
 
-function WelcomeEntrance({ familyId }: { familyId?: string }) {
-  const { welcoming, dismiss } = useWelcome(familyId);
-  return welcoming ? <WelcomeScreen onClose={dismiss} /> : null;
+export function WelcomeEntrance() {
+  const { welcoming, paused, dismiss } = useWelcome();
+  return welcoming ? <WelcomeScreen onClose={dismiss} paused={paused} /> : null;
 }
 
-export function ArrivalGreeting({ familyId, children }: { familyId: string; children: ReactNode }) {
-  return <>{children}<WelcomeEntrance familyId={familyId} /></>;
-}
-
-export default function HomeIntro({ familyId }: { familyId?: string }) {
+export default function HomeIntro() {
   return (
     <section className="home-intro">
-      <WelcomeEntrance familyId={familyId} />
       <div className="intro-copy">
         <span className="pill">朝夕之间 · 人间相见</span>
         <h2>把身边的人，<br />好好记在心上。</h2>

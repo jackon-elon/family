@@ -82,13 +82,14 @@ test("single-family home has one entrance and only two birthday previews even fo
     circlesLoading: false, circlesError: "", events, eventsLoading: false,
     birthdayError: "", reloadBirthdays() {},
   }), "/");
-  assert.equal((html.match(/class="home-family-entry"/g) || []).length, 1);
-  assert.equal((html.match(/class="home-birthday-row"/g) || []).length, 2);
+  assert.equal((html.match(/class="album-card album-family"/g) || []).length, 1);
+  assert.equal((html.match(/class="birthday-item"/g) || []).length, 2);
   assert.ok(html.includes("生日家人0") && html.includes("生日家人1"));
   assert.ok(!html.includes("生日家人2"));
   assert.ok(html.includes("查看全部生日（100 人）"));
   assert.ok(html.includes("person=person-0"));
-  for (const absent of ["我的亲友录", "home-intro", "其他家庭", "创建家庭"]) assert.ok(!html.includes(absent), absent);
+  for (const restored of ["home-intro", "intro-art", "朝夕之间 · 人间相见", "好好记在心上。", "让天南海北的联系，近一些。"]) assert.ok(html.includes(restored), restored);
+  for (const absent of ["我的亲友录", "其他家庭", "创建家庭"]) assert.ok(!html.includes(absent), absent);
 });
 
 test("home handles missing family and birthday failure without exposing an old family's birthday", () => {
@@ -97,7 +98,7 @@ test("home handles missing family and birthday failure without exposing an old f
     eventsLoading: false, birthdayError: "", reloadBirthdays() {},
   };
   const empty = render(React.createElement(FamilyHomeContent, base));
-  assert.ok(empty.includes("未来30天暂无家人生日"));
+  assert.ok(empty.includes("近期没有家人生日"));
   assert.ok(!empty.includes("旧家庭的人"));
   const error = render(React.createElement(FamilyHomeContent, { ...base, birthdayError: "加载失败" }));
   assert.ok(error.includes("重新加载生日") && error.includes("加载失败"));

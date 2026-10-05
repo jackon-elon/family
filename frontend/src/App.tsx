@@ -28,6 +28,7 @@ import {
   Cake,
   ChevronRight,
   Network,
+  UsersRound,
   Map,
   Settings2,
   LogOut,
@@ -422,11 +423,9 @@ export default function App() {
           </div>
         </aside>
         <main className="main">
-          {(location.pathname !== "/" || user.access !== "member") && (
-            <header className="mobile-header">
-              <Brand />
-            </header>
-          )}
+          <header className="mobile-header">
+            <Brand />
+          </header>
           {loadError && (
             <div className="page">
               <Alert message={loadError} />
@@ -1326,127 +1325,155 @@ export function FamilyHomeContent({
   const birthdayLink = (event: BirthdayEvent) => (
     <Link
       key={`${event.circleId}-${event.personId}`}
-      className="home-birthday-row"
       to={`/album/${event.circleId}?person=${event.personId}`}
+      className="birthday-item"
       onClick={() => setShowBirthdays(false)}
     >
-      <span className="home-birthday-date" aria-hidden="true">
-        <b>{Number(event.date.slice(8))}</b>
-        <span>{Number(event.date.slice(5, 7))}月</span>
-      </span>
-      <span className="home-birthday-person">
-        <strong>{event.personName}</strong>
-        <small>{birthdayDateDescription(event)}</small>
-      </span>
-      <span
-        className={`home-birthday-count${event.daysUntil === 0 ? " is-today" : ""}`}
-      >
+      <div className="birthday-date">
+        <b>{event.date.slice(8)}</b>
+        <span>{Number(event.date.slice(5, 7))} 月</span>
+      </div>
+      <div>
+        <h3>{event.personName}</h3>
+        <p>{event.birthdayText}</p>
+      </div>
+      <span className="birthday-count">
         {birthdayCountdown(event.daysUntil)}
       </span>
     </Link>
   );
   return (
-    <div className="page home-page family-home">
+    <div className="page home-page">
       <header className="page-header">
         <div>
           <p className="eyebrow">每个名字，都是一份牵挂</p>
-          <h1>亲友录<span className="title-dot">.</span></h1>
+          <h1>
+            亲友录<span className="title-dot">.</span>
+          </h1>
           <p className="muted">家人常念，亲情常在。</p>
         </div>
       </header>
-      {circlesLoading && !family ? (
-        <Loading label="正在打开亲友录…" />
-      ) : family ? (
-        <>
-          {family.role === "owner" && family.personCount === 0 && (
-            <div className="transfer-notice">
-              <p>先完善我的资料，让家人在亲缘图里找到你。</p>
-              <Link className="button secondary" to="/me">
-                完善我的资料
-                <ChevronRight size={16} />
-              </Link>
-            </div>
-          )}
-          <Link className="home-family-entry" to={`/album/${family.id}`}>
-            <span className="home-cover">
-              <span className="home-cover-copy">
-                <span className="home-cover-eyebrow">家 人 录</span>
-                <strong>{family.name}</strong>
-                <span>枝叶相连，家人相伴。</span>
-              </span>
-              <span className="home-cover-art" aria-hidden="true">
-                <span className="home-cover-ring" />
-                <span className="cover-node cover-node-one">亲</span>
-                <span className="cover-node cover-node-two">友</span>
-                <span className="cover-node cover-node-three">家</span>
-              </span>
-            </span>
-            <span className="home-cover-footer">
-              <span>{family.personCount} 位家人</span>
-              <span className="home-cover-open">翻开看看<ChevronRight size={18} /></span>
-            </span>
-          </Link>
-          {circles.length > 1 && (
-            <details className="home-other-families">
-              <summary>其他家庭</summary>
-              {circles.slice(1).map((circle) => (
-                <Link key={circle.id} to={`/album/${circle.id}`}>
-                  {circle.name}
-                  <ChevronRight size={18} />
-                </Link>
-              ))}
-            </details>
-          )}
-          <section className="home-birthdays" aria-label="近期生日">
-            <div className="section-heading">
-              <h2>
-                <Cake size={22} />
-                近期生日
-              </h2>
-              <span>未来30天</span>
-            </div>
-            {eventsLoading ? (
-              <Loading label="正在查看近期生日…" />
-            ) : birthdayError ? (
-              <>
-                <Alert message={birthdayError} />
-                <button className="button secondary" onClick={reloadBirthdays}>
-                  重新加载生日
-                </button>
-              </>
-            ) : familyEvents.length ? (
-              <>
-                <div className="home-birthday-preview">
-                  {familyEvents.slice(0, 2).map(birthdayLink)}
-                </div>
-                {familyEvents.length > 2 && (
-                  <button
-                    className="home-more-birthdays"
-                    onClick={() => setShowBirthdays(true)}
-                  >
-                    查看全部生日（{familyEvents.length} 人）
-                    <ChevronRight size={18} />
-                  </button>
-                )}
-              </>
-            ) : (
-              <p className="soft-note">
-                未来30天暂无家人生日，农历生日也会自动换算提醒。
-              </p>
-            )}
-          </section>
-        </>
-      ) : !circlesError && !circlesLoading ? (
-        <Empty title="等待与家人相聚">
-          <p>
-            请通过家庭管理员发来的邀请链接加入。已提交的申请可在「我的」查看。
-          </p>
+      {circles.some(
+        (circle) => circle.role === "owner" && circle.personCount === 0,
+      ) && (
+        <div className="transfer-notice">
+          <p>先完善我的资料，让家人在亲缘图里找到你。</p>
           <Link className="button secondary" to="/me">
-            查看我的资料与申请
+            完善我的资料
             <ChevronRight size={16} />
           </Link>
-        </Empty>
-      ) : null}
+        </div>
+      )}
+      <section className="home-intro">
+        <div>
+          <span className="pill">朝夕之间 · 人间相见</span>
+          <h2>
+            把身边的人，
+            <br />
+            好好记在心上。
+          </h2>
+          <p>
+            亲缘有迹，近况可知。
+            <br />
+            让天南海北的联系，近一些。
+          </p>
+        </div>
+        <div className="intro-art" aria-hidden="true">
+          <div className="intro-ring ring-one" />
+          <div className="intro-ring ring-two" />
+          <span className="art-node node-one">亲</span>
+          <span className="art-node node-two">友</span>
+          <span className="art-node node-three">家</span>
+          <span className="art-star">✧</span>
+        </div>
+      </section>
+      <section>
+        <div className="section-heading">
+          <h2>我们的家</h2>
+          <span className="muted small">熟悉的人，熟悉的故事</span>
+        </div>
+        {circlesLoading && !circles.length ? (
+          <Loading label="正在打开亲友录…" />
+        ) : circles.length ? (
+          <div className="album-grid">
+            {circles.map((c) => (
+              <Link
+                to={`/album/${c.id}`}
+                key={c.id}
+                className="album-card album-family"
+              >
+                <div className="album-card-top">
+                  <span className="album-icon">
+                    <Heart size={24} />
+                  </span>
+                  <ArrowUpRight size={20} />
+                </div>
+                <span className="eyebrow">家 人 录</span>
+                <h3>{c.name}</h3>
+                <p>枝叶相连，家人相伴</p>
+                <div className="album-card-bottom">
+                  <span>
+                    <UsersRound size={15} />
+                    {c.personCount} 位家人
+                  </span>
+                  <span>
+                    翻开看看 <ChevronRight size={14} />
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : !circlesError ? (
+          <Empty title="等待与家人相聚">
+            <p>
+              请通过家人管理员发来的邀请链接加入。已提交的申请可在「我的」查看。
+            </p>
+            <Link className="button secondary" to="/me">
+              查看我的资料与申请 <ChevronRight size={16} />
+            </Link>
+          </Empty>
+        ) : null}
+      </section>
+      {family && (
+        <section className="birthday-section" aria-label="近期生日">
+          <div className="section-heading">
+            <h2>
+              <Cake size={20} />
+              近期生日
+            </h2>
+            <span className="muted small">未来 30 天</span>
+          </div>
+          <Alert message={birthdayError} />
+          {eventsLoading ? (
+            <Loading label="正在查看近期生日…" />
+          ) : birthdayError ? (
+            <button
+              className="text-button"
+              onClick={() => void reloadBirthdays()}
+            >
+              重新加载生日
+            </button>
+          ) : familyEvents.length ? (
+            <>
+              <div className="birthday-list">
+                {familyEvents.slice(0, 2).map(birthdayLink)}
+              </div>
+              {familyEvents.length > 2 && (
+                <button
+                  className="button secondary birthday-show-all"
+                  onClick={() => setShowBirthdays(true)}
+                >
+                  查看全部生日（{familyEvents.length} 人）
+                </button>
+              )}
+            </>
+          ) : (
+            <p className="soft-note">
+              近期没有家人生日。农历生日也会自动换算提醒。
+            </p>
+          )}
+        </section>
+      )}
       <footer className="page-footer">山川虽远，牵挂常在。</footer>
       {showBirthdays && family && (
         <Modal
@@ -1468,7 +1495,7 @@ export function FamilyHomeContent({
             ) : birthdayError ? (
               <Alert message={birthdayError} />
             ) : (
-              familyEvents.map(birthdayLink)
+              <div className="birthday-list is-expanded">{familyEvents.map(birthdayLink)}</div>
             )}
           </div>
         </Modal>

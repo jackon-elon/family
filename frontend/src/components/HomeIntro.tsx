@@ -9,18 +9,26 @@ function useWelcome(familyId?: string) {
   useEffect(() => {
     setWelcoming(false);
     if (!familyId) return;
-    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (preference.matches) return;
-    // React StrictMode repeats effect setup; retain this mount's claim and timer.
-    if (started.current !== familyId && !claimWelcome(familyId)) return;
-    started.current = familyId;
-    setWelcoming(true);
-    const timer = window.setTimeout(() => setWelcoming(false), 3200);
-    const stop = () => setWelcoming(false);
-    preference.addEventListener("change", stop);
+    let timer: number | undefined;
+    let finished = false;
+    const showWhenVisible = () => {
+      window.clearTimeout(timer);
+      setWelcoming(false);
+      if (finished || document.visibilityState !== "visible") return;
+      // Claim only in the foreground. StrictMode retains this mount's claim.
+      if (started.current !== familyId && !claimWelcome(familyId)) return;
+      started.current = familyId;
+      setWelcoming(true);
+      timer = window.setTimeout(() => {
+        finished = true;
+        setWelcoming(false);
+      }, 6000);
+    };
+    showWhenVisible();
+    document.addEventListener("visibilitychange", showWhenVisible);
     return () => {
       window.clearTimeout(timer);
-      preference.removeEventListener("change", stop);
+      document.removeEventListener("visibilitychange", showWhenVisible);
     };
   }, [familyId]);
 

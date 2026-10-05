@@ -3134,22 +3134,28 @@ form fieldset > label + label {
 .home-page .page-footer { font-size: 14px; color: #7c866e; }
 .home-intro-kicker { display: grid; width: fit-content; align-items: center; }
 .home-intro-kicker > span { grid-area: 1 / 1; }
-.home-page .intro-welcome { opacity: 0; pointer-events: none; font-family: var(--serif); font-size: 18px; line-height: 1.4; letter-spacing: 1px; color: #627045; }
+.home-page .intro-welcome { opacity: 0; pointer-events: none; font-family: var(--serif); font-size: 26px; font-weight: 600; line-height: 1.4; letter-spacing: 1px; color: #405536; white-space: nowrap; }
+.home-intro.is-welcoming .intro-welcome,
+.arrival-greeting.is-welcoming .arrival-words { opacity: 1; }
+.home-intro.is-welcoming .intro-original,
+.arrival-greeting.is-welcoming .arrival-original { opacity: 0; }
 @media (prefers-reduced-motion: no-preference) {
-  .home-intro.is-welcoming .intro-welcome { animation: welcome-words 3.2s ease both; }
-  .home-intro.is-welcoming .intro-original { animation: welcome-motto 3.2s ease both; }
-  .home-intro.is-welcoming .art-node { animation: welcome-family 1.9s ease both; }
+  .home-intro.is-welcoming .intro-welcome { animation: welcome-words 6s ease both; }
+  .home-intro.is-welcoming .intro-original { animation: welcome-motto 6s ease both; }
+  .home-intro.is-welcoming .art-node { animation: welcome-family 3s ease both; }
   .home-intro.is-welcoming .node-two { animation-delay: .22s; }
   .home-intro.is-welcoming .node-three { animation-delay: .44s; }
-  .home-intro.is-welcoming .intro-ring { animation: welcome-ring 2.8s ease both; }
-  .home-intro.is-welcoming::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; background: radial-gradient(ellipse at 75% 45%, #f8e9a34a, transparent 70%); animation: welcome-light 3.2s ease both; }
+  .home-intro.is-welcoming .intro-ring { animation: welcome-ring 4s ease both; }
+  .home-intro.is-welcoming .intro-art { animation: welcome-art 6s ease both; }
+  .home-intro.is-welcoming::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; background: radial-gradient(ellipse at 75% 45%, #f4d97e66, transparent 75%); animation: welcome-light 6s ease both; }
 }
 @keyframes welcome-words {
-  0%, 100% { opacity: 0; transform: translateY(3px); }
-  14%, 72% { opacity: 1; transform: translateY(0); }
+  0% { opacity: 1; transform: translateY(5px); }
+  10%, 82% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(0); }
 }
 @keyframes welcome-motto {
-  0%, 74% { opacity: 0; }
+  0%, 84% { opacity: 0; }
   100% { opacity: 1; }
 }
 @keyframes welcome-family {
@@ -3158,11 +3164,15 @@ form fieldset > label + label {
   100% { transform: translateY(0) scale(1); box-shadow: 0 5px 16px #7b8a5b0a; }
 }
 @keyframes welcome-ring { 0% { opacity: .25; } 60% { opacity: 1; } 100% { opacity: 1; } }
-@keyframes welcome-light { 0%, 100% { opacity: 0; } 35%, 65% { opacity: 1; } }
+@keyframes welcome-light { 0%, 100% { opacity: 0; } 15%, 80% { opacity: 1; } }
+@keyframes welcome-art { 0%, 90% { opacity: 1; } }
 .arrival-greeting { display: inline-grid; align-items: center; }
 .arrival-greeting > span { grid-area: 1 / 1; }
-.arrival-words { opacity: 0; pointer-events: none; font-family: var(--serif); font-size: 18px; line-height: 1.5; color: #627045; }
+.arrival-words { opacity: 0; pointer-events: none; font-family: var(--serif); font-size: 24px; font-weight: 600; line-height: 1.5; color: #405536; }
 @media (prefers-reduced-motion: no-preference) {
-  .arrival-greeting.is-welcoming .arrival-words { animation: welcome-words 3.2s ease both; }
-  .arrival-greeting.is-welcoming .arrival-original { animation: welcome-motto 3.2s ease both; }
+  .arrival-greeting.is-welcoming .arrival-words { animation: welcome-words 6s ease both; }
+  .arrival-greeting.is-welcoming .arrival-original { animation: welcome-motto 6s ease both; }
+}
+@media (max-width: 420px) {
+  .home-page .intro-welcome { font-size: 24px; letter-spacing: 0; }
 }

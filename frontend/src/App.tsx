@@ -1603,8 +1603,10 @@ export function FamilyAlbum({
         </div>
       )}
       <div className="browse-toolbar">
-        <div className="view-tabs">
+        <div className="view-tabs" role="group" aria-label="浏览方式">
           <button
+            type="button"
+            aria-pressed={activeTab === "graph"}
             className={activeTab === "graph" ? "active" : ""}
             onClick={() => switchTab("graph")}
           >
@@ -1612,6 +1614,8 @@ export function FamilyAlbum({
             亲缘图
           </button>
           <button
+            type="button"
+            aria-pressed={activeTab === "list"}
             className={activeTab === "list" ? "active" : ""}
             onClick={() => switchTab("list")}
           >
@@ -1619,6 +1623,8 @@ export function FamilyAlbum({
             家人簿
           </button>
           <button
+            type="button"
+            aria-pressed={activeTab === "map"}
             className={activeTab === "map" ? "active" : ""}
             onClick={() => switchTab("map")}
           >

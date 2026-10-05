@@ -3003,3 +3003,28 @@ form fieldset > label + label {
 .manage-page .relation-list .actions { gap: 8px; }
 .manage-page .relation-list .icon-button { width: 44px; height: 44px; }
 .relation-before { padding: 10px 12px; border-left: 3px solid #d6d9ce; font-size: 15px; }
+
+/* View choices should look tappable even before a family member tries them. */
+.album-page .view-tabs { gap: 10px; }
+.album-page .view-tabs button {
+  justify-content: center;
+  min-height: 52px;
+  padding: 12px 18px;
+  border: 1px solid #9aa994;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #354b3b;
+  box-shadow: 0 3px 0 #d9dfd2;
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.album-page .view-tabs button svg { width: 22px; height: 22px; flex-shrink: 0; }
+.album-page .view-tabs button.active { background: #3d604b; border-color: #3d604b; color: #fff; box-shadow: 0 3px 0 #2b4535; }
+.album-page .view-tabs button:hover:not(.active) { background: #edf3e8; border-color: #58765c; }
+.album-page .view-tabs button:active { transform: translateY(2px); box-shadow: none; }
+.album-page .view-tabs button:focus-visible { outline: 3px solid #976c35; outline-offset: 3px; }
+@media (max-width: 680px) {
+  .album-page .view-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 8px; }
+  .album-page .view-tabs button { flex-direction: column; min-width: 0; min-height: 78px; padding: 10px 4px; gap: 6px; font-size: 16px; }
+}

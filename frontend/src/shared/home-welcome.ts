@@ -1,4 +1,4 @@
-export const WELCOME_DURATION_MS = 8000;
+export const WELCOME_DURATION_MS = 4000;
 
 /** Shared by entry surfaces for this document only. A full reload gets a fresh gate. */
 export function createWelcomeGate() {

@@ -209,7 +209,8 @@ test("relationship shortcut preselects the intended person and requires an expli
   );
   assert.match(html, /正在为这位家人补关系/);
   assert.match(html, /<strong>李青<\/strong>/);
-  assert.equal((html.match(/<select/g) || []).length, 1);
+  assert.equal((html.match(/class="person-picker-trigger"/g) || []).length, 1);
+  assert.doesNotMatch(html, /type="search"|<select|按姓名查找家人/);
   assert.doesNotMatch(html, /value="existing"/);
   assert.ok(html.includes("补充亲属关系"));
   assert.ok(html.includes("1. 选一位已有家人"));
@@ -237,7 +238,7 @@ test("editing a relationship fixes its subject and states direction using the su
         async onSaved() {},
       }),
     );
-    assert.equal((html.match(/<select/g) || []).length, 1);
+    assert.equal((html.match(/class="person-picker-trigger"/g) || []).length, 1);
     assert.match(html, /李青是小林的谁？/);
     assert.ok(html.includes(`李青 是 小林 的 ${parent}`));
     assert.ok(html.includes(child));

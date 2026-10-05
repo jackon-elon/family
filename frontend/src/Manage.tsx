@@ -1220,7 +1220,6 @@ export function RelationEditor({
           <PersonSelect
             people={data.people.filter((person) => person.id !== from)}
             label="1. 选一位已有家人"
-            searchLabel="按姓名查找家人"
             value={to}
             onChange={(id) => {
               setTo(id);

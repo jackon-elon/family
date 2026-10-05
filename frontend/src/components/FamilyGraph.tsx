@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+} from "react";
 import {
   Minus,
   Plus,
@@ -8,6 +15,13 @@ import {
   Shrink,
 } from "lucide-react";
 import { buildStarLayout } from "../shared/family-layout";
+import {
+  buildFamilyOverview,
+  shouldShowFamilies,
+  FAMILY_CARD_WIDTH,
+  FAMILY_CARD_HEIGHT,
+} from "../shared/family-overview";
+import { Modal } from "./UI";
 import type {
   Person as StoredPerson,
   Relation as StoredRelation,
@@ -61,8 +75,21 @@ export default function FamilyGraph({
 }: Props) {
   const viewport = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
+  const [overview, setOverview] = useState(false);
+  const [openFamilyId, setOpenFamilyId] = useState("");
+  const familyAnchor = useRef<HTMLElement | undefined>(undefined);
   const [expanded, setExpanded] = useState(false);
   const section = useRef<HTMLElement>(null);
+  const pendingScroll = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    const scroll = pendingScroll.current;
+    pendingScroll.current = null;
+    scroll?.();
+  });
+  useLayoutEffect(() => {
+    if (expanded)
+      section.current?.scrollIntoView({ block: "start", behavior: "instant" });
+  }, [expanded]);
   const drag = useRef<{
     pointerId: number;
     x: number;
@@ -84,29 +111,119 @@ export default function FamilyGraph({
       ),
     [people, relations, selfId, labels, selectedId],
   );
-  const bounds = graphBounds(layout.nodes);
-  const width = bounds.width * zoom;
-  const height = bounds.height * zoom;
+  const families = useMemo(
+    () => buildFamilyOverview(layout.nodes, relations),
+    [layout, relations],
+  );
+  const personalBounds = graphBounds(layout.nodes);
+  const familyBounds = graphBounds(
+    families.nodes,
+    FAMILY_CARD_WIDTH,
+    FAMILY_CARD_HEIGHT,
+  );
+  const bounds = overview ? familyBounds : personalBounds;
+  // Semantic zoom: grouped cards have their own readable size at the switch.
+  // Zoom itself is still unrestricted from 1% to 160%.
+  const scale = overview ? zoom * 2 : zoom;
+  const width = bounds.width * scale;
+  const height = bounds.height * scale;
+  const viewNodes = overview ? families.nodes : layout.nodes;
+  const viewNodeMap = new Map<string, { id: string; x: number; y: number }>(
+    viewNodes.map((node) => [node.id, node]),
+  );
+  const viewEdges = overview ? families.edges : relations;
+  const openFamily = overview
+    ? families.nodes.find((unit) => unit.id === openFamilyId)
+    : undefined;
   const nodeMap = new Map(layout.nodes.map((node) => [node.id, node]));
   const visibleIds = new Set(layout.nodes.map((node) => node.id));
   const omitted = people.filter((person) => !visibleIds.has(person.id));
   const unlinked = layout.nodes.filter((node) => node.generation === null);
 
-  const positionAt = (next: number, center: { x: number; y: number }) => {
-    setZoom(next);
-    requestAnimationFrame(() => {
+  const positionAt = (
+    next: number,
+    center: { x: number; y: number },
+    personId?: string,
+  ) => {
+    const el = viewport.current;
+    if (!el) return;
+    const nextOverview = shouldShowFamilies(
+      overview,
+      next,
+      personalBounds,
+      { width: el.clientWidth, height: el.clientHeight },
+      families.hasGroups,
+    );
+    const nextBounds = nextOverview ? familyBounds : personalBounds;
+    const nextScale = nextOverview ? next * 2 : next;
+    let anchorId = personId;
+    if (nextOverview !== overview && !anchorId) {
+      const nearest = [...viewNodes].sort(
+        (a, b) =>
+          Math.hypot(
+            a.x * UNIT - bounds.left - center.x,
+            a.y * UNIT - bounds.top - center.y,
+          ) -
+          Math.hypot(
+            b.x * UNIT - bounds.left - center.x,
+            b.y * UNIT - bounds.top - center.y,
+          ),
+      )[0];
+      anchorId =
+        nearest &&
+        ("members" in nearest
+          ? nearest.members.find((member) => member.isSelf)?.id ||
+            nearest.heads[0].id
+          : nearest.id);
+    }
+    if (anchorId) {
+      const target = nextOverview
+        ? families.nodes.find(
+            (unit) => unit.id === families.personUnit.get(anchorId!),
+          )
+        : nodeMap.get(anchorId);
+      if (target)
+        center = {
+          x: target.x * UNIT - nextBounds.left,
+          y: target.y * UNIT - nextBounds.top,
+        };
+    }
+    if (nextOverview !== overview) {
+      setOpenFamilyId("");
+      onSelect("");
+    }
+    const scroll = () => {
       const el = viewport.current;
       if (el)
         el.scrollTo(
-          graphScroll(center, next, bounds, el.clientWidth, el.clientHeight),
+          graphScroll(
+            center,
+            nextScale,
+            nextBounds,
+            el.clientWidth,
+            el.clientHeight,
+          ),
         );
-    });
+      if (expanded)
+        section.current?.scrollIntoView({
+          block: "start",
+          behavior: "instant",
+        });
+    };
+    if (next === zoom && nextOverview === overview) scroll();
+    else pendingScroll.current = scroll;
+    setOverview(nextOverview);
+    setZoom(next);
   };
-  const focusNode = (node: { x: number; y: number }, next = 1) => {
-    positionAt(next, {
-      x: node.x * UNIT - bounds.left,
-      y: node.y * UNIT - bounds.top,
-    });
+  const focusNode = (node: { id: string; x: number; y: number }, next = 1) => {
+    positionAt(
+      next,
+      {
+        x: node.x * UNIT - bounds.left,
+        y: node.y * UNIT - bounds.top,
+      },
+      node.id,
+    );
   };
   const resetView = () => {
     const node =
@@ -117,7 +234,14 @@ export default function FamilyGraph({
   };
   useEffect(() => {
     resetView();
-  }, [bounds.width, bounds.height, bounds.left, bounds.top, selfId]);
+  }, [
+    selfId,
+    layout.centerId,
+    layout.nodes
+      .map((node) => node.id)
+      .sort()
+      .join("|"),
+  ]);
 
   // Retain the same person when rotating a phone or expanding the canvas.
   useEffect(() => {
@@ -132,18 +256,18 @@ export default function FamilyGraph({
         x:
           width <= previous.width
             ? bounds.width / 2
-            : (el.scrollLeft + previous.width / 2) / zoom,
+            : (el.scrollLeft + previous.width / 2) / scale,
         y:
           height <= previous.height
             ? bounds.height / 2
-            : (el.scrollTop + previous.height / 2) / zoom,
+            : (el.scrollTop + previous.height / 2) / scale,
       };
       previous = size;
       positionAt(zoom, center);
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [zoom, bounds.width, bounds.height]);
+  }, [zoom, overview, bounds.width, bounds.height]);
   const searchMatch = people.some((p) => p.isDimmed)
     ? people.find((p) => !p.isDimmed)?.id
     : undefined;
@@ -160,11 +284,11 @@ export default function FamilyGraph({
         x:
           width <= el.clientWidth
             ? bounds.width / 2
-            : (el.scrollLeft + el.clientWidth / 2) / zoom,
+            : (el.scrollLeft + el.clientWidth / 2) / scale,
         y:
           height <= el.clientHeight
             ? bounds.height / 2
-            : (el.scrollTop + el.clientHeight / 2) / zoom,
+            : (el.scrollTop + el.clientHeight / 2) / scale,
       },
     );
   };
@@ -174,9 +298,6 @@ export default function FamilyGraph({
   };
   const toggleExpanded = () => {
     setExpanded((value) => !value);
-    requestAnimationFrame(() =>
-      section.current?.scrollIntoView({ block: "start" }),
-    );
   };
   const startDrag = (event: PointerEvent<HTMLDivElement>) => {
     drag.current = null;
@@ -302,6 +423,11 @@ export default function FamilyGraph({
           </button>
         </div>
       </div>
+      {overview && (
+        <div className="graph-family-notice" role="status">
+          已收成家庭卡片 · 点一家看成员{scale < 0.65 ? " · 放大可看清姓名" : ""}
+        </div>
+      )}
       <div
         className="graph-viewport"
         ref={viewport}
@@ -328,45 +454,48 @@ export default function FamilyGraph({
         }}
       >
         <div className="graph-canvas" style={{ width, height }}>
-          {layout.bands.map((band) => (
-            <div
-              key={band.id}
-              className={`graph-generation${band.isSelf ? " is-mine" : ""}${band.isUnlinked ? " is-unlinked" : ""}`}
-              style={{
-                top: (band.y * UNIT - bounds.top - CARD_HEIGHT / 2 - 34) * zoom,
-                fontSize: 11 * zoom,
-                gap: 12 * zoom,
-              }}
-            >
-              <span
+          {!overview &&
+            layout.bands.map((band) => (
+              <div
+                key={band.id}
+                className={`graph-generation${band.isSelf ? " is-mine" : ""}${band.isUnlinked ? " is-unlinked" : ""}`}
                 style={{
-                  padding: `${3 * zoom}px ${9 * zoom}px`,
-                  borderRadius: 5 * zoom,
+                  top:
+                    (band.y * UNIT - bounds.top - CARD_HEIGHT / 2 - 34) * zoom,
+                  fontSize: 11 * zoom,
+                  gap: 12 * zoom,
                 }}
               >
-                {band.label}
-              </span>
-            </div>
-          ))}
+                <span
+                  style={{
+                    padding: `${3 * zoom}px ${9 * zoom}px`,
+                    borderRadius: 5 * zoom,
+                  }}
+                >
+                  {band.label}
+                </span>
+              </div>
+            ))}
           <svg
             className="graph-connections"
             width={width}
             height={height}
             aria-hidden="true"
           >
-            {relations.map((relation, index) => {
-              const a = nodeMap.get(relation.from);
-              const b = nodeMap.get(relation.to);
+            {viewEdges.map((relation, index) => {
+              const a = viewNodeMap.get(relation.from);
+              const b = viewNodeMap.get(relation.to);
               if (!a || !b || a.id === b.id) return null;
-              const x1 = (a.x * UNIT - bounds.left) * zoom;
-              const x2 = (b.x * UNIT - bounds.left) * zoom;
-              const y1 = (a.y * UNIT - bounds.top) * zoom;
-              const y2 = (b.y * UNIT - bounds.top) * zoom;
+              const x1 = (a.x * UNIT - bounds.left) * scale;
+              const x2 = (b.x * UNIT - bounds.left) * scale;
+              const y1 = (a.y * UNIT - bounds.top) * scale;
+              const y2 = (b.y * UNIT - bounds.top) * scale;
               let d = `M ${x1} ${y1} L ${x2} ${y2}`;
               if (relation.type === "parent" && y1 !== y2) {
                 const direction = y2 > y1 ? 1 : -1;
-                const start = y1 + (direction * CARD_HEIGHT * zoom) / 2;
-                const end = y2 - (direction * CARD_HEIGHT * zoom) / 2;
+                const cardHeight = overview ? FAMILY_CARD_HEIGHT : CARD_HEIGHT;
+                const start = y1 + (direction * cardHeight * scale) / 2;
+                const end = y2 - (direction * cardHeight * scale) / 2;
                 const middle = (start + end) / 2;
                 d = `M ${x1} ${start} C ${x1} ${middle}, ${x2} ${middle}, ${x2} ${end}`;
               }
@@ -378,76 +507,203 @@ export default function FamilyGraph({
                   className={`line-${relation.type}`}
                   d={d}
                   fill="none"
-                  strokeWidth={1.5 * zoom}
+                  strokeWidth={1.5 * scale}
                   vectorEffect="non-scaling-stroke"
                 />
               );
             })}
           </svg>
-          {layout.nodes.map((node) => (
-            <button
-              type="button"
-              key={node.id}
-              data-person-id={node.id}
-              data-self={node.isSelf}
-              className={`graph-person tone-${node.tone}${node.isSelf ? " is-self" : ""}${node.isSelected ? " is-selected" : ""}${node.isConflicted ? " is-conflicted" : ""}${node.isDimmed ? " is-dimmed" : ""}`}
-              aria-label={`${node.name}${node.label ? `，${node.label}` : ""}`}
-              aria-pressed={node.isSelected}
-              style={{
-                left: (node.x * UNIT - bounds.left - CARD_WIDTH / 2) * zoom,
-                top: (node.y * UNIT - bounds.top - CARD_HEIGHT / 2) * zoom,
-                width: CARD_WIDTH,
-                height: CARD_HEIGHT,
-                transform: `scale(${zoom})`,
-                transformOrigin: "top left",
-                fontSize: 16,
-                gap: 3,
-                padding: 8,
-              }}
-              onPointerDown={(event) => {
-                drag.current = null;
-                suppressBackgroundClick.current = false;
-                event.stopPropagation();
-              }}
-              onPointerUp={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                onSelect(node.id, event.currentTarget);
-              }}
-            >
-              <span
-                className="graph-avatar"
-                style={{
-                  width: 62,
-                  height: 62,
-                  fontSize: 23,
-                }}
-              >
-                <GraphPhoto url={node.photoUrl} initial={node.initial} />
-              </span>
-              <span className="graph-person-name" title={node.name}>
-                {node.name}
-              </span>
-              <span
-                className="graph-person-relation"
-                style={{
-                  fontSize: 14,
-                }}
-                title={node.label}
-              >
-                {node.label || "家人"}
-              </span>
-              {node.isSelf && (
-                <span className="graph-self-dot" aria-hidden="true" />
-              )}
-            </button>
-          ))}
+          {overview
+            ? families.nodes.map((unit) => (
+                <button
+                  type="button"
+                  key={unit.id}
+                  data-family-id={unit.id}
+                  data-self={unit.isSelf}
+                  className={`graph-family-card${unit.isSelf ? " is-self" : ""}${unit.isDimmed ? " is-dimmed" : ""}`}
+                  aria-label={
+                    unit.members.length > 1
+                      ? `${unit.title}，${unit.members.length}位家人，展开成员`
+                      : `${unit.title}，${unit.heads[0].label}`
+                  }
+                  style={{
+                    left:
+                      (unit.x * UNIT - bounds.left - FAMILY_CARD_WIDTH / 2) *
+                      scale,
+                    top:
+                      (unit.y * UNIT - bounds.top - FAMILY_CARD_HEIGHT / 2) *
+                      scale,
+                    width: FAMILY_CARD_WIDTH,
+                    height: FAMILY_CARD_HEIGHT,
+                    transform: `scale(${scale})`,
+                    transformOrigin: "top left",
+                  }}
+                  onPointerDown={(event) => {
+                    drag.current = null;
+                    event.stopPropagation();
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (unit.members.length === 1) {
+                      onSelect(unit.heads[0].id, event.currentTarget);
+                      return;
+                    }
+                    onSelect("");
+                    familyAnchor.current = event.currentTarget;
+                    setOpenFamilyId(unit.id);
+                  }}
+                >
+                  <span className="graph-family-photos">
+                    {unit.members.slice(0, 3).map((member) => (
+                      <span key={member.id} className="graph-avatar">
+                        <GraphPhoto
+                          url={member.photoUrl}
+                          initial={member.initial}
+                        />
+                      </span>
+                    ))}
+                  </span>
+                  <strong title={unit.title}>{unit.title}</strong>
+                  <span>
+                    {unit.isSelf ? "我在这里 · " : ""}
+                    {unit.members.length > 1
+                      ? `${unit.members.length}位家人 · 点开看`
+                      : unit.heads[0].label}
+                  </span>
+                </button>
+              ))
+            : layout.nodes.map((node) => (
+                <button
+                  type="button"
+                  key={node.id}
+                  data-person-id={node.id}
+                  data-self={node.isSelf}
+                  className={`graph-person tone-${node.tone}${node.isSelf ? " is-self" : ""}${node.isSelected ? " is-selected" : ""}${node.isConflicted ? " is-conflicted" : ""}${node.isDimmed ? " is-dimmed" : ""}`}
+                  aria-label={`${node.name}${node.label ? `，${node.label}` : ""}`}
+                  aria-pressed={node.isSelected}
+                  style={{
+                    left: (node.x * UNIT - bounds.left - CARD_WIDTH / 2) * zoom,
+                    top: (node.y * UNIT - bounds.top - CARD_HEIGHT / 2) * zoom,
+                    width: CARD_WIDTH,
+                    height: CARD_HEIGHT,
+                    transform: `scale(${zoom})`,
+                    transformOrigin: "top left",
+                    fontSize: 16,
+                    gap: 3,
+                    padding: 8,
+                  }}
+                  onPointerDown={(event) => {
+                    drag.current = null;
+                    suppressBackgroundClick.current = false;
+                    event.stopPropagation();
+                  }}
+                  onPointerUp={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect(node.id, event.currentTarget);
+                  }}
+                >
+                  <span
+                    className="graph-avatar"
+                    style={{
+                      width: 62,
+                      height: 62,
+                      fontSize: 23,
+                    }}
+                  >
+                    <GraphPhoto url={node.photoUrl} initial={node.initial} />
+                  </span>
+                  <span className="graph-person-name" title={node.name}>
+                    {node.name}
+                  </span>
+                  <span
+                    className="graph-person-relation"
+                    style={{
+                      fontSize: 14,
+                    }}
+                    title={node.label}
+                  >
+                    {node.label || "家人"}
+                  </span>
+                  {node.isSelf && (
+                    <span className="graph-self-dot" aria-hidden="true" />
+                  )}
+                </button>
+              ))}
         </div>
       </div>
       <div className="graph-footer">
         <span>{people.length} 位家人</span>
-        <span>拖动看家人 · 点头像看资料</span>
+        <span>
+          {overview ? "拖动看各家 · 放大看个人" : "拖动看家人 · 点头像看资料"}
+        </span>
       </div>
+      {openFamily && (
+        <Modal title={openFamily.title} onClose={() => setOpenFamilyId("")}>
+          <p className="family-members-intro">
+            点头像查看资料；关闭后回到刚才的位置。
+          </p>
+          <div className="family-members-grid">
+            {openFamily.members.map((member) => (
+              <button
+                type="button"
+                key={member.id}
+                className={member.isSelf ? "is-self" : ""}
+                onClick={() => {
+                  setOpenFamilyId("");
+                  onSelect(member.id, familyAnchor.current);
+                }}
+              >
+                <span className="graph-avatar">
+                  <GraphPhoto url={member.photoUrl} initial={member.initial} />
+                </span>
+                <strong>
+                  {member.name}
+                  {member.isSelf ? "（我）" : ""}
+                </strong>
+                <span>{member.label}</span>
+              </button>
+            ))}
+          </div>
+          {(() => {
+            const ids = new Set(openFamily.members.map((member) => member.id));
+            const outward = relations.filter(
+              (edge) =>
+                edge.type === "parent" &&
+                ids.has(edge.from) !== ids.has(edge.to),
+            );
+            return (
+              !!outward.length && (
+                <div className="family-external-links">
+                  <h3>相连的家人</h3>
+                  {outward.map((edge, index) => {
+                    const personId = ids.has(edge.from) ? edge.to : edge.from;
+                    const person = nodeMap.get(personId);
+                    const local = nodeMap.get(
+                      ids.has(edge.from) ? edge.from : edge.to,
+                    );
+                    if (!person || !local) return null;
+                    return (
+                      <button
+                        type="button"
+                        key={edge.id || index}
+                        onClick={() => {
+                          setOpenFamilyId("");
+                          focusNode(person);
+                          onSelect(person.id);
+                        }}
+                      >
+                        {local.name}的{ids.has(edge.from) ? "子女" : "父母"}：
+                        {person.name} →
+                      </button>
+                    );
+                  })}
+                </div>
+              )
+            );
+          })()}
+        </Modal>
+      )}
       {!!unlinked.length && relationHref && (
         <div className="relation-next-step graph-relation-prompt">
           <strong>{unlinked.length} 位家人的关系待补充</strong>

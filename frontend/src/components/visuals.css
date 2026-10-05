@@ -48,6 +48,7 @@
 }
 
 .family-graph {
+  scroll-margin-top: 76px;
   overflow: hidden;
   border: 1px solid #e5e5da;
   border-radius: 20px;
@@ -119,6 +120,24 @@
   margin: 0 auto;
   user-select: none;
 }
+.graph-family-notice { padding: 10px 16px; background: #eef2e8; color: #526549; font-size: 14px; }
+.graph-family-card { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 10px 12px; border: 1px solid #cfd8c6; border-radius: 15px; background: #fffefa; color: #374a37; cursor: pointer; overflow: hidden; }
+.graph-family-card > strong { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 18px; }
+.graph-family-card > span:last-child { font-size: 15px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.graph-family-card.is-self { border: 3px solid #64816b; background: #edf4e5; }
+.graph-family-card.is-dimmed { opacity: .44; }
+.graph-family-card:focus-visible { outline: 3px solid #67876c; outline-offset: 3px; }
+.graph-family-photos { display: flex; gap: 6px; }
+.graph-family-photos .graph-avatar { width: 46px; height: 46px; font-size: 20px; }
+.family-members-intro { font-size: 15px; margin: 0 0 16px; }
+.family-members-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.family-members-grid button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; border: 1px solid #dce2d4; border-radius: 12px; background: #fffefa; color: #374a37; cursor: pointer; }
+.family-members-grid button.is-self { border: 2px solid #64816b; background: #edf4e5; }
+.family-members-grid .graph-avatar { width: 58px; height: 58px; font-size: 22px; }
+.family-members-grid strong { font-size: 18px; overflow-wrap: anywhere; }
+.family-members-grid button > span:last-child { font-size: 15px; }
+.family-external-links { margin-top: 18px; }
+.family-external-links button { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid #e4e8de; color: #49633e; padding: 12px 0; min-height: 48px; font-size: 16px; cursor: pointer; }
 .graph-connections {
   position: absolute;
   top: 0;

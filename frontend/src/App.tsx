@@ -1349,9 +1349,9 @@ export function FamilyHomeContent({
     <div className="page home-page family-home">
       <header className="page-header">
         <div>
-          <p className="eyebrow">我们的家</p>
-          <h1>{family?.name || "亲友录"}</h1>
-          <p className="muted">一家人，常惦记。</p>
+          <p className="eyebrow">每个名字，都是一份牵挂</p>
+          <h1>亲友录<span className="title-dot">.</span></h1>
+          <p className="muted">家人常念，亲情常在。</p>
         </div>
       </header>
       {circlesLoading && !family ? (
@@ -1368,15 +1368,23 @@ export function FamilyHomeContent({
             </div>
           )}
           <Link className="home-family-entry" to={`/album/${family.id}`}>
-            <span className="home-family-symbol" aria-hidden="true">
-              <Network size={44} />
+            <span className="home-cover">
+              <span className="home-cover-copy">
+                <span className="home-cover-eyebrow">家 人 录</span>
+                <strong>{family.name}</strong>
+                <span>枝叶相连，家人相伴。</span>
+              </span>
+              <span className="home-cover-art" aria-hidden="true">
+                <span className="home-cover-ring" />
+                <span className="cover-node cover-node-one">亲</span>
+                <span className="cover-node cover-node-two">友</span>
+                <span className="cover-node cover-node-three">家</span>
+              </span>
             </span>
-            <span className="home-family-copy">
-              <strong>看看家人</strong>
-              <span>{family.personCount} 位家人，点开相见</span>
-              <small>亲缘图 · 家人簿 · 天南海北</small>
+            <span className="home-cover-footer">
+              <span>{family.personCount} 位家人</span>
+              <span className="home-cover-open">翻开看看<ChevronRight size={18} /></span>
             </span>
-            <ChevronRight size={26} aria-hidden="true" />
           </Link>
           {circles.length > 1 && (
             <details className="home-other-families">

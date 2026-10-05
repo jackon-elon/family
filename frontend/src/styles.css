@@ -3138,7 +3138,7 @@ form fieldset > label + label {
   position: fixed; inset: 0; z-index: 10000;
   display: flex; flex-direction: column; align-items: center;
   padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
-  overflow: auto; overscroll-behavior: contain;
+  overflow: auto; overscroll-behavior: contain; outline: none;
   background: radial-gradient(ellipse at 50% 40%, #faf5e6 0%, #f3f2e7 48%, #e9eee3 100%);
   color: #52684a; text-align: center;
 }
@@ -3167,16 +3167,6 @@ form fieldset > label + label {
 }
 .welcome-message > span { white-space: nowrap; }
 .welcome-caption { font-size: 17px; color: #737b62; margin: 16px 0 0; line-height: 1.7; }
-.welcome-footer { flex: none; }
-.welcome-enter {
-  min-height: 52px; min-width: 188px; padding: 12px 26px;
-  border: 1px solid #81916f; border-radius: 28px;
-  background: #fffaf0; color: #405536; font: inherit; font-size: 18px;
-  cursor: pointer; touch-action: manipulation;
-}
-.welcome-enter:focus-visible { outline: 3px solid #52684a; outline-offset: 4px; }
-.welcome-enter:hover { background: #e8eddf; }
-.welcome-footer p { margin: 14px 0 0; font-size: 14px; line-height: 1.6; color: #737b62; }
 @media (prefers-reduced-motion: no-preference) {
   .welcome-screen { animation: welcome-screen-reveal var(--welcome-duration) linear both; }
   .welcome-star-links path { stroke-dasharray: 1; animation: welcome-links-draw var(--welcome-duration) ease-in-out both; }
@@ -3221,5 +3211,4 @@ form fieldset > label + label {
   .welcome-constellation { width: 160px; height: 140px; }
   .welcome-message { font-size: 30px; }
   .welcome-caption { margin-top: 6px; }
-  .welcome-footer p { margin-top: 8px; }
 }

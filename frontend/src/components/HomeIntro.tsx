@@ -43,7 +43,7 @@ function useWelcome(familyId?: string) {
 }
 
 function WelcomeScreen({ onClose }: { onClose: () => void }) {
-  const button = useRef<HTMLButtonElement>(null);
+  const screen = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const root = document.getElementById("root");
     const prior = document.activeElement as HTMLElement | null;
@@ -51,7 +51,7 @@ function WelcomeScreen({ onClose }: { onClose: () => void }) {
     const priorOverflow = document.body.style.overflow;
     if (root) root.inert = true;
     document.body.style.overflow = "hidden";
-    button.current?.focus({ preventScroll: true });
+    screen.current?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -59,7 +59,7 @@ function WelcomeScreen({ onClose }: { onClose: () => void }) {
       }
       if (event.key === "Tab") {
         event.preventDefault();
-        button.current?.focus({ preventScroll: true });
+        screen.current?.focus({ preventScroll: true });
       }
     };
     document.addEventListener("keydown", onKey);
@@ -72,7 +72,7 @@ function WelcomeScreen({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   return createPortal(
-    <div className="welcome-screen" role="dialog" aria-modal="true" aria-label="回家了，真好" style={welcomeStyle}>
+    <div ref={screen} tabIndex={-1} className="welcome-screen" role="dialog" aria-modal="true" aria-label="回家了，真好" style={welcomeStyle}>
       <div className="welcome-sky" aria-hidden="true">
         <i /><i /><i /><i /><i /><i /><i /><i />
       </div>
@@ -117,10 +117,6 @@ function WelcomeScreen({ onClose }: { onClose: () => void }) {
           <h1 className="welcome-message"><span>回家了，</span><span>真好。</span></h1>
           <p className="welcome-caption">天南海北，彼此相连。</p>
         </div>
-      </div>
-      <div className="welcome-footer">
-        <button ref={button} type="button" className="welcome-enter" onClick={onClose}>进入家里 <span aria-hidden="true">→</span></button>
-        <p>稍候自动进入，也可以直接点这里</p>
       </div>
     </div>, document.body,
   );

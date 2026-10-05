@@ -140,7 +140,7 @@
 .family-detail-band { position: absolute; left: 10px; padding: 0 5px; background: #f0f1e7; color: #69775e; font-size: 14px; border-radius: 4px; }
 .family-detail-node { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px; border: 1px solid #cfd8c6; border-radius: 12px; background: #fffefa; color: #374a37; cursor: pointer; }
 .family-detail-node.is-self { border: 2px solid #64816b; background: #edf4e5; }
-.family-detail-node.is-external { border-style: dashed; }
+.family-tree-back { margin-top: 14px; min-height: 48px; }
 .family-detail-node .avatar { width: 44px; height: 44px; min-width: 44px; font-size: 20px; }
 .family-detail-node strong { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
 .family-detail-node > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }

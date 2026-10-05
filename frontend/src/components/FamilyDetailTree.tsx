@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import type { FamilyUnit } from "../shared/family-overview";
-import type { StarNode, StarRelation } from "../shared/family-layout";
+import type { StarRelation } from "../shared/family-layout";
 import {
   buildFamilyDetail,
   DETAIL_CARD_WIDTH as W,
@@ -10,18 +10,16 @@ import { Avatar } from "./UI";
 
 export default function FamilyDetailTree({
   unit,
-  people,
   relations,
   onSelect,
 }: {
   unit: FamilyUnit;
-  people: StarNode[];
   relations: StarRelation[];
-  onSelect: (id: string, external: boolean) => void;
+  onSelect: (id: string) => void;
 }) {
   const tree = useMemo(
-    () => buildFamilyDetail(unit, people, relations),
-    [unit, people, relations],
+    () => buildFamilyDetail(unit, relations),
+    [unit, relations],
   );
   const byId = new Map(tree.nodes.map((node) => [node.id, node]));
   const viewport = useRef<HTMLDivElement>(null);
@@ -46,7 +44,7 @@ export default function FamilyDetailTree({
   return (
     <>
       <div className="family-tree-tools">
-        <p>上面是长辈，下面是子女；滑动看全，点头像看资料。</p>
+        <p>点头像看资料；其他家庭请返回总图查看。</p>
         <button type="button" className="button secondary" onClick={center}>
           居中
         </button>
@@ -54,6 +52,7 @@ export default function FamilyDetailTree({
       <div
         ref={viewport}
         className="family-detail-viewport"
+        style={{ height: `min(${tree.height + 2}px, 64dvh)` }}
         role="region"
         aria-label="这一家的亲属树，可上下左右滑动"
         tabIndex={0}
@@ -139,10 +138,10 @@ export default function FamilyDetailTree({
               type="button"
               key={node.id}
               data-tree-person-id={node.id}
-              className={`family-detail-node${node.isSelf ? " is-self" : ""}${node.external ? " is-external" : ""}`}
+              className={`family-detail-node${node.isSelf ? " is-self" : ""}`}
               style={{ left: node.x - W / 2, top: node.y, width: W, height: H }}
               aria-label={`${node.name}${node.isSelf ? "，我" : node.label ? `，${node.label}` : ""}，查看资料`}
-              onClick={() => onSelect(node.id, node.external)}
+              onClick={() => onSelect(node.id)}
             >
               <Avatar person={node} />
               <strong title={node.name}>{node.name}</strong>

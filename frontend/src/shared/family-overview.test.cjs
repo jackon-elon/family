@@ -31,7 +31,7 @@ const parent = (from, to) => ({ from, to, type: "parent" });
 const spouse = (from, to) => ({ from, to, type: "spouse" });
 const sibling = (from, to) => ({ from, to, type: "sibling" });
 
-test("opening a family draws parents above heads and all children below, without a duplicate or invented spouse", () => {
+test("opening all family trees never repeats parents or married children across families", () => {
   const ids = [
     "dad",
     "mom",
@@ -58,21 +58,20 @@ test("opening a family draws parents above heads and all children below, without
   const layout = buildStarLayout(ids.map(person), edges, "me", "me");
   const units = buildFamilyOverview(layout.nodes, edges);
   const unit = units.nodes.find((unit) => unit.isSelf);
-  const tree = buildFamilyDetail(unit, layout.nodes, edges);
+  const tree = buildFamilyDetail(unit, edges);
   const nodes = new Map(tree.nodes.map((node) => [node.id, node]));
   assert.equal(nodes.size, tree.nodes.length);
-  assert.deepEqual(
-    [...nodes.keys()].sort(),
-    ["dad", "mom", "wifeDad", "me", "wife", "child", "grown"].sort(),
-  );
+  assert.deepEqual([...nodes.keys()].sort(), ["me", "wife", "child"].sort());
   assert.equal(nodes.get("me").y, nodes.get("wife").y);
-  assert.ok(nodes.get("dad").y < nodes.get("me").y);
-  assert.ok(nodes.get("wifeDad").y < nodes.get("wife").y);
+
   assert.ok(nodes.get("child").y > nodes.get("me").y);
-  assert.equal(nodes.get("grown").y, nodes.get("child").y);
-  assert.equal(nodes.get("grown").external, true);
-  assert.equal(nodes.get("me").external, false);
-  assert.equal(tree.edges.filter((edge) => edge.type === "spouse").length, 2);
+  const allDetailIds = units.nodes.flatMap((unit) =>
+    buildFamilyDetail(unit, edges).nodes.map((node) => node.id),
+  );
+  assert.equal(new Set(allDetailIds).size, allDetailIds.length);
+  assert.deepEqual([...allDetailIds].sort(), [...ids].sort());
+  checkCoverage(units, ids, edges);
+  assert.equal(tree.edges.filter((edge) => edge.type === "spouse").length, 1);
   assert.ok(
     tree.edges.every((edge) => edges.includes(edge)),
     "only recorded edges",
@@ -89,7 +88,7 @@ test("shared grandparents, repeated edges and many siblings stay unique and read
   const unit = buildFamilyOverview(layout.nodes, edges).nodes.find(
     (unit) => unit.isSelf,
   );
-  const tree = buildFamilyDetail(unit, layout.nodes, [...edges, ...edges]);
+  const tree = buildFamilyDetail(unit, [...edges, ...edges]);
   assert.equal(tree.nodes.length, 32);
   assert.equal(tree.edges.length, edges.length);
   assert.ok(
@@ -116,7 +115,7 @@ test("single parent family and guest detail have no invented partner or self lab
     edges = [parent("a", "child")];
   const layout = buildStarLayout(ids.map(person), edges);
   const unit = buildFamilyOverview(layout.nodes, edges).nodes[0];
-  const tree = buildFamilyDetail(unit, layout.nodes, edges);
+  const tree = buildFamilyDetail(unit, edges);
   assert.deepEqual(
     tree.bands.map((band) => band.label),
     ["这一家", "子女"],
@@ -321,6 +320,11 @@ test("100 relatives across four generations keep unique membership, bounded card
   );
   const result = build(ids, edges, "p30");
   checkCoverage(result, ids, edges);
+  const expandedIds = result.nodes.flatMap((unit) =>
+    buildFamilyDetail(unit, edges).nodes.map((node) => node.id),
+  );
+  assert.equal(new Set(expandedIds).size, expandedIds.length);
+  assert.deepEqual([...expandedIds].sort(), [...ids].sort());
   const bounds = graphBounds(
     result.nodes,
     FAMILY_CARD_WIDTH,

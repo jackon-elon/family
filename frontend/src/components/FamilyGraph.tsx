@@ -648,17 +648,19 @@ export default function FamilyGraph({
         >
           <FamilyDetailTree
             unit={openFamily}
-            people={layout.nodes}
             relations={relations}
-            onSelect={(id, external) => {
+            onSelect={(id) => {
               setOpenFamilyId("");
-              if (external) {
-                const person = nodeMap.get(id);
-                if (person) focusNode(person);
-              }
-              onSelect(id, external ? undefined : familyAnchor.current);
+              onSelect(id, familyAnchor.current);
             }}
           />
+          <button
+            type="button"
+            className="button secondary full family-tree-back"
+            onClick={() => setOpenFamilyId("")}
+          >
+            返回家庭图
+          </button>
         </Modal>
       )}
       {!!unlinked.length && relationHref && (

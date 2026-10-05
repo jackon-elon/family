@@ -22,6 +22,7 @@ import {
   FAMILY_CARD_HEIGHT,
 } from "../shared/family-overview";
 import { Modal } from "./UI";
+import FamilyDetailTree from "./FamilyDetailTree";
 import type {
   Person as StoredPerson,
   Relation as StoredRelation,
@@ -639,69 +640,25 @@ export default function FamilyGraph({
         </span>
       </div>
       {openFamily && (
-        <Modal title={openFamily.title} onClose={() => setOpenFamilyId("")}>
-          <p className="family-members-intro">
-            点头像查看资料；关闭后回到刚才的位置。
-          </p>
-          <div className="family-members-grid">
-            {openFamily.members.map((member) => (
-              <button
-                type="button"
-                key={member.id}
-                className={member.isSelf ? "is-self" : ""}
-                onClick={() => {
-                  setOpenFamilyId("");
-                  onSelect(member.id, familyAnchor.current);
-                }}
-              >
-                <span className="graph-avatar">
-                  <GraphPhoto url={member.photoUrl} initial={member.initial} />
-                </span>
-                <strong>
-                  {member.name}
-                  {member.isSelf ? "（我）" : ""}
-                </strong>
-                <span>{member.label}</span>
-              </button>
-            ))}
-          </div>
-          {(() => {
-            const ids = new Set(openFamily.members.map((member) => member.id));
-            const outward = relations.filter(
-              (edge) =>
-                edge.type === "parent" &&
-                ids.has(edge.from) !== ids.has(edge.to),
-            );
-            return (
-              !!outward.length && (
-                <div className="family-external-links">
-                  <h3>相连的家人</h3>
-                  {outward.map((edge, index) => {
-                    const personId = ids.has(edge.from) ? edge.to : edge.from;
-                    const person = nodeMap.get(personId);
-                    const local = nodeMap.get(
-                      ids.has(edge.from) ? edge.from : edge.to,
-                    );
-                    if (!person || !local) return null;
-                    return (
-                      <button
-                        type="button"
-                        key={edge.id || index}
-                        onClick={() => {
-                          setOpenFamilyId("");
-                          focusNode(person);
-                          onSelect(person.id);
-                        }}
-                      >
-                        {local.name}的{ids.has(edge.from) ? "子女" : "父母"}：
-                        {person.name} →
-                      </button>
-                    );
-                  })}
-                </div>
-              )
-            );
-          })()}
+        <Modal
+          title={openFamily.title}
+          onClose={() => setOpenFamilyId("")}
+          wide
+          className="family-tree-modal"
+        >
+          <FamilyDetailTree
+            unit={openFamily}
+            people={layout.nodes}
+            relations={relations}
+            onSelect={(id, external) => {
+              setOpenFamilyId("");
+              if (external) {
+                const person = nodeMap.get(id);
+                if (person) focusNode(person);
+              }
+              onSelect(id, external ? undefined : familyAnchor.current);
+            }}
+          />
         </Modal>
       )}
       {!!unlinked.length && relationHref && (

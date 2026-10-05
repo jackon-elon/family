@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createWelcomeGate } from "../shared/home-welcome";
 
-const claimWelcome = createWelcomeGate(() => window.sessionStorage);
+const claimWelcome = createWelcomeGate();
 
-export default function HomeIntro({ familyId }: { familyId?: string }) {
+function useWelcome(familyId?: string) {
   const [welcoming, setWelcoming] = useState(false);
   const started = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -24,6 +24,19 @@ export default function HomeIntro({ familyId }: { familyId?: string }) {
     };
   }, [familyId]);
 
+  return welcoming;
+}
+
+export function ArrivalGreeting({ familyId, children }: { familyId: string; children: ReactNode }) {
+  const welcoming = useWelcome(familyId);
+  return <span className={`arrival-greeting${welcoming ? " is-welcoming" : ""}`}>
+    <span className="arrival-original">{children}</span>
+    <span className="arrival-words" aria-hidden="true">回家了，真好。</span>
+  </span>;
+}
+
+export default function HomeIntro({ familyId }: { familyId?: string }) {
+  const welcoming = useWelcome(familyId);
   return (
     <section className={`home-intro${welcoming ? " is-welcoming" : ""}`}>
       <div>

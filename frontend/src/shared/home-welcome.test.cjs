@@ -9,26 +9,17 @@ new Function("module", "exports", ts.transpileModule(
 ).outputText)(subject, subject.exports);
 const { createWelcomeGate } = subject.exports;
 
-test("greeting plays once across navigation/reload but is available in a fresh tab", () => {
-  const values = new Map();
-  const storage = () => ({ getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) });
-  const first = createWelcomeGate(storage);
-  assert.equal(first(""), false);
-  assert.equal(first("family-a"), true);
-  assert.equal(first("family-a"), false);
-  assert.equal(createWelcomeGate(storage)("family-a"), false);
-  assert.equal(first("family-b"), true);
-  assert.deepEqual([...values.values()], ["1", "1"]);
-  assert.equal(createWelcomeGate(() => ({ getItem: () => null, setItem() {} }))("family-a"), true);
+test("home and family pages share one greeting per document, while reload creates a fresh greeting", () => {
+  const page = createWelcomeGate();
+  assert.equal(page(""), false);
+  assert.equal(page("family-a"), true);
+  assert.equal(page("family-a"), false, "SPA return to home must not repeat");
+  assert.equal(createWelcomeGate()("family-a"), true, "full reload must play again");
+  assert.equal(page("family-b"), true);
 });
 
-test("blocked reads or writes never break home and still avoid repeated greetings in memory", () => {
-  for (const storage of [
-    () => { throw Error("storage disabled"); },
-    () => ({ getItem: () => null, setItem() { throw Error("quota"); } }),
-  ]) {
-    const welcome = createWelcomeGate(storage);
-    assert.equal(welcome("family-a"), true);
-    assert.equal(welcome("family-a"), false);
-  }
+test("entry greeting requires no browser storage or credentials", () => {
+  const page = createWelcomeGate();
+  assert.equal(page("family-a"), true);
+  assert.equal(page("family-a"), false);
 });

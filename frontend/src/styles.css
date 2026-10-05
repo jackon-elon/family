@@ -3159,3 +3159,10 @@ form fieldset > label + label {
 }
 @keyframes welcome-ring { 0% { opacity: .25; } 60% { opacity: 1; } 100% { opacity: 1; } }
 @keyframes welcome-light { 0%, 100% { opacity: 0; } 35%, 65% { opacity: 1; } }
+.arrival-greeting { display: inline-grid; align-items: center; }
+.arrival-greeting > span { grid-area: 1 / 1; }
+.arrival-words { opacity: 0; pointer-events: none; font-family: var(--serif); font-size: 18px; line-height: 1.5; color: #627045; }
+@media (prefers-reduced-motion: no-preference) {
+  .arrival-greeting.is-welcoming .arrival-words { animation: welcome-words 3.2s ease both; }
+  .arrival-greeting.is-welcoming .arrival-original { animation: welcome-motto 3.2s ease both; }
+}

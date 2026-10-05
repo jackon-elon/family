@@ -3132,47 +3132,72 @@ form fieldset > label + label {
 .home-page .birthday-date { width: 46px; height: 58px; }
 .home-page .birthday-date span { font-size: 13px; }
 .home-page .page-footer { font-size: 14px; color: #7c866e; }
-.home-intro-kicker { display: grid; width: fit-content; align-items: center; }
-.home-intro-kicker > span { grid-area: 1 / 1; }
-.home-page .intro-welcome { opacity: 0; pointer-events: none; font-family: var(--serif); font-size: 26px; font-weight: 600; line-height: 1.4; letter-spacing: 1px; color: #405536; white-space: nowrap; }
-.home-intro.is-welcoming .intro-welcome,
-.arrival-greeting.is-welcoming .arrival-words { opacity: 1; }
-.home-intro.is-welcoming .intro-original,
-.arrival-greeting.is-welcoming .arrival-original { opacity: 0; }
-@media (prefers-reduced-motion: no-preference) {
-  .home-intro.is-welcoming .intro-welcome { animation: welcome-words 6s ease both; }
-  .home-intro.is-welcoming .intro-original { animation: welcome-motto 6s ease both; }
-  .home-intro.is-welcoming .art-node { animation: welcome-family 3s ease both; }
-  .home-intro.is-welcoming .node-two { animation-delay: .22s; }
-  .home-intro.is-welcoming .node-three { animation-delay: .44s; }
-  .home-intro.is-welcoming .intro-ring { animation: welcome-ring 4s ease both; }
-  .home-intro.is-welcoming .intro-art { animation: welcome-art 6s ease both; }
-  .home-intro.is-welcoming::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; background: radial-gradient(ellipse at 75% 45%, #f4d97e66, transparent 75%); animation: welcome-light 6s ease both; }
+/* The welcome is a paced scene, separate from the ordinary 200ms page fade. */
+.main > .home-page { animation: none; }
+.welcome-scene {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  display: flex; align-items: center; justify-content: center; gap: 26px;
+  padding: 14px 20px;
+  background: radial-gradient(ellipse at 40% 55%, #faf0d4, #eeefe3 75%);
+  color: #52684a;
 }
-@keyframes welcome-words {
-  0% { opacity: 1; transform: translateY(5px); }
-  10%, 82% { opacity: 1; transform: translateY(0); }
-  100% { opacity: 0; transform: translateY(0); }
+.welcome-house { width: 116px; height: 116px; flex: none; overflow: visible; }
+.welcome-halo { opacity: .5; transform-origin: 60px 65px; }
+.welcome-message {
+  display: flex; flex-direction: column; gap: 2px;
+  font-family: var(--serif); font-size: 32px; font-weight: 500;
+  line-height: 1.4; letter-spacing: 2px; color: #405536;
 }
-@keyframes welcome-motto {
-  0%, 84% { opacity: 0; }
-  100% { opacity: 1; }
-}
-@keyframes welcome-family {
-  0% { transform: translateY(5px) scale(.96); box-shadow: 0 0 0 0 #b7c99500; }
-  48% { transform: translateY(0) scale(1.04); box-shadow: 0 0 18px 5px #b7c99555; }
-  100% { transform: translateY(0) scale(1); box-shadow: 0 5px 16px #7b8a5b0a; }
-}
-@keyframes welcome-ring { 0% { opacity: .25; } 60% { opacity: 1; } 100% { opacity: 1; } }
-@keyframes welcome-light { 0%, 100% { opacity: 0; } 15%, 80% { opacity: 1; } }
-@keyframes welcome-art { 0%, 90% { opacity: 1; } }
+.home-intro.is-welcoming > .intro-copy,
+.home-intro.is-welcoming > .intro-art { opacity: 0; }
 .arrival-greeting { display: inline-grid; align-items: center; }
 .arrival-greeting > span { grid-area: 1 / 1; }
 .arrival-words { opacity: 0; pointer-events: none; font-family: var(--serif); font-size: 24px; font-weight: 600; line-height: 1.5; color: #405536; }
+.arrival-greeting.is-welcoming .arrival-words { opacity: 1; }
+.arrival-greeting.is-welcoming .arrival-original { opacity: 0; }
 @media (prefers-reduced-motion: no-preference) {
-  .arrival-greeting.is-welcoming .arrival-words { animation: welcome-words 6s ease both; }
-  .arrival-greeting.is-welcoming .arrival-original { animation: welcome-motto 6s ease both; }
+  .welcome-scene { animation: welcome-scene var(--welcome-duration) linear both; }
+  .welcome-house-outline { stroke-dasharray: 1; animation: welcome-house-draw var(--welcome-duration) ease-in-out both; }
+  .welcome-window { animation: welcome-window-light var(--welcome-duration) ease-in-out both; }
+  .welcome-halo { animation: welcome-halo-grow var(--welcome-duration) ease-in-out both; }
+  .welcome-message > span { animation: welcome-line var(--welcome-duration) ease both; }
+  .welcome-message > span + span { animation-name: welcome-second-line; }
+  .home-intro.is-welcoming > .intro-copy,
+  .home-intro.is-welcoming > .intro-art { animation: welcome-restore var(--welcome-duration) ease both; }
+  .arrival-greeting.is-welcoming .arrival-words { animation: welcome-line var(--welcome-duration) ease both; }
+  .arrival-greeting.is-welcoming .arrival-original { animation: welcome-restore var(--welcome-duration) ease both; }
 }
-@media (max-width: 420px) {
-  .home-page .intro-welcome { font-size: 24px; letter-spacing: 0; }
+@keyframes welcome-scene {
+  0% { opacity: 0; }
+  10%, 82% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes welcome-house-draw {
+  0% { stroke-dashoffset: 1; }
+  36%, 100% { stroke-dashoffset: 0; }
+}
+@keyframes welcome-window-light {
+  0%, 20% { opacity: 0; }
+  46%, 100% { opacity: 1; }
+}
+@keyframes welcome-halo-grow {
+  0%, 15% { opacity: 0; transform: scale(.65); }
+  50% { opacity: .7; transform: scale(1.1); }
+  75%, 100% { opacity: .45; transform: scale(1); }
+}
+@keyframes welcome-line {
+  0%, 8% { opacity: 0; transform: translateY(12px); }
+  30%, 82% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(0); }
+}
+@keyframes welcome-second-line {
+  0%, 22% { opacity: 0; transform: translateY(12px); }
+  45%, 82% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(0); }
+}
+@keyframes welcome-restore { 0%, 82% { opacity: 0; } 100% { opacity: 1; } }
+@media (max-width: 680px) {
+  .welcome-scene { gap: 18px; }
+  .welcome-house { width: 84px; height: 84px; }
+  .welcome-message { font-size: 26px; letter-spacing: 1px; }
 }

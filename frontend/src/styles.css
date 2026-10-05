@@ -2769,6 +2769,27 @@ form fieldset > label + label {
   gap: 8px;
   margin-top: 12px;
 }
+.relation-next-step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid #dce3d3;
+  border-radius: 12px;
+  background: #f4f6ed;
+  font-size: 16px;
+}
+.relation-next-step .button {
+  min-height: 48px;
+  font-size: 17px;
+  white-space: normal;
+  text-align: center;
+}
+.relation-next-step p { margin: 0; line-height: 1.6; }
+.graph-relation-prompt { margin: 12px 18px; }
+.unlinked-person-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.unlinked-person-actions > button, .unlinked-person-actions > a { min-height: 44px; font-size: 15px; }
 .contact-buttons {
   display: flex;
   flex-wrap: wrap;

@@ -318,8 +318,13 @@ export function FloatingPanel({
         }
       }
       const next: CSSProperties = {
-        left: Math.round(left),
-        top: Math.round(top),
+        left: Math.round(Math.max(leftEdge, Math.min(rightEdge - width, left))),
+        top: Math.round(
+          Math.max(
+            topEdge,
+            Math.min(bottomEdge - Math.min(desiredHeight, maxHeight), top),
+          ),
+        ),
         width: Math.round(width),
         maxHeight: Math.floor(maxHeight),
         right: "auto",

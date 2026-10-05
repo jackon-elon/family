@@ -464,3 +464,56 @@ test("management content is unmounted after a confirmed downgrade or loss of fam
   assert.ok(loading.includes("正在确认管理权限"));
   assert.ok(!loading.includes("尚未确认的管理操作"));
 });
+
+test("disconnected family members offer a direct administrator shortcut, never a guest or member write entry", () => {
+  const base = {
+    person: { ...person, isSelf: false },
+    circleId: "family-a",
+    remark: "",
+    disconnected: true,
+    onClose() {},
+    onRemark() {},
+  };
+  const href = "/manage/family-a?relationFor=relative&source=album";
+  const admin = render(
+    React.createElement(PersonDetail, { ...base, relationHref: href }),
+  );
+  assert.ok(
+    admin.includes(
+      'href="/manage/family-a?relationFor=relative&amp;source=album"',
+    ),
+  );
+  for (const props of [{ readOnly: true, relationHref: href }, {}]) {
+    const html = render(
+      React.createElement(PersonDetail, { ...base, ...props }),
+    );
+    assert.ok(html.includes("请联系家庭管理员"));
+    assert.ok(!html.includes('href="/manage/'));
+  }
+});
+
+test("graph completion shortcuts appear only for active administrator browsing", () => {
+  for (const role of ["owner", "admin", "member", undefined]) {
+    for (const readOnly of [true, false]) {
+      const data = {
+        ...guestBrowseData(snapshot),
+        circle: { id: "family-a", name: "张家", role },
+        relations: [],
+      };
+      const html = render(
+        React.createElement(FamilyAlbum, {
+          circleId: "family-a",
+          data,
+          error: "",
+          loading: false,
+          load() {},
+          readOnly,
+        }),
+      );
+      assert.equal(
+        html.includes("去补充关系"),
+        !readOnly && ["owner", "admin"].includes(role),
+      );
+    }
+  }
+});

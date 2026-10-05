@@ -1523,6 +1523,13 @@ export function FamilyAlbum({
     );
   }, [data, readOnly]);
   const filtered = people.filter((p) => matchesPerson(p, search, labels[p.id]));
+  const canManageRelations =
+    !readOnly &&
+    (data?.circle.role === "owner" || data?.circle.role === "admin");
+  const relationHref = canManageRelations
+    ? (personId: string) =>
+        `/manage/${encodeURIComponent(circleId!)}?relationFor=${encodeURIComponent(personId)}&source=album`
+    : undefined;
   if (loading)
     return (
       <div className="page">
@@ -1693,6 +1700,7 @@ export function FamilyAlbum({
             labels={labels}
             selectedId={selected || undefined}
             onSelect={pick}
+            relationHref={relationHref}
           />
         </div>
       ) : activeTab === "map" ? (
@@ -1751,6 +1759,12 @@ export function FamilyAlbum({
           person={current}
           circleId={circleId!}
           readOnly={readOnly}
+          relationHref={relationHref?.(current.id)}
+          disconnected={
+            !data.relations.some(
+              (r) => r.from === current.id || r.to === current.id,
+            )
+          }
           remark={readOnly ? "" : data.remarks[current.id] || ""}
           kinship={
             !readOnly && data.people.some((p) => p.isSelf)
@@ -1780,7 +1794,11 @@ export function PersonDetail({
   anchorElement,
   anchorSelector,
   readOnly = false,
+  relationHref,
+  disconnected = false,
 }: {
+  relationHref?: string;
+  disconnected?: boolean;
   floating?: boolean;
   anchorElement?: HTMLElement | null;
   anchorSelector?: string;
@@ -1873,12 +1891,6 @@ export function PersonDetail({
               )}
             </div>
           </div>
-          <PersonSpeech key={`${person.id}:${spokenText}`} text={spokenText} />
-          <ContactActions
-            key={person.id}
-            phone={person.phone}
-            wechatId={person.wechatId}
-          />
           {kinship && (
             <div className="kinship-note">
               <b>{kinship.label}</b>
@@ -1886,6 +1898,29 @@ export function PersonDetail({
               {expanded && kinship.missing && <small>{kinship.missing}</small>}
             </div>
           )}
+          {(disconnected || kinship?.status === "unrelated") && (
+            <div className="relation-next-step">
+              {!kinship && <strong>关系待补充</strong>}
+              {!readOnly && relationHref ? (
+                <Link
+                  className="button primary"
+                  to={relationHref}
+                  onClick={onClose}
+                >
+                  <Network size={20} />
+                  补充关系
+                </Link>
+              ) : (
+                <p>请联系家庭管理员补充这位家人的亲属关系。</p>
+              )}
+            </div>
+          )}
+          <PersonSpeech key={`${person.id}:${spokenText}`} text={spokenText} />
+          <ContactActions
+            key={person.id}
+            phone={person.phone}
+            wechatId={person.wechatId}
+          />
           {expanded && (
             <>
               <div className="detail-grid">

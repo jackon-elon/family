@@ -20,6 +20,7 @@ import {
   MAX_GRAPH_ZOOM,
 } from "../shared/graph-view";
 import "./visuals.css";
+import { Link } from "react-router-dom";
 
 type GraphPerson = Pick<StoredPerson, "id" | "name"> & {
   originalName?: string;
@@ -36,6 +37,7 @@ interface Props {
   labels?: Record<string, string>;
   selectedId?: string;
   onSelect(id: string, anchor?: HTMLElement): void;
+  relationHref?: (personId: string) => string;
 }
 const CARD_WIDTH = 132;
 const CARD_HEIGHT = 132;
@@ -55,6 +57,7 @@ export default function FamilyGraph({
   labels = {},
   selectedId,
   onSelect,
+  relationHref,
 }: Props) {
   const viewport = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -445,6 +448,14 @@ export default function FamilyGraph({
         <span>{people.length} 位家人</span>
         <span>拖动看家人 · 点头像看资料</span>
       </div>
+      {!!unlinked.length && relationHref && (
+        <div className="relation-next-step graph-relation-prompt">
+          <strong>{unlinked.length} 位家人的关系待补充</strong>
+          <Link className="button primary" to={relationHref(unlinked[0].id)}>
+            去补充关系
+          </Link>
+        </div>
+      )}
       {!!unlinked.length && (
         <details className="graph-overflow">
           <summary>关系待补充 · {unlinked.length} 位家人</summary>
@@ -453,16 +464,26 @@ export default function FamilyGraph({
           </p>
           <div>
             {unlinked.map((node) => (
-              <button
-                type="button"
-                key={node.id}
-                onClick={(event) => {
-                  focusNode(node);
-                  onSelect(node.id, event.currentTarget);
-                }}
-              >
-                {node.name}
-              </button>
+              <div key={node.id} className="unlinked-person-actions">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    focusNode(node);
+                    onSelect(node.id, event.currentTarget);
+                  }}
+                >
+                  {node.name}
+                </button>
+                {relationHref && (
+                  <Link
+                    className="button secondary"
+                    to={relationHref(node.id)}
+                    aria-label={`为${node.name}补充关系`}
+                  >
+                    补充关系
+                  </Link>
+                )}
+              </div>
             ))}
           </div>
         </details>

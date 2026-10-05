@@ -41,7 +41,7 @@ export type BrowsePerson = Pick<
   | "isSelf"
 >;
 export interface FamilyBrowseData {
-  circle: { id: string; name: string };
+  circle: { id: string; name: string; role?: "owner" | "admin" | "member" };
   people: BrowsePerson[];
   relations: Array<Pick<Relation, "id" | "from" | "to" | "type" | "olderId">>;
   remarks: Record<string, string>;

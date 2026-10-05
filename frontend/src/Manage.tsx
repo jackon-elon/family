@@ -5,7 +5,12 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { Link, useParams } from "react-router-dom";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import {
   Plus,
   Search,
@@ -141,6 +146,10 @@ interface AuditView {
 }
 export default function Manage() {
   const { circleId } = useParams();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedPersonId = searchParams.get("relationFor");
+  const returnToAlbum = searchParams.get("source") === "album";
   const { refresh, notify, confirmSensitive } = useApp();
   const { data, error: circleError, loading, load } = useCircle(circleId);
   const [tab, setTab] = useState<
@@ -164,6 +173,28 @@ export default function Manage() {
     [now, setNow] = useState(Date.now());
   const lock = useRef(false),
     generation = useRef(0);
+  const shortcutPerson =
+    data && (data.circle.role === "owner" || data.circle.role === "admin")
+      ? data.people.find((person) => person.id === requestedPersonId)
+      : undefined;
+  const closeRelation = () => {
+    setRelationEdit(null);
+    if (!requestedPersonId) return;
+    if (returnToAlbum) {
+      navigate(
+        `/album/${encodeURIComponent(circleId!)}${shortcutPerson ? `?person=${encodeURIComponent(shortcutPerson.id)}` : ""}`,
+        { replace: true },
+      );
+    } else {
+      const next = new URLSearchParams(searchParams);
+      next.delete("relationFor");
+      next.delete("source");
+      setSearchParams(next, { replace: true });
+    }
+  };
+  useEffect(() => {
+    if (shortcutPerson) setTab("relations");
+  }, [shortcutPerson?.id]);
   const reloadExtra = useCallback(async () => {
     if (!circleId) return;
     const version = ++generation.current;
@@ -328,6 +359,9 @@ export default function Manage() {
         </Link>
       </header>
       <Alert message={circleError || error} />
+      {requestedPersonId && !shortcutPerson && (
+        <Alert message="这位家人的资料已不存在或不属于本家庭，请重新选择家人。" />
+      )}
       <div className="manage-tabs">
         <button
           disabled={busy}
@@ -868,15 +902,24 @@ export default function Manage() {
           }}
         />
       )}
-      {relationEdit && (
+      {(relationEdit || shortcutPerson) && (
         <RelationEditor
+          key={
+            relationEdit && relationEdit !== "new"
+              ? relationEdit.id
+              : shortcutPerson?.id || "new"
+          }
           data={data}
-          relation={relationEdit === "new" ? undefined : relationEdit}
-          onClose={() => setRelationEdit(null)}
+          relation={
+            !relationEdit || relationEdit === "new" ? undefined : relationEdit
+          }
+          initialPersonId={shortcutPerson?.id}
+          onClose={closeRelation}
           onSaved={async () => {
             setRelationEdit(null);
             await afterChange();
             notify("亲属关系已保存");
+            closeRelation();
           }}
         />
       )}
@@ -1058,25 +1101,46 @@ function PersonEditor({
     </Modal>
   );
 }
-function RelationEditor({
+export function relationEdge(
+  from: string,
+  to: string,
+  type: Relation["type"] | "child" | "",
+) {
+  if (!type || !from || !to || from === to)
+    throw new Error("请选择两位家人和他们的关系。");
+  return type === "child"
+    ? { from: to, to: from, type: "parent" }
+    : { from, to, type };
+}
+export function RelationEditor({
   data,
   relation,
+  initialPersonId,
   onClose,
   onSaved,
 }: {
   data: CircleData;
   relation?: Relation;
+  initialPersonId?: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
-  const [from, setFrom] = useState(relation?.from || ""),
+  const [from, setFrom] = useState(relation?.from || initialPersonId || ""),
     [to, setTo] = useState(relation?.to || ""),
-    [type, setType] = useState<Relation["type"]>(relation?.type || "parent"),
+    [type, setType] = useState<Relation["type"] | "child" | "">(
+      relation?.type || "",
+    ),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   return (
     <Modal
-      title={relation ? "修改亲属关系" : "添加亲属关系"}
+      title={
+        relation
+          ? "修改亲属关系"
+          : initialPersonId
+            ? "补充亲属关系"
+            : "添加亲属关系"
+      }
       onClose={onClose}
       busy={busy}
     >
@@ -1088,7 +1152,7 @@ function RelationEditor({
           setBusy(true);
           setError("");
           try {
-            const edge = { from, to, type };
+            const edge = relationEdge(from, to, type);
             await rpc(
               relation ? "relation.replace" : "relation.create",
               relation
@@ -1120,9 +1184,11 @@ function RelationEditor({
             <select
               required
               value={type}
-              onChange={(e) => setType(e.target.value as Relation["type"])}
+              onChange={(e) => setType(e.target.value as typeof type)}
             >
+              <option value="">请选择关系</option>
               <option value="parent">父母</option>
+              <option value="child">子女</option>
               <option value="spouse">配偶</option>
               <option value="sibling">兄弟姐妹</option>
             </select>
@@ -1135,15 +1201,17 @@ function RelationEditor({
             excludeId={from}
           />
         </fieldset>
-        {from && to && (
+        {from && to && type && (
           <p className="relation-preview">
             {data.people.find((p) => p.id === from)?.name} 是{" "}
             {data.people.find((p) => p.id === to)?.name} 的{" "}
             {type === "parent"
               ? "父母"
-              : type === "spouse"
-                ? "配偶"
-                : "兄弟姐妹"}
+              : type === "child"
+                ? "子女"
+                : type === "spouse"
+                  ? "配偶"
+                  : "兄弟姐妹"}
           </p>
         )}
         <p className="hint">
@@ -1152,7 +1220,7 @@ function RelationEditor({
         <Alert message={error} />
         <button
           className="button primary full"
-          disabled={busy || !from || !to || from === to}
+          disabled={busy || !type || !from || !to || from === to}
         >
           {busy ? "保存中…" : "保存关系"}
         </button>

@@ -39,7 +39,8 @@ function load(file) {
 }
 const { invitationCanApply, matchedReviewPerson, reviewMatchError } =
   load("onboarding.ts");
-const { ReviewApplication } = load("../Manage.tsx");
+const { ReviewApplication, RelationEditor, relationEdge } =
+  load("../Manage.tsx");
 const profile = {
   name: "李青",
   country: "中国",
@@ -192,4 +193,46 @@ test("an unmatched applicant keeps the new-person path and legacy manual record 
   );
   assert.match(html, /添加为新成员/);
   assert.match(html, /使用已有的这位家人资料/);
+});
+
+test("relationship shortcut preselects the intended person and requires an explicit relationship", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(RelationEditor, {
+      data: {
+        circle: { id: "family" },
+        people: [person, { ...person, id: "parent", name: "妈妈" }],
+      },
+      initialPersonId: person.id,
+      onClose() {},
+      async onSaved() {},
+    }),
+  );
+  assert.match(html, /value="existing" selected=""/);
+  assert.ok(html.includes("补充亲属关系"));
+  assert.ok(html.includes('value="child"'));
+  assert.ok(html.includes("请选择关系"));
+});
+
+test("child and parent choices preserve the correct stored direction and reject empty or self links", () => {
+  assert.deepEqual(relationEdge("child", "parent", "child"), {
+    from: "parent",
+    to: "child",
+    type: "parent",
+  });
+  assert.deepEqual(relationEdge("parent", "child", "parent"), {
+    from: "parent",
+    to: "child",
+    type: "parent",
+  });
+  assert.deepEqual(relationEdge("a", "b", "spouse"), {
+    from: "a",
+    to: "b",
+    type: "spouse",
+  });
+  for (const args of [
+    ["", "b", "parent"],
+    ["a", "b", ""],
+    ["a", "a", "child"],
+  ])
+    assert.throws(() => relationEdge(...args));
 });

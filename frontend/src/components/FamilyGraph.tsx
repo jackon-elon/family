@@ -14,6 +14,7 @@ import {
   Expand,
   Shrink,
 } from "lucide-react";
+import { animateProgress, motionAllowed } from "../shared/motion";
 import { buildStarLayout } from "../shared/family-layout";
 import {
   buildFamilyOverview,
@@ -83,6 +84,9 @@ export default function FamilyGraph({
 }: Props) {
   const viewport = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
+  const zoomTarget = useRef(1);
+  const cancelZoom = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => () => cancelZoom.current?.(), []);
   const [overview, setOverview] = useState(false);
   const [openFamilyId, setOpenFamilyId] = useState("");
   const familyAnchor = useRef<HTMLElement | undefined>(undefined);
@@ -152,10 +156,13 @@ export default function FamilyGraph({
     next: number,
     center: { x: number; y: number },
     personId?: string,
+    animate = false,
   ) => {
     const el = viewport.current;
     if (!el) return;
+    cancelZoom.current?.();
     next = clampGraphZoom(next, families.hasGroups);
+    zoomTarget.current = next;
     const nextOverview = shouldShowFamilies(
       overview,
       next,
@@ -165,6 +172,7 @@ export default function FamilyGraph({
     );
     const nextBounds = nextOverview ? familyBounds : personalBounds;
     const nextScale = nextOverview ? next * 2 : next;
+    const originalCenter = { ...center };
     let anchorId = personId;
     if (nextOverview !== overview && !anchorId) {
       const nearest = [...viewNodes].sort(
@@ -201,13 +209,13 @@ export default function FamilyGraph({
       setOpenFamilyId("");
       onSelect("");
     }
-    const scroll = () => {
+    const scroll = (currentScale = nextScale) => {
       const el = viewport.current;
       if (el)
         el.scrollTo(
           graphScroll(
             center,
-            nextScale,
+            currentScale,
             nextBounds,
             el.clientWidth,
             el.clientHeight,
@@ -219,10 +227,34 @@ export default function FamilyGraph({
           behavior: "instant",
         });
     };
-    if (next === zoom && nextOverview === overview) scroll();
-    else pendingScroll.current = scroll;
-    setOverview(nextOverview);
-    setZoom(next);
+    if (animate && motionAllowed() && next !== zoom) {
+      const from = zoom;
+      cancelZoom.current = animateProgress((progress) => {
+        const value = from + (next - from) * progress;
+        if (nextOverview !== overview && progress < 1) {
+          pendingScroll.current = () =>
+            viewport.current?.scrollTo(
+              graphScroll(
+                originalCenter,
+                overview ? value * 2 : value,
+                bounds,
+                el.clientWidth,
+                el.clientHeight,
+              ),
+            );
+        } else {
+          pendingScroll.current = () =>
+            scroll(nextOverview ? value * 2 : value);
+          setOverview(nextOverview);
+        }
+        setZoom(value);
+      });
+    } else {
+      if (next === zoom && nextOverview === overview) scroll();
+      else pendingScroll.current = () => scroll();
+      setOverview(nextOverview);
+      setZoom(next);
+    }
   };
   const focusNode = (node: { id: string; x: number; y: number }, next = 1) => {
     positionAt(
@@ -290,16 +322,21 @@ export default function FamilyGraph({
   const changeZoom = (difference: number) => {
     const el = viewport.current;
     if (!el) return;
-    positionAt(clampGraphZoom(zoom + difference, families.hasGroups), {
-      x:
-        width <= el.clientWidth
-          ? bounds.width / 2
-          : (el.scrollLeft + el.clientWidth / 2) / scale,
-      y:
-        height <= el.clientHeight
-          ? bounds.height / 2
-          : (el.scrollTop + el.clientHeight / 2) / scale,
-    });
+    positionAt(
+      clampGraphZoom(zoomTarget.current + difference, families.hasGroups),
+      {
+        x:
+          width <= el.clientWidth
+            ? bounds.width / 2
+            : (el.scrollLeft + el.clientWidth / 2) / scale,
+        y:
+          height <= el.clientHeight
+            ? bounds.height / 2
+            : (el.scrollTop + el.clientHeight / 2) / scale,
+      },
+      undefined,
+      true,
+    );
   };
   const centerSelf = () => {
     const node = layout.nodes.find((item) => item.id === selfId);
@@ -309,6 +346,8 @@ export default function FamilyGraph({
     setExpanded((value) => !value);
   };
   const startDrag = (event: PointerEvent<HTMLDivElement>) => {
+    cancelZoom.current?.();
+    zoomTarget.current = zoom;
     drag.current = null;
     suppressBackgroundClick.current = false;
     if (
@@ -468,7 +507,11 @@ export default function FamilyGraph({
           suppressBackgroundClick.current = false;
         }}
       >
-        <div className="graph-canvas" style={{ width, height }}>
+        <div
+          key={overview ? "families" : "people"}
+          className="graph-canvas browse-reveal"
+          style={{ width, height }}
+        >
           {!overview &&
             layout.bands.map((band) => (
               <div

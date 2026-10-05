@@ -3033,3 +3033,80 @@ form fieldset > label + label {
   .album-page .view-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 8px; }
   .album-page .view-tabs button { flex-direction: column; min-width: 0; min-height: 78px; padding: 10px 4px; gap: 6px; font-size: 16px; }
 }
+
+/* A visible search control, with a persistent label and a generous touch target. */
+.album-page .family-search {
+  position: relative;
+  flex: 1;
+  max-width: 410px;
+}
+.album-page .family-search .search-box {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 52px;
+  border: 1.5px solid #819580;
+  background: #fff;
+  color: #405e49;
+  border-radius: 12px;
+  padding: 0 44px 0 14px;
+  box-shadow: 0 2px 7px #334c3910;
+}
+.album-page .family-search .search-box:focus-within {
+  outline: 3px solid #b4c9ad;
+  outline-offset: 2px;
+}
+.album-page .search-caption {
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 650;
+}
+.album-page .family-search input {
+  min-width: 0;
+  font-size: 16px;
+  color: #283c2d;
+}
+.album-page .family-search input::placeholder {
+  color: #687568;
+  opacity: 1;
+}
+.album-page .search-clear {
+  position: absolute;
+  right: 3px;
+  top: 4px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  color: #405e49;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+}
+.map-section[hidden] {
+  display: none;
+}
+@media (max-width: 680px) {
+  .album-page .family-search {
+    width: 100%;
+    max-width: none;
+    flex-basis: 100%;
+  }
+  .album-page .search-caption {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .browse-reveal,
+  .main > .page {
+    animation: browse-appear 200ms ease-out;
+  }
+}
+@keyframes browse-appear {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}

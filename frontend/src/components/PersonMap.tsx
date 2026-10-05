@@ -16,6 +16,7 @@ import {
   type MapPerson,
 } from "../shared/geography";
 import { clusterCityMarkers } from "../shared/map-clusters";
+import { motionAllowed } from "../shared/motion";
 import { createMapCanvas } from "../shared/map-canvas";
 import {
   visibleBasemapLabels,
@@ -33,6 +34,7 @@ import "./visuals.css";
 
 interface Props {
   people: MapPerson[];
+  active?: boolean;
   onSelect(id: string, anchor?: HTMLElement): void;
   labels?: Record<string, string>;
 }
@@ -61,7 +63,12 @@ const DETAILED_COUNTRIES = new Set(
   chinaProvinces.features.map((feature) => feature.properties.countryId),
 );
 
-export default function PersonMap({ people, onSelect, labels = {} }: Props) {
+export default function PersonMap({
+  people,
+  onSelect,
+  labels = {},
+  active = true,
+}: Props) {
   const element = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLElement>(null);
   const overview = useRef(true);
@@ -88,23 +95,31 @@ export default function PersonMap({ people, onSelect, labels = {} }: Props) {
   mapScope.current = scope;
   const redrawNames = useRef<() => void>(() => {});
 
-  const frameScope = (view: Scope) => {
+  const frameScope = (view: Scope, animate = true) => {
     if (!map.current) return;
     if (view === "china")
-      map.current.fitBounds(
+      map.current.stop().flyToBounds(
         [
           [17, 72],
           [55, 136],
         ],
-        { padding: [18, 18], animate: false },
+        {
+          padding: [18, 18],
+          animate: animate && motionAllowed(),
+          duration: 0.45,
+        },
       );
     else
-      map.current.fitBounds(
+      map.current.stop().flyToBounds(
         [
           [-58, -172],
           [76, 177],
         ],
-        { padding: [12, 12], animate: false },
+        {
+          padding: [12, 12],
+          animate: animate && motionAllowed(),
+          duration: 0.45,
+        },
       );
     overview.current = true;
   };
@@ -118,11 +133,13 @@ export default function PersonMap({ people, onSelect, labels = {} }: Props) {
       const instance = map.current;
       requestAnimationFrame(() => {
         if (map.current !== instance) return;
-        instance?.setView(
-          [group.point!.latitude, group.point!.longitude],
-          cityFocusZoom(instance.getSize().x),
-          { animate: false },
-        );
+        instance
+          ?.stop()
+          .flyTo(
+            [group.point!.latitude, group.point!.longitude],
+            cityFocusZoom(instance.getSize().x),
+            { animate: motionAllowed(), duration: 0.45 },
+          );
       });
     }
     if (group.key !== selectedKey)
@@ -149,9 +166,9 @@ export default function PersonMap({ people, onSelect, labels = {} }: Props) {
       preferCanvas: true,
       scrollWheelZoom: false,
       worldCopyJump: false,
-      zoomAnimation: false,
+      zoomAnimation: motionAllowed(),
       fadeAnimation: false,
-      markerZoomAnimation: false,
+      markerZoomAnimation: motionAllowed(),
     });
     map.current = instance;
     // Local vectors remain beneath the optional tile layer and work without an
@@ -254,8 +271,13 @@ export default function PersonMap({ people, onSelect, labels = {} }: Props) {
         }).addTo(geographicNames);
       }
     };
-    redrawNames.current = drawGeographicNames;
-    instance.on("moveend zoomend resize", drawGeographicNames);
+    let namesFrame = 0;
+    const scheduleNames = () => {
+      cancelAnimationFrame(namesFrame);
+      namesFrame = requestAnimationFrame(drawGeographicNames);
+    };
+    redrawNames.current = scheduleNames;
+    instance.on("moveend zoomend resize", scheduleNames);
     L.control
       .zoom({
         position: "topright",
@@ -271,17 +293,20 @@ export default function PersonMap({ people, onSelect, labels = {} }: Props) {
       overview.current = false;
     });
     const resize = new ResizeObserver(() => {
+      if (!element.current?.clientWidth || !element.current?.clientHeight)
+        return;
       const wasOverview = overview.current;
       instance.invalidateSize({ animate: false });
-      if (wasOverview) frameScope(mapScope.current);
+      if (wasOverview) frameScope(mapScope.current, false);
     });
     resize.observe(element.current);
-    frameScope("china");
-    drawGeographicNames();
+    frameScope("china", false);
+    scheduleNames();
     return () => {
       resize.disconnect();
       clearTimeout(timeout.current);
-      instance.off("moveend zoomend resize", drawGeographicNames);
+      cancelAnimationFrame(namesFrame);
+      instance.off("moveend zoomend resize", scheduleNames);
       redrawNames.current = () => {};
       instance.remove();
       map.current = null;
@@ -289,6 +314,20 @@ export default function PersonMap({ people, onSelect, labels = {} }: Props) {
       tiles.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance) return;
+    if (!active) {
+      instance.stop();
+      setExpanded(false);
+      return;
+    }
+    const frame = requestAnimationFrame(() =>
+      instance.invalidateSize({ animate: false }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [active]);
 
   useEffect(() => {
     const instance = map.current;
@@ -391,7 +430,7 @@ export default function PersonMap({ people, onSelect, labels = {} }: Props) {
           overview.current = false;
           setSelectedKey("");
           setClusterKeys(cluster.groups.map((city) => city.key));
-          instance.fitBounds(
+          instance.stop().flyToBounds(
             cluster.groups.map(
               (city) =>
                 [city.point!.latitude, city.point!.longitude] as L.LatLngTuple,
@@ -399,7 +438,8 @@ export default function PersonMap({ people, onSelect, labels = {} }: Props) {
             {
               padding: [65, 60],
               maxZoom: MAX_MAP_ZOOM,
-              animate: false,
+              animate: motionAllowed(),
+              duration: 0.45,
             },
           );
           requestAnimationFrame(() => {

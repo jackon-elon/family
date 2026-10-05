@@ -13,6 +13,21 @@ new Function(
 )(subject, subject.exports);
 const { matchesPerson } = subject.exports;
 
+test("directory uses displayed Chinese names, natural numbers and a stable duplicate-name tie without mutating source", () => {
+  const people = [
+    { id: "z", name: "张青" },
+    { id: "b", name: "李青" },
+    { id: "a", name: "李青" },
+    { id: "10", name: "家人10" },
+    { id: "2", name: "家人2" },
+    { id: "remark", name: "大姑", originalName: "赵青" },
+  ];
+  const before = JSON.stringify(people);
+  const sorted = subject.exports.sortPeopleByName(people);
+  assert.deepEqual(sorted.map(p => p.id), ["remark", "2", "10", "a", "b", "z"]);
+  assert.equal(JSON.stringify(people), before);
+});
+
 test("family search finds the displayed remark, original name, city, status and actual biography", () => {
   const person = {
     name: "大姑",

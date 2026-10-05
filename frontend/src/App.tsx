@@ -38,6 +38,7 @@ import {
   MonitorSmartphone,
   Camera,
   ZoomIn,
+  X,
 } from "lucide-react";
 import {
   auth,
@@ -83,7 +84,7 @@ import PersonSpeech from "./components/PersonSpeech";
 import { personSpeechText } from "./shared/person-speech";
 import { relationshipsFor } from "./shared/relationship";
 import { citySummary } from "./shared/geography";
-import { matchesPerson } from "./shared/person-search";
+import { matchesPerson, sortPeopleByName } from "./shared/person-search";
 import {
   albumViewReducer,
   initialAlbumView,
@@ -108,7 +109,8 @@ import {
   createPermissionRefresh,
 } from "./shared/session-actions";
 
-const PersonMap = lazy(() => import("./components/PersonMap"));
+const loadPersonMap = () => import("./components/PersonMap");
+const PersonMap = lazy(loadPersonMap);
 
 function Brand() {
   return (
@@ -1491,6 +1493,27 @@ export function FamilyAlbum({
     initialAlbumView,
   );
   const { tab, selected, anchor: selectedAnchor } = view;
+  const [mapFamily, setMapFamily] = useState<string>();
+  // Keep only this album's map alive. Leave one paint for immediate click feedback.
+  useEffect(() => {
+    if (tab !== "map" || !data || mapFamily === circleId) return;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setMapFamily(circleId));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [tab, circleId, !!data, mapFamily]);
+  useEffect(() => {
+    if (!data) return;
+    const preload = () => {
+      void loadPersonMap().catch(() => {});
+    };
+    if (window.requestIdleCallback) {
+      const task = window.requestIdleCallback(preload, { timeout: 2500 });
+      return () => window.cancelIdleCallback(task);
+    }
+    const task = window.setTimeout(preload, 1000);
+    return () => window.clearTimeout(task);
+  }, [circleId, !!data]);
   const [search, setSearch] = useState("");
   useEffect(() => {
     dispatchView({
@@ -1525,6 +1548,10 @@ export function FamilyAlbum({
   const filtered = useMemo(
     () => people.filter((p) => matchesPerson(p, search, labels[p.id])),
     [people, search, labels],
+  );
+  const directory = useMemo(
+    () => sortPeopleByName(filtered),
+    [filtered],
   );
   const graphPeople = useMemo(() => {
     if (!search) return people;
@@ -1643,117 +1670,151 @@ export function FamilyAlbum({
             天南海北
           </button>
         </div>
-        <label className="search-box">
-          <Search size={17} />
-          <input
-            aria-label="搜索成员"
-            placeholder="搜索姓名、城市、近况"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              dispatchView({ type: "close" });
-            }}
-          />
-        </label>
-      </div>
-      {!people.length ? (
-        <Empty title="还没有成员资料">
-          <p>
-            {readOnly
-              ? "家人资料还在整理中，稍后再来看看。"
-              : "管理员可以在「我的 → 管理」添加家人。"}
-          </p>
-        </Empty>
-      ) : search && !filtered.length ? (
-        <Empty title="没有找到这位家人">
-          <p>换一个姓名或城市试试。</p>
-        </Empty>
-      ) : activeTab === "graph" ? (
-        <div className="graph-section">
-          <p className="section-hint">同辈同行 · 拖动查看，点头像看资料</p>
-          {!!search.trim() && (
-            <section className="graph-search-results" aria-label="找到的家人">
-              <p>找到 {filtered.length} 位家人，点头像看资料</p>
-              <div>
-                {filtered.map((person) => (
-                  <button
-                    type="button"
-                    key={person.id}
-                    onClick={(event) => pick(person.id, event.currentTarget)}
-                  >
-                    <Avatar person={person} />
-                    <span>
-                      <strong>{person.name}</strong>
-                      <small>
-                        {[
-                          person.name !== person.originalName
-                            ? person.originalName
-                            : "",
-                          person.city || "城市待补充",
-                          labels[person.id],
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </small>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
+        <div className="family-search">
+          <label className="search-box">
+            <Search size={21} />
+            <span className="search-caption">找家人</span>
+            <input
+              aria-label="搜索成员"
+              placeholder="输入姓名、城市或称呼"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                dispatchView({ type: "close" });
+              }}
+            />
+          </label>
+          {search && (
+            <button
+              type="button"
+              className="search-clear"
+              aria-label="清空搜索"
+              onClick={() => setSearch("")}
+            >
+              <X size={19} />
+            </button>
           )}
-          <FamilyGraph
-            people={graphPeople}
-            relations={data.relations}
-            selfId={
-              readOnly ? undefined : data.people.find((p) => p.isSelf)?.id
-            }
-            labels={labels}
-            selectedId={selected || undefined}
-            onSelect={pick}
-            relationHref={relationHref}
-          />
         </div>
-      ) : activeTab === "map" ? (
-        <div className="map-section">
+      </div>
+      <div key={activeTab} className="browse-reveal">
+        {!people.length ? (
+          <Empty title="还没有成员资料">
+            <p>
+              {readOnly
+                ? "家人资料还在整理中，稍后再来看看。"
+                : "管理员可以在「我的 → 管理」添加家人。"}
+            </p>
+          </Empty>
+        ) : search && !filtered.length ? (
+          <Empty title="没有找到这位家人">
+            <p>换一个姓名或城市试试。</p>
+          </Empty>
+        ) : activeTab === "graph" ? (
+          <div className="graph-section">
+            <p className="section-hint">同辈同行 · 拖动查看，点头像看资料</p>
+            {!!search.trim() && (
+              <section className="graph-search-results" aria-label="找到的家人">
+                <p>找到 {filtered.length} 位家人，点头像看资料</p>
+                <div>
+                  {filtered.map((person) => (
+                    <button
+                      type="button"
+                      key={person.id}
+                      onClick={(event) => pick(person.id, event.currentTarget)}
+                    >
+                      <Avatar person={person} />
+                      <span>
+                        <strong>{person.name}</strong>
+                        <small>
+                          {[
+                            person.name !== person.originalName
+                              ? person.originalName
+                              : "",
+                            person.city || "城市待补充",
+                            labels[person.id],
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+            <FamilyGraph
+              people={graphPeople}
+              relations={data.relations}
+              selfId={
+                readOnly ? undefined : data.people.find((p) => p.isSelf)?.id
+              }
+              labels={labels}
+              selectedId={selected || undefined}
+              onSelect={pick}
+              relationHref={relationHref}
+            />
+          </div>
+        ) : activeTab === "map" ? (
+          mapFamily !== circleId ? (
+            <Loading label="正在打开地图…" />
+          ) : null
+        ) : (
+          <>
+            <p className="section-hint directory-order">
+              {filtered.length} 位家人 · 按姓名拼音排序{!readOnly && "（有备注时按备注）"}
+            </p>
+            <div className="people-grid">
+              {directory.map((p) => (
+                <button
+                  className="person-card"
+                  key={p.id}
+                  onClick={() => pick(p.id)}
+                >
+                  <Avatar person={p} />
+                  <div className="person-card-copy">
+                    <h3>
+                      {p.name}
+                      {!readOnly && p.isSelf && (
+                        <span className="self-tag">我</span>
+                      )}
+                    </h3>
+                    {p.name !== p.originalName && (
+                      <span className="original-name">{p.originalName}</span>
+                    )}
+                    <p>
+                      {labels[p.id] ? `${labels[p.id]} · ` : ""}
+                      {p.city || "城市待补充"}
+                    </p>
+                    <span>
+                      {p.occupation ||
+                        p.industry ||
+                        p.school ||
+                        p.status ||
+                        "相聚有时，牵挂常在"}
+                    </span>
+                  </div>
+                  <ChevronRight size={17} />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      {mapFamily === circleId && data && (
+        <div
+          className="map-section browse-reveal"
+          hidden={activeTab !== "map" || !filtered.length}
+          key={`map-${circleId}`}
+        >
           <p className="section-hint">看看大家在哪里 · 显示所在城市的位置</p>
           <Suspense fallback={<Loading label="正在打开地图…" />}>
-            <PersonMap people={filtered} onSelect={pick} labels={labels} />
+            <PersonMap
+              people={filtered}
+              onSelect={pick}
+              labels={labels}
+              active={activeTab === "map" && !!filtered.length}
+            />
           </Suspense>
-        </div>
-      ) : (
-        <div className="people-grid">
-          {filtered.map((p) => (
-            <button
-              className="person-card"
-              key={p.id}
-              onClick={() => pick(p.id)}
-            >
-              <Avatar person={p} />
-              <div className="person-card-copy">
-                <h3>
-                  {p.name}
-                  {!readOnly && p.isSelf && (
-                    <span className="self-tag">我</span>
-                  )}
-                </h3>
-                {p.name !== p.originalName && (
-                  <span className="original-name">{p.originalName}</span>
-                )}
-                <p>
-                  {labels[p.id] ? `${labels[p.id]} · ` : ""}
-                  {p.city || "城市待补充"}
-                </p>
-                <span>
-                  {p.occupation ||
-                    p.industry ||
-                    p.school ||
-                    p.status ||
-                    "相聚有时，牵挂常在"}
-                </span>
-              </div>
-              <ChevronRight size={17} />
-            </button>
-          ))}
         </div>
       )}
       {current && (

@@ -61,7 +61,7 @@ function WelcomeScreen({ onClose, paused }: { onClose: () => void; paused: boole
   }, [onClose]);
 
   return createPortal(
-    <div ref={screen} tabIndex={-1} className="welcome-screen" data-paused={paused} role="dialog" aria-modal="true" aria-label="回家了，真好" style={welcomeStyle}>
+    <div ref={screen} tabIndex={-1} className="welcome-screen" data-paused={paused} role="dialog" aria-modal="true" aria-label="人间星图" style={welcomeStyle}>
       <div className="welcome-sky" aria-hidden="true">
         <i /><i /><i /><i /><i /><i /><i /><i />
       </div>
@@ -103,8 +103,8 @@ function WelcomeScreen({ onClose, paused }: { onClose: () => void; paused: boole
           </g>
         </svg>
         <div>
-          <h1 className="welcome-message"><span>回家了，</span><span>真好。</span></h1>
-          <p className="welcome-caption">天南海北，彼此相连。</p>
+          <h1 className="welcome-message"><span>人间星图</span></h1>
+          <p className="welcome-caption">把牵挂，记在一起。</p>
         </div>
       </div>
     </div>, document.body,

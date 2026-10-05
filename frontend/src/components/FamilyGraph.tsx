@@ -31,7 +31,8 @@ import {
   graphBounds,
   graphScroll,
   GRAPH_UNIT as UNIT,
-  MIN_GRAPH_ZOOM,
+  minimumGraphZoom,
+  clampGraphZoom,
   MAX_GRAPH_ZOOM,
 } from "../shared/graph-view";
 import "./visuals.css";
@@ -123,8 +124,8 @@ export default function FamilyGraph({
     FAMILY_CARD_HEIGHT,
   );
   const bounds = overview ? familyBounds : personalBounds;
+  const minZoom = minimumGraphZoom(families.hasGroups);
   // Semantic zoom: grouped cards have their own readable size at the switch.
-  // Zoom itself is still unrestricted from 1% to 160%.
   const scale = overview ? zoom * 2 : zoom;
   const width = bounds.width * scale;
   const height = bounds.height * scale;
@@ -148,6 +149,7 @@ export default function FamilyGraph({
   ) => {
     const el = viewport.current;
     if (!el) return;
+    next = clampGraphZoom(next, families.hasGroups);
     const nextOverview = shouldShowFamilies(
       overview,
       next,
@@ -243,6 +245,9 @@ export default function FamilyGraph({
       .sort()
       .join("|"),
   ]);
+  useEffect(() => {
+    if (zoom < minZoom) resetView();
+  }, [zoom, minZoom]);
 
   // Retain the same person when rotating a phone or expanding the canvas.
   useEffect(() => {
@@ -279,19 +284,16 @@ export default function FamilyGraph({
   const changeZoom = (difference: number) => {
     const el = viewport.current;
     if (!el) return;
-    positionAt(
-      Math.max(MIN_GRAPH_ZOOM, Math.min(MAX_GRAPH_ZOOM, zoom + difference)),
-      {
-        x:
-          width <= el.clientWidth
-            ? bounds.width / 2
-            : (el.scrollLeft + el.clientWidth / 2) / scale,
-        y:
-          height <= el.clientHeight
-            ? bounds.height / 2
-            : (el.scrollTop + el.clientHeight / 2) / scale,
-      },
-    );
+    positionAt(clampGraphZoom(zoom + difference, families.hasGroups), {
+      x:
+        width <= el.clientWidth
+          ? bounds.width / 2
+          : (el.scrollLeft + el.clientWidth / 2) / scale,
+      y:
+        height <= el.clientHeight
+          ? bounds.height / 2
+          : (el.scrollTop + el.clientHeight / 2) / scale,
+    });
   };
   const centerSelf = () => {
     const node = layout.nodes.find((item) => item.id === selfId);
@@ -375,7 +377,10 @@ export default function FamilyGraph({
             type="button"
             className="visual-icon-button"
             aria-label="缩小亲缘图"
-            disabled={zoom <= MIN_GRAPH_ZOOM}
+            disabled={zoom <= minZoom}
+            title={
+              zoom <= minZoom ? "已到最小，拖动查看其他家人" : "缩小亲缘图"
+            }
             onClick={() => changeZoom(-0.15)}
           >
             <Minus size={17} />
@@ -426,7 +431,7 @@ export default function FamilyGraph({
       </div>
       {overview && (
         <div className="graph-family-notice" role="status">
-          已收成家庭卡片 · 点一家看成员{scale < 0.65 ? " · 放大可看清姓名" : ""}
+          已收成家庭卡片 · 点一家看成员{zoom <= minZoom ? " · 已到最小" : ""}
         </div>
       )}
       <div

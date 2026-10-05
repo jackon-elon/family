@@ -62,7 +62,10 @@ export function relationshipFor(
         ? "我自己"
         : result.status === "invalid"
           ? "关系待核对"
-          : "称呼待补充");
+          : result.status === "ambiguous"
+            ? "关系待核对"
+            : result.path?.steps.map((step) => step.label).join("的") ||
+              "亲属");
   const path =
     result.path?.display ||
     (result.status === "self"
@@ -80,10 +83,14 @@ export function relationshipFor(
     label,
     path,
     missing: result.missing.length
-      ? result.missing.join("、")
+      ? `还缺少：${result.missing.join("、")}`
       : result.status === "invalid"
         ? result.reason
-        : undefined,
+        : result.status === "ambiguous"
+          ? "记录中存在多种关系路径，需要核对后确定称呼。"
+          : result.status === "pending" && !result.term && !result.category
+            ? "已记录关系，暂未匹配到称呼，先显示关系路径。"
+            : undefined,
     alternatives: result.alternatives?.join(" / "),
     status,
   };

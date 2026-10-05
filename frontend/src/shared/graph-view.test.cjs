@@ -17,8 +17,15 @@ new Function("require", "module", "exports", compiled)(
   mod,
   mod.exports,
 );
-const { graphBounds, graphScroll, GRAPH_UNIT, GRAPH_CARD, MIN_GRAPH_ZOOM } =
-  mod.exports;
+const {
+  graphBounds,
+  graphScroll,
+  GRAPH_UNIT,
+  GRAPH_CARD,
+  MIN_GRAPH_ZOOM,
+  minimumGraphZoom,
+  clampGraphZoom,
+} = mod.exports;
 
 test("scrollable graph bounds include every card and generation heading without mini program gutters", () => {
   const nodes = [
@@ -77,7 +84,10 @@ test("a large family can zoom out below 85 percent without negative scroll", () 
     Array.from({ length: 160 }, (_, i) => ({ x: 210 + i * 175, y: 180 })),
   );
   assert.ok(MIN_GRAPH_ZOOM < 0.85);
-  assert.ok(bounds.width * MIN_GRAPH_ZOOM <= 275);
+  assert.ok(
+    bounds.width * MIN_GRAPH_ZOOM > 275,
+    "wide families scroll instead of shrinking to dots",
+  );
   const center = {
     x: (210 + 159 * 175) * GRAPH_UNIT - bounds.left,
     y: 180 * GRAPH_UNIT - bounds.top,
@@ -95,4 +105,16 @@ test("a large family can zoom out below 85 percent without negative scroll", () 
       (GRAPH_CARD * MIN_GRAPH_ZOOM) / 2 <=
       275,
   );
+});
+
+test("repeated zoom-out stops at readable cards in grouped and ungrouped graphs", () => {
+  for (const grouped of [true, false]) {
+    let zoom = 1;
+    for (let i = 0; i < 50; i++) zoom = clampGraphZoom(zoom - 0.15, grouped);
+    assert.equal(zoom, minimumGraphZoom(grouped));
+    assert.ok(16 * zoom * (grouped ? 2 : 1) >= 12);
+    assert.equal(clampGraphZoom(0.01, grouped), zoom);
+    assert.equal(clampGraphZoom(2, grouped), 1.6);
+  }
+  assert.equal(minimumGraphZoom(true), 0.4);
 });

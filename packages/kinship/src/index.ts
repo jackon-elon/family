@@ -424,7 +424,7 @@ function siblingAge(step: KinshipPathStep, role: string, missing: string[]): 'ol
 
 function ageBetween(perspective: Person, target: Person, missing: string[]): 'older' | 'younger' | undefined {
   const age = olderFromBirthday(perspective, target);
-  if (!age) missing.push('双方的长幼（可补充完整出生日期；同日出生需家人确认）');
+  if (!age) missing.push(`${perspective.name && target.name ? `${perspective.name}与${target.name}` : '双方'}的长幼（可补充完整出生日期；同日出生需家人确认）`);
   return age;
 }
 
@@ -516,13 +516,28 @@ function assessPath(path: KinshipPath, byId: Map<string, Person>): RuleAssessmen
     if (sibling === 'female') return { term: child === 'male' ? '外甥' : child === 'female' ? '外甥女' : undefined, missing };
     return { missing };
   }
-  if (pattern === 'parent>sibling>child') {
+  if (pattern === 'parent>sibling>child' || pattern === 'parent>sibling>child>spouse') {
     const parent = g(1, '父母');
     const sibling = g(2, '父母的兄弟姐妹');
     const cousin = g(3, '堂表兄弟姐妹');
     const age = ageBetween(person(0), person(3), missing);
     if (parent === 'unknown' || sibling === 'unknown' || cousin === 'unknown') return { missing };
     const family = parent === 'male' && sibling === 'male' ? '堂' : '表';
+    if (pattern.endsWith('>spouse')) {
+      const partner = g(4, '堂表兄弟姐妹的配偶');
+      if (partner === 'unknown') return { missing };
+      if (cousin === 'male' && partner === 'female') {
+        return age
+          ? { term: `${family}${age === 'older' ? '嫂' : '弟媳'}`, missing }
+          : { category: `${family}兄弟的妻子`, missing };
+      }
+      if (cousin === 'female' && partner === 'male') {
+        return age
+          ? { term: `${family}${age === 'older' ? '姐夫' : '妹夫'}`, missing }
+          : { category: `${family}姐妹的丈夫`, missing };
+      }
+      return { category: `${family}${cousin === 'male' ? '兄弟' : '姐妹'}的配偶`, missing };
+    }
     if (!age) return { category: `${family}${cousin === 'male' ? '兄弟' : '姐妹'}`, missing };
     return { term: `${family}${cousin === 'male' ? (age === 'older' ? '哥' : '弟') : (age === 'older' ? '姐' : '妹')}`, missing };
   }

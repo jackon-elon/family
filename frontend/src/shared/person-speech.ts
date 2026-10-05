@@ -21,7 +21,9 @@ export function personSpeechText({
       parts.push(`你备注的是${remark.trim()}。`);
     if (relationship?.status === "resolved")
       parts.push(`是你的${relationship.label}。`);
-    else if (relationship) parts.push("你们的关系还待补充。");
+    else if (relationship?.status === "unrelated")
+      parts.push("你们的关系还待补充。");
+    else if (relationship) parts.push("具体称呼请查看关系说明。");
   }
   if (city?.trim()) parts.push(`目前在${city.trim()}。`);
   return parts.join("");

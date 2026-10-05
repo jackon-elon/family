@@ -1895,7 +1895,7 @@ export function PersonDetail({
             <div className="kinship-note">
               <b>{kinship.label}</b>
               <span>{kinship.path}</span>
-              {expanded && kinship.missing && <small>{kinship.missing}</small>}
+              {kinship.missing && <small>{kinship.missing}</small>}
             </div>
           )}
           {(disconnected || kinship?.status === "unrelated") && (

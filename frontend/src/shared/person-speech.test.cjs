@@ -45,6 +45,13 @@ test("speech reads a member's known relationship and remark, but guests never in
       name: "张丽",
       relationship: { label: "姑妈", status: "pending" },
     }),
+    "这是张丽。具体称呼请查看关系说明。",
+  );
+  assert.equal(
+    personSpeechText({
+      name: "张丽",
+      relationship: { label: "关系待补充", status: "unrelated" },
+    }),
     "这是张丽。你们的关系还待补充。",
   );
   assert.equal(personSpeechText({ name: "张丽", city: " " }), "这是张丽。");

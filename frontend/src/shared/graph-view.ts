@@ -1,8 +1,17 @@
 /** Web geometry excludes the large gutters used by the original mini program. */
 export const GRAPH_UNIT = 0.88;
 export const GRAPH_CARD = 132;
-export const MIN_GRAPH_ZOOM = 0.01;
+export const MIN_GRAPH_ZOOM = 0.4;
 export const MAX_GRAPH_ZOOM = 1.6;
+
+/** Family cards render at twice the personal scale; keep names at least 12px. */
+export function minimumGraphZoom(hasGroups: boolean) {
+  return hasGroups ? MIN_GRAPH_ZOOM : 0.75;
+}
+
+export function clampGraphZoom(zoom: number, hasGroups: boolean) {
+  return Math.max(minimumGraphZoom(hasGroups), Math.min(MAX_GRAPH_ZOOM, zoom));
+}
 
 export function graphBounds(
   nodes: ReadonlyArray<{ x: number; y: number }>,

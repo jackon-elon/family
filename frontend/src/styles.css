@@ -3110,3 +3110,25 @@ form fieldset > label + label {
     opacity: 1;
   }
 }
+/* Preserve the original home artwork; raise the small print for older readers. */
+.home-page .page-header .eyebrow,
+.home-page .home-intro .pill,
+.home-page .album-card .eyebrow,
+.home-page .section-heading > .small { font-size: 14px; color: #68755c; }
+.home-page .home-intro .pill { letter-spacing: .5px; }
+.home-page .page-header .muted,
+.home-page .home-intro p,
+.home-page .album-card p,
+.home-page .album-card-bottom { font-size: 16px; color: #657158; }
+.home-page .section-heading { flex-wrap: wrap; gap: 8px 14px; }
+.home-page .section-heading h2 { font-size: 20px; }
+.home-page .album-card h3 { overflow-wrap: anywhere; }
+.home-page .album-card-bottom { flex-wrap: wrap; gap: 10px; }
+.home-page .album-card-bottom > span:last-child { font-weight: 600; color: #516742; }
+.home-page .birthday-item { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: 10px; }
+.home-page .birthday-item h3 { font-size: 18px; color: #4e5d44; overflow-wrap: anywhere; }
+.home-page .birthday-item p { font-size: 14px; color: #68755f; overflow-wrap: anywhere; }
+.home-page .birthday-count { font-size: 15px; }
+.home-page .birthday-date { width: 46px; height: 58px; }
+.home-page .birthday-date span { font-size: 13px; }
+.home-page .page-footer { font-size: 14px; color: #7c866e; }

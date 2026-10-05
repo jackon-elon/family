@@ -1318,16 +1318,19 @@ export function FamilyHomeContent({
   reloadBirthdays: () => void;
 }) {
   const family = circles[0];
-  const [showBirthdays, setShowBirthdays] = useState(false);
-  useEffect(() => setShowBirthdays(false), [family?.id]);
   // A refreshed membership list must not show events from a previous family.
-  const familyEvents = events.filter((event) => event.circleId === family?.id);
+  const familyEvents = events
+    .filter((event) => event.circleId === family?.id)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  // Use the upcoming occurrence date, including the year and lunar conversion.
+  // Keep the second person's whole birthday date together rather than cutting it off.
+  const lastPreviewDate = familyEvents[1]?.date || familyEvents[0]?.date;
+  const birthdayPreview = familyEvents.filter((event) => event.date <= lastPreviewDate);
   const birthdayLink = (event: BirthdayEvent) => (
     <Link
       key={`${event.circleId}-${event.personId}`}
       to={`/album/${event.circleId}?person=${event.personId}`}
       className="birthday-item"
-      onClick={() => setShowBirthdays(false)}
     >
       <div className="birthday-date">
         <b>{event.date.slice(8)}</b>
@@ -1454,19 +1457,9 @@ export function FamilyHomeContent({
               重新加载生日
             </button>
           ) : familyEvents.length ? (
-            <>
-              <div className="birthday-list">
-                {familyEvents.slice(0, 2).map(birthdayLink)}
-              </div>
-              {familyEvents.length > 2 && (
-                <button
-                  className="button secondary birthday-show-all"
-                  onClick={() => setShowBirthdays(true)}
-                >
-                  查看全部生日（{familyEvents.length} 人）
-                </button>
-              )}
-            </>
+            <div className="birthday-list">
+              {birthdayPreview.map(birthdayLink)}
+            </div>
           ) : (
             <p className="soft-note">
               近期没有家人生日。农历生日也会自动换算提醒。
@@ -1475,31 +1468,7 @@ export function FamilyHomeContent({
         </section>
       )}
       <footer className="page-footer">山川虽远，牵挂常在。</footer>
-      {showBirthdays && family && (
-        <Modal
-          title="近期生日"
-          className="birthday-dialog"
-          onClose={() => setShowBirthdays(false)}
-        >
-          <p className="birthday-dialog-caption">
-            未来30天 · {familyEvents.length} 位家人
-          </p>
-          <div
-            className="birthday-dialog-scroll"
-            role="region"
-            aria-label="全部生日列表"
-            tabIndex={0}
-          >
-            {eventsLoading ? (
-              <Loading label="正在查看近期生日…" />
-            ) : birthdayError ? (
-              <Alert message={birthdayError} />
-            ) : (
-              <div className="birthday-list is-expanded">{familyEvents.map(birthdayLink)}</div>
-            )}
-          </div>
-        </Modal>
-      )}
+
     </div>
   );
 }

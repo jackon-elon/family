@@ -71,10 +71,10 @@ const render = (component, route = "/guest") =>
     React.createElement(MemoryRouter, { initialEntries: [route] }, component),
   );
 
-test("single-family home has one entrance and only two birthday previews even for a hundred relatives", () => {
+test("single-family home preserves its artwork and shows all people sharing the second birthday date", () => {
   const events = Array.from({ length: 100 }, (_, i) => ({
     personId: `person-${i}`, personName: `生日家人${i}`, circleId: "home-family",
-    circleName: "我们的家庭", date: "2026-10-05", daysUntil: 0,
+    circleName: "我们的家庭", date: i < 3 ? "2026-10-05" : "2026-10-06", daysUntil: i < 3 ? 0 : 1,
     birthdayText: "阳历10月5日", birthdayCalendar: "solar",
   }));
   const html = render(React.createElement(FamilyHomeContent, {
@@ -83,13 +83,39 @@ test("single-family home has one entrance and only two birthday previews even fo
     birthdayError: "", reloadBirthdays() {},
   }), "/");
   assert.equal((html.match(/class="album-card album-family"/g) || []).length, 1);
-  assert.equal((html.match(/class="birthday-item"/g) || []).length, 2);
+  assert.equal((html.match(/class="birthday-item"/g) || []).length, 3);
   assert.ok(html.includes("生日家人0") && html.includes("生日家人1"));
-  assert.ok(!html.includes("生日家人2"));
-  assert.ok(html.includes("查看全部生日（100 人）"));
+  assert.ok(html.includes("生日家人2"));
+  assert.ok(!html.includes("生日家人3"));
+  assert.ok(!html.includes("查看全部生日"));
   assert.ok(html.includes("person=person-0"));
   for (const restored of ["home-intro", "intro-art", "朝夕之间 · 人间相见", "好好记在心上。", "让天南海北的联系，近一些。"]) assert.ok(html.includes(restored), restored);
   for (const absent of ["我的亲友录", "其他家庭", "创建家庭"]) assert.ok(!html.includes(absent), absent);
+});
+
+test("home birthday preview sorts upcoming dates, defaults to two people and includes ties across calendars and years", () => {
+  const cases = [
+    { dates: [], expected: [] },
+    { dates: ["2026-10-05"], expected: [0] },
+    { dates: ["2026-10-07", "2026-10-05", "2026-10-06"], expected: [1, 2] },
+    { dates: ["2026-10-05", "2026-10-06", "2026-10-06", "2026-10-07"], expected: [0, 1, 2] },
+    { dates: ["2027-01-02", "2027-01-01", "2026-12-31", "2027-01-01"], expected: [2, 1, 3] },
+  ];
+  for (const { dates, expected } of cases) {
+    const events = dates.map((date, i) => ({ personId: `p-${i}`, personName: `生日家人${i}`,
+      circleId: "home-family", circleName: "我们的家庭", date, daysUntil: i,
+      birthdayText: "测试生日", birthdayCalendar: i % 2 ? "lunar" : "solar" }));
+    const before = JSON.stringify(events);
+    const html = render(React.createElement(FamilyHomeContent, {
+      circles: [{ id: "home-family", name: "我们的家庭", role: "member", personCount: 10 }],
+      circlesLoading: false, circlesError: "", events, eventsLoading: false,
+      birthdayError: "", reloadBirthdays() {},
+    }));
+    assert.deepEqual([...html.matchAll(/person=(p-\d+)/g)].map(match => Number(match[1].slice(2))), expected);
+    assert.equal(JSON.stringify(events), before);
+    assert.ok(!html.includes("查看全部生日"));
+    assert.ok(!html.includes('role="dialog"'));
+  }
 });
 
 test("home handles missing family and birthday failure without exposing an old family's birthday", () => {

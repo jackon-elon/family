@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PersonView } from "../types";
+import { matchesPerson } from "../shared/person-search";
 
 // Keep the native select usable on phones, with a search for larger families.
 export default function PersonSelect({
@@ -17,11 +18,7 @@ export default function PersonSelect({
 }) {
   const [query, setQuery] = useState("");
   const matches = people.filter(
-    (person) =>
-      person.id === value ||
-      [person.name, person.nickname, person.city, person.phone].some((text) =>
-        text?.includes(query.trim()),
-      ),
+    (person) => person.id === value || matchesPerson(person, query),
   );
   const duplicates = new Set(
     people

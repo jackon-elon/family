@@ -1161,6 +1161,13 @@ form fieldset > label + label {
   font-weight: 500;
   color: #617452;
 }
+.modal > .modal-header {
+  position: sticky;
+  top: -25px;
+  z-index: 2;
+  background: #fffefa;
+  padding-block: 12px;
+}
 .modal-actions {
   display: flex;
   gap: 12px;
@@ -2239,6 +2246,9 @@ form fieldset > label + label {
   }
   .modal-header h2 {
     font-size: 21px;
+  }
+  .modal > .modal-header {
+    top: -21px;
   }
   .modal-actions {
     padding-top: 18px;

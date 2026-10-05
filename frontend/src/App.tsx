@@ -81,6 +81,7 @@ import FamilyGraph from "./components/FamilyGraph";
 import ContactActions from "./components/ContactActions";
 import { relationshipFor } from "./shared/relationship";
 import { citySummary } from "./shared/geography";
+import { matchesPerson } from "./shared/person-search";
 import {
   albumViewReducer,
   initialAlbumView,
@@ -1519,11 +1520,7 @@ export function FamilyAlbum({
       ]),
     );
   }, [data, readOnly]);
-  const filtered = people.filter((p) =>
-    [p.name, p.originalName, p.city, p.industry, p.occupation].some((s) =>
-      s?.includes(search.trim()),
-    ),
-  );
+  const filtered = people.filter((p) => matchesPerson(p, search, labels[p.id]));
   if (loading)
     return (
       <div className="page">
@@ -1947,7 +1944,11 @@ export function PersonDetail({
                 <button
                   className="button secondary small-button"
                   disabled={busy}
-                  onClick={() => setEditing(false)}
+                  onClick={() => {
+                    setText(visibleRemark);
+                    setError("");
+                    setEditing(false);
+                  }}
                 >
                   取消
                 </button>
@@ -1974,7 +1975,11 @@ export function PersonDetail({
                 (!person.isSelf ? (
                   <button
                     className="button secondary small-button"
-                    onClick={() => setEditing(true)}
+                    onClick={() => {
+                      setText(visibleRemark);
+                      setError("");
+                      setEditing(true);
+                    }}
                   >
                     设置备注
                   </button>

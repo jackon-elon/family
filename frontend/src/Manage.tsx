@@ -39,6 +39,7 @@ import type {
   Relation,
 } from "./types";
 import { matchedReviewPerson, reviewMatchError } from "./shared/onboarding";
+import { matchesPerson } from "./shared/person-search";
 
 type RelationChoice = {
   mode: "" | "later" | "linked";
@@ -289,9 +290,7 @@ export default function Manage() {
         </Empty>
       </div>
     );
-  const visiblePeople = data.people.filter((p) =>
-    [p.name, p.nickname, p.city].some((v) => v?.includes(search)),
-  );
+  const visiblePeople = data.people.filter((p) => matchesPerson(p, search));
   const visibleRelations = data.relations.filter(
     (r) =>
       !relationSearch.trim() ||

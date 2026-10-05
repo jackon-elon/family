@@ -3132,3 +3132,30 @@ form fieldset > label + label {
 .home-page .birthday-date { width: 46px; height: 58px; }
 .home-page .birthday-date span { font-size: 13px; }
 .home-page .page-footer { font-size: 14px; color: #7c866e; }
+.home-intro-kicker { display: grid; width: fit-content; align-items: center; }
+.home-intro-kicker > span { grid-area: 1 / 1; }
+.home-page .intro-welcome { opacity: 0; pointer-events: none; font-family: var(--serif); font-size: 18px; line-height: 1.4; letter-spacing: 1px; color: #627045; }
+@media (prefers-reduced-motion: no-preference) {
+  .home-intro.is-welcoming .intro-welcome { animation: welcome-words 3.2s ease both; }
+  .home-intro.is-welcoming .intro-original { animation: welcome-motto 3.2s ease both; }
+  .home-intro.is-welcoming .art-node { animation: welcome-family 1.9s ease both; }
+  .home-intro.is-welcoming .node-two { animation-delay: .22s; }
+  .home-intro.is-welcoming .node-three { animation-delay: .44s; }
+  .home-intro.is-welcoming .intro-ring { animation: welcome-ring 2.8s ease both; }
+  .home-intro.is-welcoming::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; background: radial-gradient(ellipse at 75% 45%, #f8e9a34a, transparent 70%); animation: welcome-light 3.2s ease both; }
+}
+@keyframes welcome-words {
+  0%, 100% { opacity: 0; transform: translateY(3px); }
+  14%, 72% { opacity: 1; transform: translateY(0); }
+}
+@keyframes welcome-motto {
+  0%, 74% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes welcome-family {
+  0% { transform: translateY(5px) scale(.96); box-shadow: 0 0 0 0 #b7c99500; }
+  48% { transform: translateY(0) scale(1.04); box-shadow: 0 0 18px 5px #b7c99555; }
+  100% { transform: translateY(0) scale(1); box-shadow: 0 5px 16px #7b8a5b0a; }
+}
+@keyframes welcome-ring { 0% { opacity: .25; } 60% { opacity: 1; } 100% { opacity: 1; } }
+@keyframes welcome-light { 0%, 100% { opacity: 0; } 35%, 65% { opacity: 1; } }

@@ -79,6 +79,7 @@ import ProfileForm, {
   profilePhone,
 } from "./components/ProfileForm";
 import FamilyGraph from "./components/FamilyGraph";
+import HomeIntro from "./components/HomeIntro";
 import ContactActions from "./components/ContactActions";
 import PersonSpeech from "./components/PersonSpeech";
 import { personSpeechText } from "./shared/person-speech";
@@ -1367,29 +1368,7 @@ export function FamilyHomeContent({
           </Link>
         </div>
       )}
-      <section className="home-intro">
-        <div>
-          <span className="pill">朝夕之间 · 人间相见</span>
-          <h2>
-            把身边的人，
-            <br />
-            好好记在心上。
-          </h2>
-          <p>
-            亲缘有迹，近况可知。
-            <br />
-            让天南海北的联系，近一些。
-          </p>
-        </div>
-        <div className="intro-art" aria-hidden="true">
-          <div className="intro-ring ring-one" />
-          <div className="intro-ring ring-two" />
-          <span className="art-node node-one">亲</span>
-          <span className="art-node node-two">友</span>
-          <span className="art-node node-three">家</span>
-          <span className="art-star">✧</span>
-        </div>
-      </section>
+      <HomeIntro familyId={family?.id} />
       <section>
         <div className="section-heading">
           <h2>我们的家</h2>

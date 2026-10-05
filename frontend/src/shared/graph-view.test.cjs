@@ -114,7 +114,9 @@ test("repeated zoom-out stops at readable cards in grouped and ungrouped graphs"
     assert.equal(zoom, minimumGraphZoom(grouped));
     assert.ok(16 * zoom * (grouped ? 2 : 1) >= 12);
     assert.equal(clampGraphZoom(0.01, grouped), zoom);
-    assert.equal(clampGraphZoom(2, grouped), 1.6);
+    assert.equal(clampGraphZoom(2, grouped), 1);
+    for (let i = 0; i < 50; i++) zoom = clampGraphZoom(zoom + 0.15, grouped);
+    assert.equal(zoom, 1, "repeated zoom-in stops at normal card size");
   }
   assert.equal(minimumGraphZoom(true), 0.4);
 });

@@ -2,7 +2,7 @@
 export const GRAPH_UNIT = 0.88;
 export const GRAPH_CARD = 132;
 export const MIN_GRAPH_ZOOM = 0.4;
-export const MAX_GRAPH_ZOOM = 1.6;
+export const MAX_GRAPH_ZOOM = 1;
 
 /** Family cards render at twice the personal scale; keep names at least 12px. */
 export function minimumGraphZoom(hasGroups: boolean) {

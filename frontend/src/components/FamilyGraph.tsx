@@ -246,7 +246,7 @@ export default function FamilyGraph({
       .join("|"),
   ]);
   useEffect(() => {
-    if (zoom < minZoom) resetView();
+    if (zoom < minZoom || zoom > MAX_GRAPH_ZOOM) resetView();
   }, [zoom, minZoom]);
 
   // Retain the same person when rotating a phone or expanding the canvas.
@@ -393,6 +393,9 @@ export default function FamilyGraph({
             className="visual-icon-button"
             aria-label="放大亲缘图"
             disabled={zoom >= MAX_GRAPH_ZOOM}
+            title={
+              zoom >= MAX_GRAPH_ZOOM ? "已到最大，点头像看资料" : "放大亲缘图"
+            }
             onClick={() => changeZoom(0.15)}
           >
             <Plus size={17} />

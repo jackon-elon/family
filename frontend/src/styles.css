@@ -2992,3 +2992,14 @@ form fieldset > label + label {
 .birthday-dialog-caption { flex: 0 0 auto; margin: 0 0 14px; font-size: 15px; color: #64715b; }
 .birthday-dialog-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; flex: 1; padding-right: 4px; }
 .birthday-dialog .birthday-list.is-expanded { grid-template-columns: 1fr; }
+
+.photo-reminder { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px; margin: 12px 0; border-radius: 12px; background: #eef2e8; color: #43553e; font-size: 16px; }
+.manage-page .manage-person-row { flex-wrap: wrap; }
+.manage-page .manage-person-row .grow { min-width: 90px; }
+.manage-page .manage-person-row h3 { font-size: 17px; }
+.manage-page .manage-person-row p { font-size: 14px; }
+.manage-page .manage-person-row .small-button, .manage-page .relation-edit-button { min-height: 44px; font-size: 16px; padding: 8px 12px; }
+.manage-page .relation-list > div { font-size: 16px; line-height: 1.7; gap: 12px; }
+.manage-page .relation-list .actions { gap: 8px; }
+.manage-page .relation-list .icon-button { width: 44px; height: 44px; }
+.relation-before { padding: 10px 12px; border-left: 3px solid #d6d9ce; font-size: 15px; }

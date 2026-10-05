@@ -481,6 +481,61 @@ function assessPath(path: KinshipPath, byId: Map<string, Person>): RuleAssessmen
     if (first === 'female') return { term: second === 'male' ? '外孙' : second === 'female' ? '外孙女' : undefined, missing };
     return { missing };
   }
+  if (pattern === 'parent>parent>parent' || pattern === 'child>child>child') {
+    const first = g(1, '第一代亲属');
+    const second = g(2, '第二代亲属');
+    const target = g(3, '第三代亲属');
+    if ([first, second, target].includes('unknown')) return { missing };
+    const prefix = `${first === 'female' ? '外' : ''}曾${second === 'female' ? '外' : ''}`;
+    return { term: pattern.startsWith('parent')
+      ? `${prefix}祖${target === 'male' ? '父' : '母'}`
+      : `${prefix}孙${target === 'female' ? '女' : ''}`, missing };
+  }
+  if (pattern === 'parent>sibling>child>child') {
+    const parent = g(1, '父母');
+    const relative = g(2, '父母的兄弟姐妹');
+    const cousin = g(3, '堂表兄弟姐妹');
+    const child = g(4, '堂表亲的子女');
+    if ([parent, relative, cousin, child].includes('unknown')) return { missing };
+    const family = parent === 'male' && relative === 'male' ? '堂' : '表';
+    return { term: family + (cousin === 'male'
+      ? child === 'male' ? '侄子' : '侄女'
+      : child === 'male' ? '外甥' : '外甥女'), missing };
+  }
+  if (pattern === 'parent>parent>sibling>child') {
+    const parent = g(1, '父母');
+    const ancestor = g(2, '祖辈');
+    const relative = g(3, '祖辈的兄弟姐妹');
+    const target = g(4, '父母的堂表亲');
+    if ([parent, ancestor, relative, target].includes('unknown')) return { missing };
+    const family = ancestor === 'male' && relative === 'male' ? '堂' : '表';
+    if (parent === 'female') return { term: family + (target === 'male' ? '舅舅' : '姨妈'), missing };
+    if (target === 'female') return { term: family + '姑姑', missing };
+    const age = ageBetween(person(1), person(4), missing);
+    return age ? { term: family + (age === 'older' ? '伯父' : '叔叔'), missing }
+      : { category: family + '伯叔', missing };
+  }
+  if (pattern === 'parent>parent>sibling') {
+    // Keep the paternal/maternal branch explicit: 奶奶的哥哥 is clearer than a
+    // regional shorthand, and still much shorter than the raw three-hop chain.
+    const ancestor = assessPath({ ...path, personIds: path.personIds.slice(0, 3), steps: steps.slice(0, 2) }, byId);
+    const relative = g(3, '祖辈的兄弟姐妹');
+    const age = siblingAge(steps[2], '祖辈', missing);
+    if (!ancestor.term || relative === 'unknown') return { missing: [...ancestor.missing, ...missing] };
+    return age ? { term: `${ancestor.term}的${steps[2].label}`, missing }
+      : { category: `${ancestor.term}的${steps[2].label}`, missing };
+  }
+  if (pattern === 'spouse>sibling') {
+    const partner = g(1, '配偶');
+    const relative = g(2, '配偶的兄弟姐妹');
+    const age = siblingAge(steps[1], '配偶', missing);
+    if (partner === 'unknown' || relative === 'unknown') return { missing };
+    if (!age) return { category: `${partner === 'male' ? '丈夫' : '妻子'}的${relative === 'male' ? '兄弟' : '姐妹'}`, missing };
+    const word = partner === 'male'
+      ? relative === 'male' ? (age === 'older' ? '大伯子' : '小叔子') : (age === 'older' ? '大姑子' : '小姑子')
+      : relative === 'male' ? (age === 'older' ? '大舅子' : '小舅子') : (age === 'older' ? '大姨子' : '小姨子');
+    return { term: word, missing };
+  }
   if (pattern === 'parent>sibling') {
     const parent = g(1, '父母');
     const sibling = g(2, '父母的兄弟姐妹');

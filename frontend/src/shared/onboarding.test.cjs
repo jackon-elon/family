@@ -23,7 +23,7 @@ function load(file) {
   new Function("require", "module", "exports", compiled)(
     (name) => {
       if (
-        ["./App", "./hooks", "./api", "./components/ProfileForm"].includes(name)
+        ["./App", "./hooks", "./api", "../api", "./components/ProfileForm"].includes(name)
       )
         return {};
       if (!name.startsWith(".")) return require(name);

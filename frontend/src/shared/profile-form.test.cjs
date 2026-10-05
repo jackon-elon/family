@@ -21,7 +21,15 @@ function loadTs(file) {
     (name) => {
       // These imports serve the rendered form, not its exported validation.
       // Keep the actual lunar conversion module and its data in the test.
-      if (["./GeoFields", "./UI", "../api", "lucide-react"].includes(name))
+      if (
+        [
+          "./PhotoPicker",
+          "./GeoFields",
+          "./UI",
+          "../api",
+          "lucide-react",
+        ].includes(name)
+      )
         return {};
       return name.startsWith(".")
         ? loadTs(path.resolve(path.dirname(resolved), `${name}.ts`))

@@ -1,9 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { Camera } from "lucide-react";
+import PhotoPicker from "./PhotoPicker";
 import GeoFields from "./GeoFields";
-import { Alert } from "./UI";
 import type { Birthday, PersonView, UserProfile } from "../types";
-import { errorText, preparePhoto } from "../api";
 import { gregorianForLunar } from "../shared/lunar-calendar";
 
 export interface ProfileDraft {
@@ -183,16 +180,6 @@ export default function ProfileForm({
   photoBase64?: string;
   onPhotoPreparing?: (preparing: boolean) => void;
 }) {
-  const [photoError, setPhotoError] = useState("");
-  const [preparing, setPreparing] = useState(false);
-  const generation = useRef(0);
-  useEffect(
-    () => () => {
-      generation.current++;
-      onPhotoPreparing?.(false);
-    },
-    [onPhotoPreparing],
-  );
   const set = <K extends keyof ProfileDraft>(key: K, next: ProfileDraft[K]) =>
     onChange({ ...value, [key]: next });
   const setBirthday = (change: Partial<ProfileDraft>) => {
@@ -221,53 +208,14 @@ export default function ProfileForm({
   );
   return (
     <fieldset className="profile-fields" disabled={disabled}>
-      <div className="photo-field">
-        <div className="avatar large">
-          {photoBase64 || photoUrl ? (
-            <img
-              alt="个人照片"
-              src={
-                photoBase64 ? `data:image/jpeg;base64,${photoBase64}` : photoUrl
-              }
-            />
-          ) : (
-            value.name?.slice(-2) || <Camera size={26} />
-          )}
-        </div>
-        {onPhoto && (
-          <label className="button secondary upload-button">
-            {preparing ? "正在处理…" : "选择照片"}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              disabled={disabled || preparing}
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const version = ++generation.current;
-                setPhotoError("");
-                setPreparing(true);
-                onPhotoPreparing?.(true);
-                try {
-                  const photo = await preparePhoto(file);
-                  if (version === generation.current) onPhoto(photo);
-                } catch (err) {
-                  if (version === generation.current)
-                    setPhotoError(errorText(err));
-                } finally {
-                  if (version === generation.current) {
-                    setPreparing(false);
-                    onPhotoPreparing?.(false);
-                  }
-                  e.target.value = "";
-                }
-              }}
-            />
-          </label>
-        )}
-        <span className="hint">留下熟悉的面孔</span>
-      </div>
-      <Alert message={photoError} />
+      <PhotoPicker
+        name={value.name}
+        disabled={disabled}
+        onPhoto={onPhoto}
+        photoUrl={photoUrl}
+        photoBase64={photoBase64}
+        onPhotoPreparing={onPhotoPreparing}
+      />
       <div className="form-grid">
         {text("name", "姓名", "真实姓名", true)}
         <label>

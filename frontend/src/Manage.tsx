@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 import PersonSelect from "./components/PersonSelect";
+import PhotoPicker from "./components/PhotoPicker";
+import { needsPhoto, relationSentence } from "./shared/manage-people";
 import { errorText, rpc, requestId, uploadPhoto, uncertainResult } from "./api";
 import { useApp } from "./app-context";
 import { useCircle } from "./hooks";
@@ -156,6 +158,8 @@ export default function Manage() {
       "people" | "invites" | "applications" | "relations" | "settings"
     >("people"),
     [search, setSearch] = useState(""),
+    [photosOnly, setPhotosOnly] = useState(false),
+    [photoPerson, setPhotoPerson] = useState<PersonView | null>(null),
     [relationSearch, setRelationSearch] = useState(""),
     [editing, setEditing] = useState<PersonView | "new" | null>(null),
     [relationEdit, setRelationEdit] = useState<Relation | "new" | null>(null),
@@ -229,6 +233,8 @@ export default function Manage() {
     setError("");
     setTab("people");
     setSearch("");
+    setPhotosOnly(false);
+    setPhotoPerson(null);
     setTarget("");
     return () => {
       generation.current++;
@@ -321,7 +327,10 @@ export default function Manage() {
         </Empty>
       </div>
     );
-  const visiblePeople = data.people.filter((p) => matchesPerson(p, search));
+  const missingPhotoCount = data.people.filter(needsPhoto).length;
+  const visiblePeople = data.people.filter(
+    (p) => matchesPerson(p, search) && (!photosOnly || needsPhoto(p)),
+  );
   const visibleRelations = data.relations.filter(
     (r) =>
       !relationSearch.trim() ||
@@ -430,6 +439,24 @@ export default function Manage() {
           <p className="section-hint">
             填写本人登录手机号，家人受邀加入后会对应到这份资料。
           </p>
+          <div className="photo-reminder">
+            <span>
+              {missingPhotoCount
+                ? `${missingPhotoCount} 位家人还没照片`
+                : "家人的照片都已补齐"}
+            </span>
+            <button
+              type="button"
+              className="button secondary"
+              aria-pressed={photosOnly}
+              onClick={() => {
+                setPhotosOnly(!photosOnly);
+                setSearch("");
+              }}
+            >
+              {photosOnly ? "查看全部家人" : "只看没照片的家人"}
+            </button>
+          </div>
           <div className="manage-person-list">
             {visiblePeople.map((p) => (
               <div key={p.id} className="manage-person-row">
@@ -445,18 +472,39 @@ export default function Manage() {
                       .join(" · ") || "近况待补充"}
                   </p>
                 </div>
-                <button
-                  className="button secondary small-button"
-                  disabled={busy}
-                  onClick={() => setEditing(p)}
-                >
-                  <Pencil size={15} />
-                  编辑
-                </button>
+                {!photosOnly && (
+                  <button
+                    className="button secondary small-button"
+                    disabled={busy}
+                    onClick={() => setEditing(p)}
+                  >
+                    <Pencil size={15} />
+                    编辑
+                  </button>
+                )}
+                {needsPhoto(p) && (
+                  <button
+                    type="button"
+                    className="button secondary small-button"
+                    disabled={busy}
+                    onClick={() => setPhotoPerson(p)}
+                    aria-label={`给${p.name}补照片`}
+                  >
+                    补照片
+                  </button>
+                )}
               </div>
             ))}
           </div>
-          {!visiblePeople.length && <Empty title="还没有匹配的成员" />}
+          {!visiblePeople.length && (
+            <Empty
+              title={
+                photosOnly && !search.trim()
+                  ? "家人的照片都已补齐"
+                  : "还没有匹配的成员"
+              }
+            />
+          )}
         </section>
       )}
       {tab === "relations" && (
@@ -492,29 +540,16 @@ export default function Manage() {
                 to = data.people.find((p) => p.id === r.to);
               return (
                 <div key={r.id}>
-                  <span>
-                    <b>{from?.name || "家人"}</b> 是 <b>{to?.name || "家人"}</b>{" "}
-                    的{" "}
-                    <strong>
-                      {r.type === "parent"
-                        ? from?.gender === "female"
-                          ? "母亲"
-                          : from?.gender === "male"
-                            ? "父亲"
-                            : "父母"
-                        : r.type === "spouse"
-                          ? "配偶"
-                          : "兄弟姐妹"}
-                    </strong>
-                  </span>
+                  <span>{relationSentence(r, data.people)}</span>
                   <div className="actions">
                     <button
-                      className="icon-button"
+                      className="button secondary relation-edit-button"
                       aria-label={`修改${from?.name}与${to?.name}的关系`}
                       disabled={busy}
                       onClick={() => setRelationEdit(r)}
                     >
                       <Pencil size={17} />
+                      修改
                     </button>
                     <button
                       className="icon-button danger"
@@ -902,6 +937,19 @@ export default function Manage() {
           }}
         />
       )}
+      {photoPerson && (
+        <PhotoEditor
+          key={photoPerson.id}
+          person={photoPerson}
+          circleId={data.circle.id}
+          onClose={() => setPhotoPerson(null)}
+          onSaved={async () => {
+            setPhotoPerson(null);
+            await afterChange();
+            notify("照片已保存");
+          }}
+        />
+      )}
       {(relationEdit || shortcutPerson) && (
         <RelationEditor
           key={
@@ -936,6 +984,75 @@ export default function Manage() {
         />
       )}
     </div>
+  );
+}
+export function PhotoEditor({
+  person,
+  circleId,
+  onClose,
+  onSaved,
+}: {
+  person: PersonView;
+  circleId: string;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [photo, setPhoto] = useState("");
+  const [preparing, setPreparing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const lock = useRef(false);
+  return (
+    <Modal
+      title={`给${person.name}补照片`}
+      onClose={onClose}
+      busy={busy || preparing}
+    >
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!photo || preparing || lock.current) return;
+          lock.current = true;
+          setBusy(true);
+          setError("");
+          try {
+            await uploadPhoto(photo, { circleId, personId: person.id });
+            await onSaved();
+          } catch (err) {
+            setError(errorText(err));
+          } finally {
+            lock.current = false;
+            setBusy(false);
+          }
+        }}
+      >
+        <PhotoPicker
+          name={person.name}
+          photoUrl={person.photoUrl}
+          photoBase64={photo}
+          onPhoto={setPhoto}
+          onPhotoPreparing={setPreparing}
+          disabled={busy || preparing}
+        />
+        <Alert message={error} />
+        <div className="modal-actions">
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy || preparing}
+            onClick={onClose}
+          >
+            取消
+          </button>
+          <button
+            className="button primary"
+            disabled={!photo || busy || preparing}
+          >
+            {preparing ? "正在处理照片…" : busy ? "保存中…" : "保存照片"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 function PersonEditor({
@@ -1201,7 +1318,9 @@ export function RelationEditor({
             <div className="relation-current-person">
               <Avatar person={currentPerson} />
               <div>
-                <span className="hint">正在为这位家人补关系</span>
+                <span className="hint">
+                  {relation ? "正在修改这位家人的关系" : "正在为这位家人补关系"}
+                </span>
                 <strong>{currentPerson.name}</strong>
               </div>
             </div>
@@ -1255,9 +1374,20 @@ export function RelationEditor({
           )}
         </fieldset>
         {from && to && type && (
-          <p className="relation-preview relation-editor-preview" role="status">
-            {currentPerson?.name} 是 {otherPerson?.name} 的 {relationLabel}
-          </p>
+          <>
+            {relation && (
+              <p className="hint relation-before">
+                原来：{relationSentence(relation, data.people)}
+              </p>
+            )}
+            <p
+              className="relation-preview relation-editor-preview"
+              role="status"
+            >
+              {relation ? "保存后：" : "确认关系："}
+              {currentPerson?.name} 是 {otherPerson?.name} 的 {relationLabel}
+            </p>
+          </>
         )}
         <Alert message={error} />
         <button

@@ -1,0 +1,74 @@
+{
+  "recordedAt": "2026-10-05T15:50:15.958Z",
+  "server": "Official Caddy v2.11.7 Windows amd64; SHA512 release checksum verified before execution",
+  "transport": "Loopback HTTP/1.1 with real gzip; same encode/cache rules as deployment; no WAN/TLS/container limit",
+  "sampleIntervalMs": 50,
+  "scenarios": [
+    {
+      "name": "homepage_cold_cache_50",
+      "clients": 50,
+      "routes": [
+        "/",
+        "/assets/index-Bu1VGKrA.js",
+        "/assets/react-BlFS9n5X.js",
+        "/assets/cities-Ddfo7xj0.js",
+        "/assets/qrcode-BkcPc9pI.js",
+        "/assets/index-3YlWc4_A.css"
+      ],
+      "requests": 300,
+      "statuses": {
+        "200": 300
+      },
+      "success": 300,
+      "requestP95Ms": 128.05779999999993,
+      "clientP95Ms": 129.34960000000012,
+      "elapsedMs": 141.18680000000006,
+      "wireMB": 11.693429946899414,
+      "baselineRssMB": 35.0390625,
+      "sampledPeakRssMB": 94.375,
+      "cpuSingleCorePercent": 531.2111330520981
+    },
+    {
+      "name": "map_cold_cache_50",
+      "clients": 50,
+      "routes": [
+        "/assets/map-CIGW-MKW.css",
+        "/assets/map-dqShvj4o.js",
+        "/assets/PersonMap-BmG5NMrS.js"
+      ],
+      "requests": 150,
+      "statuses": {
+        "200": 150
+      },
+      "success": 150,
+      "requestP95Ms": 185.9828,
+      "clientP95Ms": 188.17059999999992,
+      "elapsedMs": 196.11860000000001,
+      "wireMB": 56.40053749084473,
+      "baselineRssMB": 94.375,
+      "sampledPeakRssMB": 106.58203125,
+      "cpuSingleCorePercent": 1139.2978534417439
+    },
+    {
+      "name": "map_etag_revalidation_50",
+      "clients": 50,
+      "routes": [
+        "/assets/map-CIGW-MKW.css",
+        "/assets/map-dqShvj4o.js",
+        "/assets/PersonMap-BmG5NMrS.js"
+      ],
+      "requests": 150,
+      "statuses": {
+        "304": 150
+      },
+      "success": 150,
+      "requestP95Ms": 25.90229999999997,
+      "clientP95Ms": 26.098799999999983,
+      "elapsedMs": 27.624300000000176,
+      "wireMB": 0,
+      "baselineRssMB": 106.70703125,
+      "sampledPeakRssMB": 111.0546875,
+      "cpuSingleCorePercent": 169.68755769376853
+    }
+  ]
+}

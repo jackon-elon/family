@@ -1,0 +1,221 @@
+{
+  "recordedAt": "2026-10-05T15:45:21.137Z",
+  "hardware": {
+    "cpu": "AMD Ryzen 7 7840H with Radeon 780M Graphics",
+    "logicalCpus": 16,
+    "ramGB": 39.1922492980957,
+    "platform": "win32",
+    "node": "v22.16.0"
+  },
+  "fixture": {
+    "people": 100,
+    "generations": 4,
+    "cities": 40,
+    "distinctMemberAccounts": 50
+  },
+  "scenarios": [
+    {
+      "name": "member_browse_30",
+      "requests": 1200,
+      "success": 1200,
+      "statuses": {
+        "200": 1200
+      },
+      "errors": {},
+      "p50Ms": 21.592200000000048,
+      "p95Ms": 121.51629999999932,
+      "maxMs": 248.2581,
+      "successP95Ms": 121.51629999999932,
+      "elapsedMs": 5252.6684000000005,
+      "requestsPerSecond": 228.48179407560414,
+      "responseMB": 18.27993869781494,
+      "baselineRssMB": 69.35546875,
+      "peakRssMB": 120.1875,
+      "cpuSingleCorePercent": 96.06545884373739,
+      "eventLoopP95Ms": 66.977791,
+      "eventLoopMaxMs": 171.835391
+    },
+    {
+      "name": "member_browse_50",
+      "requests": 2000,
+      "success": 2000,
+      "statuses": {
+        "200": 2000
+      },
+      "errors": {},
+      "p50Ms": 265.6200000000008,
+      "p95Ms": 346.21179999999913,
+      "maxMs": 550.4301999999989,
+      "successP95Ms": 346.21179999999913,
+      "elapsedMs": 7842.612700000001,
+      "requestsPerSecond": 255.03883087343493,
+      "responseMB": 30.466599464416504,
+      "baselineRssMB": 118.1015625,
+      "peakRssMB": 123.84765625,
+      "cpuSingleCorePercent": 108.19098589427983,
+      "eventLoopP95Ms": 308.019199,
+      "eventLoopMaxMs": 345.243647
+    },
+    {
+      "name": "member_refresh_burst_50",
+      "requests": 400,
+      "success": 400,
+      "statuses": {
+        "200": 400
+      },
+      "errors": {},
+      "p50Ms": 346.0562000000009,
+      "p95Ms": 1338.0743999999995,
+      "maxMs": 1420.2479999999996,
+      "successP95Ms": 1338.0743999999995,
+      "elapsedMs": 1554.771899999998,
+      "requestsPerSecond": 257.8749364580041,
+      "responseMB": 6.093319892883301,
+      "baselineRssMB": 121.51171875,
+      "peakRssMB": 124.453125,
+      "cpuSingleCorePercent": 104.51693910856004,
+      "eventLoopP95Ms": 480.772095,
+      "eventLoopMaxMs": 480.772095
+    },
+    {
+      "name": "guest_browse_50",
+      "requests": 250,
+      "success": 250,
+      "statuses": {
+        "200": 250
+      },
+      "errors": {},
+      "p50Ms": 8.647500000002765,
+      "p95Ms": 15.441500000000815,
+      "maxMs": 19.758899999997084,
+      "successP95Ms": 15.441500000000815,
+      "elapsedMs": 5053.171900000001,
+      "requestsPerSecond": 49.47695437680559,
+      "responseMB": 22.48406410217285,
+      "baselineRssMB": 122.1015625,
+      "peakRssMB": 123.46484375,
+      "cpuSingleCorePercent": 35.87845487702485,
+      "eventLoopP95Ms": 20.545535,
+      "eventLoopMaxMs": 24.297471
+    },
+    {
+      "name": "login_burst_50",
+      "requests": 50,
+      "success": 4,
+      "statuses": {
+        "200": 4,
+        "429": 46
+      },
+      "errors": {
+        "RATE_LIMITED": 46
+      },
+      "p50Ms": 50.46529999999984,
+      "p95Ms": 193.23479999999836,
+      "maxMs": 200.03549999999814,
+      "successP95Ms": 200.03549999999814,
+      "elapsedMs": 200.76620000000185,
+      "requestsPerSecond": 249.49502207531924,
+      "responseMB": 0.0055751800537109375,
+      "baselineRssMB": 122.65234375,
+      "peakRssMB": 249.4453125,
+      "cpuSingleCorePercent": 411.9219270972865,
+      "eventLoopP95Ms": 56.197119,
+      "eventLoopMaxMs": 56.197119
+    },
+    {
+      "name": "login_spread_50_over_10_seconds",
+      "requests": 50,
+      "success": 50,
+      "statuses": {
+        "200": 50
+      },
+      "errors": {},
+      "p50Ms": 138.8652000000002,
+      "p95Ms": 155.88940000000002,
+      "maxMs": 161.25399999999718,
+      "successP95Ms": 155.88940000000002,
+      "elapsedMs": 9942.7071,
+      "requestsPerSecond": 5.0289757007437625,
+      "responseMB": 0.0066661834716796875,
+      "baselineRssMB": 121.4296875,
+      "peakRssMB": 153.44140625,
+      "cpuSingleCorePercent": 70.72520521096313,
+      "eventLoopP95Ms": 16.220159,
+      "eventLoopMaxMs": 21.921791
+    },
+    {
+      "name": "guest_entry_50_same_ip",
+      "requests": 50,
+      "success": 30,
+      "statuses": {
+        "200": 30,
+        "429": 20
+      },
+      "errors": {
+        "GUEST_RATE_LIMITED": 20
+      },
+      "p50Ms": 266.01660000000265,
+      "p95Ms": 315.2910000000047,
+      "maxMs": 315.7205000000031,
+      "successP95Ms": 302.3787999999986,
+      "elapsedMs": 323.12629999999626,
+      "requestsPerSecond": 154.8652625755994,
+      "responseMB": 2.700624465942383,
+      "baselineRssMB": 121.4375,
+      "peakRssMB": 122.83984375,
+      "cpuSingleCorePercent": 91.9145238255145,
+      "eventLoopP95Ms": 291.241983,
+      "eventLoopMaxMs": 291.241983
+    }
+  ],
+  "assets": [
+    {
+      "name": "cities-Ddfo7xj0.js",
+      "bytes": 164163,
+      "gzipBytes": 51049
+    },
+    {
+      "name": "index-3YlWc4_A.css",
+      "bytes": 70118,
+      "gzipBytes": 15054
+    },
+    {
+      "name": "index-Bu1VGKrA.js",
+      "bytes": 231590,
+      "gzipBytes": 74098
+    },
+    {
+      "name": "map-CIGW-MKW.css",
+      "bytes": 15607,
+      "gzipBytes": 6456
+    },
+    {
+      "name": "map-dqShvj4o.js",
+      "bytes": 149653,
+      "gzipBytes": 43322
+    },
+    {
+      "name": "PersonMap-BmG5NMrS.js",
+      "bytes": 3319991,
+      "gzipBytes": 1072731
+    },
+    {
+      "name": "qrcode-BkcPc9pI.js",
+      "bytes": 25393,
+      "gzipBytes": 9840
+    },
+    {
+      "name": "react-BlFS9n5X.js",
+      "bytes": 263273,
+      "gzipBytes": 83540
+    }
+  ],
+  "limitations": [
+    "Loopback on the developer PC, not a 2-core/2GB server; API and load generator are separate processes.",
+    "Production API configuration and default security limits; trusted-proxy IPs simulate distinct clients on loopback only.",
+    "Resource samples cover API process only (20ms RSS samples); CPU percentage uses one logical core = 100%.",
+    "API results only here; actual Caddy static-file load is recorded in performance-static-loadtest.json. No Docker limit, WAN/TLS or mobile rendering measurement.",
+    "100 synthetic people without portraits; photo downloads, uploads and write contention are not covered."
+  ],
+  "sourceRevision": "aa05a9862f02f383c7ae39a7b3f6accc0daf4d72"
+}

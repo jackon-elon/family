@@ -3110,3 +3110,52 @@ form fieldset > label + label {
     opacity: 1;
   }
 }
+/* A compact home for one family; long names and large text may still scroll. */
+.family-home { max-width: 820px; }
+.family-home .page-header { margin-bottom: 20px; }
+.family-home .page-header h1 { font-size: clamp(25px, 4vw, 34px); overflow-wrap: anywhere; }
+.family-home .page-header .eyebrow { font-size: 14px; }
+.home-family-entry { display: flex; align-items: center; gap: 18px; padding: 24px; border-radius: 18px; background: #3d604b; color: #fff; border: 1px solid #375641; box-shadow: 0 5px 18px #34513a14; }
+.home-family-entry:hover { background: #355640; }
+.home-family-symbol { display: grid; place-items: center; flex: none; width: 72px; height: 80px; border-radius: 16px; background: #ffffff14; }
+.home-family-copy { display: grid; gap: 7px; min-width: 0; flex: 1; }
+.home-family-copy strong { font-size: 24px; }
+.home-family-copy > span { font-size: 16px; }
+.home-family-copy small { font-size: 14px; color: #e2eadc; }
+.home-family-entry > svg { flex: none; }
+.home-family-entry:focus-visible, .home-birthday-row:focus-visible, .home-more-birthdays:focus-visible { outline: 3px solid #79966a; outline-offset: 3px; }
+.home-birthdays .section-heading { margin: 24px 0 12px; }
+.home-birthdays .section-heading h2 { font-size: 19px; }
+.home-birthdays .section-heading > span { font-size: 14px; color: #687568; }
+.home-birthday-preview { border: 1px solid #e1e5d9; border-radius: 14px; overflow: hidden; background: #fffefa; }
+.home-birthday-row { display: flex; align-items: center; gap: 12px; min-height: 78px; padding: 12px 14px; background: #fffefa; color: #33472f; border-bottom: 1px solid #eceee5; }
+.home-birthday-row:last-child { border-bottom: 0; }
+.home-birthday-date { flex: none; width: 40px; display: grid; text-align: center; }
+.home-birthday-date b { font-size: 23px; line-height: 1.2; }
+.home-birthday-date > span { font-size: 13px; color: #727a6b; }
+.home-birthday-person { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.home-birthday-person strong { font-size: 17px; overflow-wrap: anywhere; }
+.home-birthday-person small { font-size: 13px; color: #67745f; }
+.home-birthday-count { font-size: 15px; flex: none; }
+.home-birthday-count.is-today { color: #8c5822; font-weight: 650; }
+.home-more-birthdays { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 46px; margin-top: 8px; border: 1px solid #c8d2bd; border-radius: 10px; background: #f7f9f1; color: #405e49; font-size: 16px; cursor: pointer; }
+.home-other-families { margin-top: 12px; font-size: 16px; }
+.home-other-families summary { cursor: pointer; padding: 10px 0; }
+.home-other-families a { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #ddd; }
+.family-home .page-footer { margin-top: 20px; padding: 0; }
+@media (max-width: 680px) {
+  .family-home { padding-top: 16px; }
+  .family-home { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  .family-home .page-header { margin-bottom: 16px; }
+  .home-family-entry { display: grid; grid-template-columns: 52px minmax(0, 1fr) 20px; padding: 16px 14px; gap: 6px 12px; }
+  .home-family-symbol { grid-column: 1; grid-row: 1 / 3; width: 52px; height: 62px; }
+  .home-family-copy { display: contents; }
+  .home-family-copy strong { grid-column: 2; grid-row: 1; font-size: 22px; }
+  .home-family-copy > span { grid-column: 2 / 4; grid-row: 2; }
+  .home-family-copy small { grid-column: 1 / -1; grid-row: 3; font-size: 14px; margin-top: 6px; }
+  .home-family-entry > svg { grid-column: 3; grid-row: 1; width: 20px; }
+  .home-birthday-row { padding: 10px; gap: 8px; }
+}
+@media (max-width: 680px) and (max-height: 700px) {
+  .family-home .page-footer { display: none; }
+}

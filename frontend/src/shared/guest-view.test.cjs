@@ -64,11 +64,48 @@ const {
   InvitationHome,
   ManagementAccess,
   GuestBirthdayList,
+  FamilyHomeContent,
 } = load("../App.tsx");
 const render = (component, route = "/guest") =>
   renderToStaticMarkup(
     React.createElement(MemoryRouter, { initialEntries: [route] }, component),
   );
+
+test("single-family home has one entrance and only two birthday previews even for a hundred relatives", () => {
+  const events = Array.from({ length: 100 }, (_, i) => ({
+    personId: `person-${i}`, personName: `生日家人${i}`, circleId: "home-family",
+    circleName: "我们的家庭", date: "2026-10-05", daysUntil: 0,
+    birthdayText: "阳历10月5日", birthdayCalendar: "solar",
+  }));
+  const html = render(React.createElement(FamilyHomeContent, {
+    circles: [{ id: "home-family", name: "我们的家庭", role: "member", personCount: 100 }],
+    circlesLoading: false, circlesError: "", events, eventsLoading: false,
+    birthdayError: "", reloadBirthdays() {},
+  }), "/");
+  assert.equal((html.match(/class="home-family-entry"/g) || []).length, 1);
+  assert.equal((html.match(/class="home-birthday-row"/g) || []).length, 2);
+  assert.ok(html.includes("生日家人0") && html.includes("生日家人1"));
+  assert.ok(!html.includes("生日家人2"));
+  assert.ok(html.includes("查看全部生日（100 人）"));
+  assert.ok(html.includes("person=person-0"));
+  for (const absent of ["我的亲友录", "home-intro", "其他家庭", "创建家庭"]) assert.ok(!html.includes(absent), absent);
+});
+
+test("home handles missing family and birthday failure without exposing an old family's birthday", () => {
+  const base = { circles: [{ id: "new", name: "新家", role: "member", personCount: 1 }],
+    circlesLoading: false, circlesError: "", events: [{ circleId: "old", personName: "旧家庭的人" }],
+    eventsLoading: false, birthdayError: "", reloadBirthdays() {},
+  };
+  const empty = render(React.createElement(FamilyHomeContent, base));
+  assert.ok(empty.includes("未来30天暂无家人生日"));
+  assert.ok(!empty.includes("旧家庭的人"));
+  const error = render(React.createElement(FamilyHomeContent, { ...base, birthdayError: "加载失败" }));
+  assert.ok(error.includes("重新加载生日") && error.includes("加载失败"));
+  assert.ok(!error.includes("暂无家人生日"));
+  const waiting = render(React.createElement(FamilyHomeContent, { ...base, circles: [] }));
+  assert.ok(waiting.includes("等待与家人相聚"));
+  assert.ok(!waiting.includes("近期生日"));
+});
 const person = {
   id: "relative",
   circleId: "family-a",

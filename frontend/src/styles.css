@@ -2762,6 +2762,13 @@ form fieldset > label + label {
 }
 
 /* Photo recognition and everyday actions for older family members. */
+.person-speech > .button {
+  width: 100%;
+  min-height: 48px;
+  font-size: 17px;
+  gap: 8px;
+  margin-top: 12px;
+}
 .contact-buttons {
   display: flex;
   flex-wrap: wrap;

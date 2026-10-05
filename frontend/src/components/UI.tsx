@@ -256,9 +256,19 @@ export function FloatingPanel({
           viewportWidth <= 680 ||
           (viewportWidth <= 1000 && viewportHeight <= 500);
       const main = document.querySelector(".main")?.getBoundingClientRect();
+      const backbar = document
+        .querySelector(".album-backbar")
+        ?.getBoundingClientRect();
+      const navigationBottom =
+        backbar && backbar.top < viewportHeight && backbar.bottom > 0
+          ? backbar.bottom + 12
+          : 16;
       const leftEdge = mobile ? 14 : Math.max(16, (main?.left || 0) + 16),
         rightEdge = viewportWidth - 16,
-        topEdge = 16,
+        topEdge = Math.max(
+          16,
+          Math.min(viewportHeight - 160, navigationBottom),
+        ),
         bottomEdge = viewportHeight - (mobile ? 87 : 20);
       const width = Math.min(320, rightEdge - leftEdge),
         gap = 14;

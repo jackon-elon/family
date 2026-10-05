@@ -79,6 +79,8 @@ import ProfileForm, {
 } from "./components/ProfileForm";
 import FamilyGraph from "./components/FamilyGraph";
 import ContactActions from "./components/ContactActions";
+import PersonSpeech from "./components/PersonSpeech";
+import { personSpeechText } from "./shared/person-speech";
 import { relationshipFor } from "./shared/relationship";
 import { citySummary } from "./shared/geography";
 import { matchesPerson } from "./shared/person-search";
@@ -1786,12 +1788,20 @@ export function PersonDetail({
   readOnly?: boolean;
   circleId: string;
   remark: string;
-  kinship?: { label: string; path: string; missing?: string };
+  kinship?: { label: string; path: string; missing?: string; status?: string };
   onClose: () => void;
   onRemark: (remark: string) => void;
 }) {
   const [photoOpen, setPhotoOpen] = useState(false);
   const visibleRemark = readOnly ? "" : remark;
+  const spokenText = personSpeechText({
+    name: person.name,
+    city: person.city,
+    isSelf: person.isSelf,
+    readOnly,
+    remark: visibleRemark,
+    relationship: kinship,
+  });
   const [text, setText] = useState(visibleRemark),
     [editing, setEditing] = useState(false),
     [busy, setBusy] = useState(false),
@@ -1863,6 +1873,7 @@ export function PersonDetail({
               )}
             </div>
           </div>
+          <PersonSpeech key={`${person.id}:${spokenText}`} text={spokenText} />
           <ContactActions
             key={person.id}
             phone={person.phone}

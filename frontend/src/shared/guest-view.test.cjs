@@ -256,6 +256,7 @@ test("guest full profile shows contact and complete birthday with no editing, re
     }),
   );
   for (const content of [
+    "听一听",
     "13800000001",
     "qing-test",
     "1990年6月12日",

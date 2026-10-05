@@ -959,7 +959,9 @@ export function Auth({
                   disabled={remaining > 0}
                 >
                   {busy
-                    ? "请稍候…"
+                    ? mode === "login"
+                      ? "正在登录，请稍候…"
+                      : "正在创建账号…"
                     : remaining > 0
                       ? retryLabel(remaining)
                       : mode === "login"

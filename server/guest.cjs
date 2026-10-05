@@ -1,6 +1,7 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const { reserveAttempts, refundAttempts } = require("./rate-limit.cjs");
 const { HttpError, clientIp } = require("./auth.cjs");
 const { FamilyRepository } = require("./family-repository.cjs");
 const { BirthdayCalendar } = require("../backend/dist/birthday.js");
@@ -184,21 +185,14 @@ class Guests {
     return parseCookie(req, this.config.guestCookieName);
   }
 
-  async limit(req) {
-    const now = this.now();
+  limit(req, db) {
     const key = `guest:ip:${hash(clientIp(req, this.config.trustProxyHops))}`;
-    const retryAfter = await this.store.exclusive((db) => {
-      db.prepare("DELETE FROM rate_limits WHERE expires_at <= ?").run(now);
-      const row = db
-        .prepare("SELECT count, expires_at FROM rate_limits WHERE key = ?")
-        .get(key);
-      if (row && row.count >= this.config.guestIpLimit)
-        return Math.max(1, Math.ceil((row.expires_at - now) / 1000));
-      db.prepare(
-        "INSERT INTO rate_limits(key, count, expires_at) VALUES(?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = count + 1",
-      ).run(key, now + this.config.authWindow);
-      return 0;
-    });
+    const { retryAfter, reservations } = reserveAttempts(
+      db,
+      [[key, this.config.guestIpLimit]],
+      this.now(),
+      this.config.authWindow,
+    );
     if (retryAfter)
       throw new HttpError(
         429,
@@ -206,6 +200,7 @@ class Guests {
         `查询次数较多，请约 ${retryAfter < 60 ? `${retryAfter} 秒` : `${Math.ceil(retryAfter / 60)} 分钟`}后再试`,
         retryAfter,
       );
+    return () => refundAttempts(db, reservations);
   }
 
   grant(db, token) {
@@ -244,27 +239,28 @@ class Guests {
       body.familyName.trim().length > 60
     )
       throw new HttpError(400, "INVALID_INPUT", "请输入完整的家庭名称");
-    await this.limit(req);
     const token = crypto.randomBytes(32).toString("base64url");
     const prior = this.token(req);
-    await this.store.exclusive((db) => {
+    const entryError = await this.store.exclusive((db) => {
+      const refund = this.limit(req, db);
       const rows = db
         .prepare(
           "SELECT id FROM documents WHERE collection = 'circles' AND json_extract(body, '$.type') = 'family' AND json_extract(body, '$.mode') = 'shared' AND json_extract(body, '$.name') = ? LIMIT 2",
         )
         .all(body.familyName.trim());
       if (!rows.length)
-        throw new HttpError(
+        return new HttpError(
           404,
           "FAMILY_NOT_FOUND",
           "没有找到这个家庭，请核对完整名称",
         );
       if (rows.length > 1)
-        throw new HttpError(
+        return new HttpError(
           409,
           "FAMILY_NAME_AMBIGUOUS",
           "家庭名称重复，暂时无法进入，请联系网站维护者处理",
         );
+      refund();
       const now = this.now();
       db.prepare("DELETE FROM guest_sessions WHERE expires_at <= ?").run(now);
       if (prior)
@@ -288,6 +284,7 @@ class Guests {
         now,
       );
     });
+    if (entryError) throw entryError;
     return { token, data: await this.readToken(token, true) };
   }
 

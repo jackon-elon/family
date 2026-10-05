@@ -5,6 +5,7 @@ const { isIP } = require("node:net");
 const { promisify } = require("node:util");
 const { ApiError } = require("../backend/dist/service.js");
 const { accountAccess, inviteEligibility } = require("./account-access.cjs");
+const { reserveAttempts, refundAttempts } = require("./rate-limit.cjs");
 const scrypt = promisify(crypto.scrypt);
 const SCRYPT = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
@@ -216,41 +217,48 @@ class Authentication {
     this.config = config;
     this.now = now;
     this.hashesInFlight = 0;
+    this.passwordQueue = [];
   }
 
   async withPasswordWork(work) {
-    if (this.hashesInFlight >= 4)
-      throw new HttpError(429, "RATE_LIMITED", "登录请求较多，请稍后再试", 2);
-    this.hashesInFlight++;
+    const busy = () =>
+      new HttpError(429, "RATE_LIMITED", "登录人数较多，请稍后再试", 2);
+    if (this.hashesInFlight >= 4) {
+      if (this.passwordQueue.length >= 64) throw busy();
+      await new Promise((resolve, reject) => {
+        const entry = { resolve, timer: undefined };
+        entry.timer = setTimeout(() => {
+          const index = this.passwordQueue.indexOf(entry);
+          if (index !== -1) this.passwordQueue.splice(index, 1);
+          reject(busy());
+        }, 15_000);
+        this.passwordQueue.push(entry);
+      });
+      // The finishing job hands its slot directly to the oldest waiter.
+    } else this.hashesInFlight++;
     try {
       return await work();
     } finally {
-      this.hashesInFlight--;
+      const next = this.passwordQueue.shift();
+      if (next) {
+        clearTimeout(next.timer);
+        next.resolve();
+      } else this.hashesInFlight--;
     }
   }
 
   async limit(ip, phone) {
-    const now = this.now();
-    const retryAfter = await this.store.exclusive((db) => {
-      db.prepare("DELETE FROM rate_limits WHERE expires_at <= ?").run(now);
-      const keys = [
-        [`ip:${hashToken(ip)}`, this.config.authIpLimit],
-        [`phone:${hashToken(phone)}`, this.config.authPhoneLimit],
-      ];
-      const blocked = keys.flatMap(([key, cap]) => {
-        const row = db
-          .prepare("SELECT count, expires_at FROM rate_limits WHERE key = ?")
-          .get(key);
-        return row && row.count >= cap ? [row.expires_at] : [];
-      });
-      if (blocked.length)
-        return Math.max(1, Math.ceil((Math.max(...blocked) - now) / 1000));
-      for (const [key] of keys)
-        db.prepare(
-          "INSERT INTO rate_limits(key, count, expires_at) VALUES(?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = count + 1",
-        ).run(key, now + this.config.authWindow);
-      return 0;
-    });
+    const { retryAfter, reservations } = await this.store.exclusive((db) =>
+      reserveAttempts(
+        db,
+        [
+          [`ip:${hashToken(ip)}`, this.config.authIpLimit],
+          [`phone:${hashToken(phone)}`, this.config.authPhoneLimit],
+        ],
+        this.now(),
+        this.config.authWindow,
+      ),
+    );
     if (retryAfter)
       throw new HttpError(
         429,
@@ -258,6 +266,21 @@ class Authentication {
         `尝试次数较多，请约 ${retryAfter < 60 ? `${retryAfter} 秒` : `${Math.ceil(retryAfter / 60)} 分钟`}后再试`,
         retryAfter,
       );
+    return () => this.store.exclusive((db) => refundAttempts(db, reservations));
+  }
+
+  async passwordAttempt(req, phone, work) {
+    return this.withPasswordWork(async () => {
+      // Check inside the queue: previous failures are visible before hashing,
+      // while successful users on the same Wi-Fi return their budget promptly.
+      const refund = await this.limit(
+        clientIp(req, this.config.trustProxyHops),
+        phone,
+      );
+      const result = await work();
+      await refund();
+      return result;
+    });
   }
 
   cookie(token, clear = false, lifetime = this.config.sessionLifetime) {
@@ -344,15 +367,19 @@ class Authentication {
 
   async register(body, req) {
     const phone = normalizePhone(body.phone);
+    return this.passwordAttempt(req, phone, () =>
+      this.registerAttempt(body, req),
+    );
+  }
+
+  async registerAttempt(body, req) {
+    const phone = normalizePhone(body.phone);
     const remember = remembered(body);
-    await this.limit(clientIp(req, this.config.trustProxyHops), phone);
     // Reject missing/invalid invitations before spending a password hash.
     await this.store.exclusive((db) =>
       availableInvite(db, body.inviteToken, this.now()),
     );
-    const saved = await this.withPasswordWork(() =>
-      passwordHash(body.password),
-    );
+    const saved = await passwordHash(body.password);
     return this.store.exclusive((db) => {
       const invite = availableInvite(db, body.inviteToken, this.now());
       if (db.prepare("SELECT id FROM accounts WHERE phone = ?").get(phone))
@@ -397,14 +424,16 @@ class Authentication {
 
   async login(body, req) {
     const phone = normalizePhone(body.phone);
+    return this.passwordAttempt(req, phone, () => this.loginAttempt(body, req));
+  }
+
+  async loginAttempt(body, req) {
+    const phone = normalizePhone(body.phone);
     const remember = remembered(body);
-    await this.limit(clientIp(req, this.config.trustProxyHops), phone);
     const row = await this.store.exclusive((db) =>
       db.prepare("SELECT * FROM accounts WHERE phone = ?").get(phone),
     );
-    const matches = await this.withPasswordWork(() =>
-      passwordMatches(body.password, row?.password_hash),
-    );
+    const matches = await passwordMatches(body.password, row?.password_hash);
     if (!matches)
       throw new HttpError(401, "BAD_CREDENTIALS", "手机号或密码错误");
     return this.store.exclusive((db) => {
@@ -449,20 +478,15 @@ class Authentication {
   }
 
   async changePassword(body, req, current) {
-    await this.limit(
-      clientIp(req, this.config.trustProxyHops),
-      current.user.phone,
+    return this.passwordAttempt(req, current.user.phone, () =>
+      this.changePasswordAttempt(body, req, current),
     );
-    const saved = await this.withPasswordWork(async () => {
-      if (
-        !(await passwordMatches(
-          body.currentPassword,
-          current.row.password_hash,
-        ))
-      )
-        throw new HttpError(401, "BAD_CREDENTIALS", "当前密码错误");
-      return passwordHash(body.newPassword);
-    });
+  }
+
+  async changePasswordAttempt(body, req, current) {
+    if (!(await passwordMatches(body.currentPassword, current.row.password_hash)))
+      throw new HttpError(401, "BAD_CREDENTIALS", "当前密码错误");
+    const saved = await passwordHash(body.newPassword);
     return this.store.exclusive((db) => {
       this.requireSession(db, current);
       const row = db
@@ -671,12 +695,15 @@ class Authentication {
   }
 
   async reauthenticate(body, req, current) {
-    await this.limit(
-      clientIp(req, this.config.trustProxyHops),
-      current.user.phone,
+    return this.passwordAttempt(req, current.user.phone, () =>
+      this.reauthenticateAttempt(body, req, current),
     );
-    const matches = await this.withPasswordWork(() =>
-      passwordMatches(body.password, current.row.password_hash),
+  }
+
+  async reauthenticateAttempt(body, req, current) {
+    const matches = await passwordMatches(
+      body.password,
+      current.row.password_hash,
     );
     if (!matches)
       throw new HttpError(401, "BAD_CREDENTIALS", "密码错误，请重新输入");

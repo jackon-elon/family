@@ -134,7 +134,7 @@ async function main() {
       };
       report.scenarios.push(result); records = null;
       console.log(JSON.stringify(result));
-      const allowed = name.startsWith('login_') ? ['RATE_LIMITED'] : name === 'guest_entry_50_same_ip' ? ['GUEST_RATE_LIMITED'] : [];
+      const allowed = [];
       if (Object.keys(errors).some(code => !allowed.includes(code))) throw Error(`Unexpected responses in ${name}: ${JSON.stringify(errors)}`);
     }
     const cookies = [];
@@ -164,6 +164,7 @@ async function main() {
     }
     await scenario('guest_browse_50', () => Promise.all(guests.map(async (cookie, i) => { await sleep(i * 20); for (let n = 0; n < 5; n++) { await request('/api/guest/family', undefined, cookie, ipFor(i), data => data.persons.length === 100); if (n < 4) await sleep(1000); } })));
     await scenario('login_burst_50', () => Promise.all(meta.accounts.map((_, i) => login(i))));
+    await scenario('login_burst_50_same_ip', () => Promise.all(meta.accounts.map(account => request('/api/auth/login', { phone: account.phone, password: meta.password, remember: true }, undefined, '198.18.1.1'))));
     await scenario('login_spread_50_over_10_seconds', () => Promise.all(meta.accounts.map(async (_, i) => { await sleep(i * 200); await login(i); })));
     await scenario('guest_entry_50_same_ip', () => Promise.all(meta.accounts.map(() => request('/api/guest/enter', { familyName: '四代百人验收家庭' }, undefined, '198.18.1.1'))));
     const assets = path.join(ROOT, 'frontend/dist/assets');

@@ -1084,6 +1084,10 @@ test("authentication rate limits persist across restart", async (t) => {
     { now: () => Date.UTC(2026, 9, 4) },
   );
   await f.register();
+  await f.request("/api/auth/login", {
+    phone: "13812340000",
+    password: "wrong",
+  });
   assert.equal(
     (
       await f.request("/api/auth/login", {
@@ -1106,7 +1110,7 @@ test("forwarded addresses are ignored unless proxy trust is explicitly enabled",
   const f = await fixture(t, { authIpLimit: 1 });
   const first = await f.request(
     "/api/auth/register",
-    { phone: "13812340000", password: PASSWORD, inviteToken: await f.invite() },
+    { phone: "13812340000", password: PASSWORD },
     undefined,
     { headers: { "X-Forwarded-For": "198.51.100.1" } },
   );
@@ -1116,24 +1120,19 @@ test("forwarded addresses are ignored unless proxy trust is explicitly enabled",
     undefined,
     { headers: { "X-Forwarded-For": "198.51.100.2" } },
   );
-  assert.equal(first.status, 200);
+  assert.equal(first.status, 403);
   assert.equal(next.status, 429);
 });
 
 test("one trusted proxy isolates client IP limits and ignores spoofed leftmost entries", async (t) => {
   const f = await fixture(t, { authIpLimit: 1, trustProxyHops: 1 });
   const request = async (phone, chain) =>
-    f.request(
-      "/api/auth/register",
-      { phone, password: PASSWORD, inviteToken: await f.invite() },
-      undefined,
-      {
-        headers: { "X-Forwarded-For": chain },
-      },
-    );
+    f.request("/api/auth/register", { phone, password: PASSWORD }, undefined, {
+      headers: { "X-Forwarded-For": chain },
+    });
   assert.equal(
     (await request("13812340000", "203.0.113.50, 198.51.100.1")).status,
-    200,
+    403,
   );
   assert.equal(
     (await request("13812340001", "203.0.113.51, 198.51.100.1")).status,
@@ -1141,24 +1140,19 @@ test("one trusted proxy isolates client IP limits and ignores spoofed leftmost e
   );
   assert.equal(
     (await request("13812340002", "203.0.113.50, 198.51.100.2")).status,
-    200,
+    403,
   );
 });
 
 test("malformed forwarded IPs fall back to the socket instead of creating new buckets", async (t) => {
   const f = await fixture(t, { authIpLimit: 1, trustProxyHops: 1 });
   const request = async (phone, chain) =>
-    f.request(
-      "/api/auth/register",
-      { phone, password: PASSWORD, inviteToken: await f.invite() },
-      undefined,
-      {
-        headers: { "X-Forwarded-For": chain },
-      },
-    );
+    f.request("/api/auth/register", { phone, password: PASSWORD }, undefined, {
+      headers: { "X-Forwarded-For": chain },
+    });
   assert.equal(
     (await request("13812340000", "invalid-client-one")).status,
-    200,
+    403,
   );
   for (const chain of [
     "invalid-client-two",
@@ -1201,7 +1195,7 @@ test("phone rate limits still apply across trusted proxy client IPs", async (t) 
   const f = await fixture(t, { authPhoneLimit: 1, trustProxyHops: 1 });
   const first = await f.request(
     "/api/auth/register",
-    { phone: "13812340000", password: PASSWORD, inviteToken: await f.invite() },
+    { phone: "13812340000", password: PASSWORD },
     undefined,
     { headers: { "X-Forwarded-For": "198.51.100.1" } },
   );
@@ -1211,7 +1205,7 @@ test("phone rate limits still apply across trusted proxy client IPs", async (t) 
     undefined,
     { headers: { "X-Forwarded-For": "198.51.100.2" } },
   );
-  assert.equal(first.status, 200);
+  assert.equal(first.status, 403);
   assert.equal(second.status, 429);
 });
 
@@ -1407,7 +1401,8 @@ test("registration rechecks invitation revocation after password hashing and nev
   const invite = (
     await f.ok(owner.cookie, "invite.create", { circleId: circle.id })
   ).invite;
-  const original = f.app.auth.withPasswordWork.bind(f.app.auth);
+  const original = f.app.store.exclusive.bind(f.app.store);
+  let calls = 0;
   let release, entered;
   const started = new Promise((resolve) => {
     entered = resolve;
@@ -1415,11 +1410,13 @@ test("registration rechecks invitation revocation after password hashing and nev
   const barrier = new Promise((resolve) => {
     release = resolve;
   });
-  f.app.auth.withPasswordWork = async (work) => {
-    const result = await original(work);
-    entered();
-    await barrier;
-    return result;
+  f.app.store.exclusive = async (work) => {
+    // Reservation, invitation precheck, then post-hash account transaction.
+    if (++calls === 3) {
+      entered();
+      await barrier;
+    }
+    return original(work);
   };
   const pending = f.request("/api/auth/register", {
     phone: "13812340001",
@@ -3379,33 +3376,9 @@ test("default phone and IP budgets are shared by registration and login before e
   assert.equal(f.app.auth.hashesInFlight, 0);
 });
 
-test("hash concurrency rejects excess work briefly and always releases capacity", async (t) => {
-  const f = await fixture(t);
-  const releases = [];
-  const pending = Array.from({ length: 4 }, () =>
-    f.app.auth.withPasswordWork(
-      () => new Promise((resolve) => releases.push(resolve)),
-    ),
-  );
-  try {
-    const blocked = await f.request("/api/auth/login", {
-      phone: "13812340000",
-      password: "wrong",
-    });
-    assert.equal(blocked.status, 429);
-    assert.equal(blocked.headers.get("retry-after"), "2");
-    assert.equal(blocked.json.error.retryAfterSeconds, 2);
-  } finally {
-    releases.forEach((resolve) => resolve());
-    await Promise.all(pending);
-  }
-  assert.equal(f.app.auth.hashesInFlight, 0);
-  await assert.rejects(
-    f.app.auth.withPasswordWork(() =>
-      Promise.reject(new Error("test failure")),
-    ),
-  );
-  assert.equal(f.app.auth.hashesInFlight, 0);
+test("successful authentication refunds only its own attempt and does not consume shared Wi-Fi budgets", async (t) => {
+  const f = await fixture(t, { authPhoneLimit: 2, authIpLimit: 3 });
+  await f.register();
   assert.equal(
     (
       await f.request("/api/auth/login", {
@@ -3414,5 +3387,60 @@ test("hash concurrency rejects excess work briefly and always releases capacity"
       })
     ).status,
     401,
+  );
+  for (let i = 0; i < 5; i++) {
+    assert.equal(
+      (
+        await f.request("/api/auth/login", {
+          phone: "13812340000",
+          password: PASSWORD,
+        })
+      ).status,
+      200,
+    );
+  }
+  await f.restart();
+  assert.equal(
+    (
+      await f.request("/api/auth/login", {
+        phone: "13812340000",
+        password: "wrong",
+      })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await f.request("/api/auth/login", {
+        phone: "13812340000",
+        password: PASSWORD,
+      })
+    ).status,
+    429,
+  );
+});
+
+test("successful guest lookups share Wi-Fi freely but do not erase failed guesses", async (t) => {
+  const f = await fixture(t, { guestIpLimit: 2 });
+  await f.invite();
+  assert.equal(
+    (await f.request("/api/guest/enter", { familyName: "错误名称" })).status,
+    404,
+  );
+  const results = await Promise.all(
+    Array.from({ length: 50 }, () =>
+      f.request("/api/guest/enter", { familyName: "测试初始化家庭" }),
+    ),
+  );
+  assert.ok(results.every((r) => r.status === 200));
+  await f.restart();
+  assert.equal(
+    (await f.request("/api/guest/enter", { familyName: "错误名称" })).status,
+    404,
+  );
+  assert.equal(
+    (await f.request("/api/guest/enter", { familyName: "测试初始化家庭" }))
+      .status,
+    429,
   );
 });

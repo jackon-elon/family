@@ -1132,6 +1132,31 @@ export function RelationEditor({
     ),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const currentPerson = data.people.find((person) => person.id === from);
+  const otherPerson = data.people.find((person) => person.id === to);
+  const choices = [
+    {
+      value: "parent",
+      label:
+        currentPerson?.gender === "male"
+          ? "爸爸"
+          : currentPerson?.gender === "female"
+            ? "妈妈"
+            : "父亲或母亲",
+    },
+    {
+      value: "child",
+      label:
+        currentPerson?.gender === "male"
+          ? "儿子"
+          : currentPerson?.gender === "female"
+            ? "女儿"
+            : "儿子或女儿",
+    },
+    { value: "spouse", label: "配偶" },
+    { value: "sibling", label: "兄弟姐妹" },
+  ] as const;
+  const relationLabel = choices.find((choice) => choice.value === type)?.label;
   return (
     <Modal
       title={
@@ -1171,52 +1196,70 @@ export function RelationEditor({
           }
         }}
       >
-        <fieldset disabled={busy}>
+        <fieldset disabled={busy} className="relation-editor-fields">
+          {(initialPersonId || relation) && currentPerson ? (
+            <div className="relation-current-person">
+              <Avatar person={currentPerson} />
+              <div>
+                <span className="hint">正在为这位家人补关系</span>
+                <strong>{currentPerson.name}</strong>
+              </div>
+            </div>
+          ) : (
+            <PersonSelect
+              people={data.people}
+              label="为谁添加关系"
+              value={from}
+              onChange={(id) => {
+                setFrom(id);
+                setType("");
+              }}
+              excludeId={to}
+            />
+          )}
           <PersonSelect
-            people={data.people}
-            label="这位家人"
-            value={from}
-            onChange={setFrom}
-            excludeId={to}
-          />
-          <label>
-            是下面这位家人的
-            <select
-              required
-              value={type}
-              onChange={(e) => setType(e.target.value as typeof type)}
-            >
-              <option value="">请选择关系</option>
-              <option value="parent">父母</option>
-              <option value="child">子女</option>
-              <option value="spouse">配偶</option>
-              <option value="sibling">兄弟姐妹</option>
-            </select>
-          </label>
-          <PersonSelect
-            people={data.people}
-            label="关系对象"
+            people={data.people.filter((person) => person.id !== from)}
+            label="1. 选一位已有家人"
+            searchLabel="按姓名查找家人"
             value={to}
-            onChange={setTo}
-            excludeId={from}
+            onChange={(id) => {
+              setTo(id);
+              setType("");
+            }}
           />
+          {currentPerson && otherPerson ? (
+            <fieldset className="relation-options">
+              <legend>
+                2. {currentPerson.name}是{otherPerson.name}的谁？
+              </legend>
+              <div className="relation-option-grid">
+                {choices.map((choice) => (
+                  <label
+                    key={choice.value}
+                    className={type === choice.value ? "selected" : ""}
+                  >
+                    <input
+                      type="radio"
+                      name="family-relationship"
+                      value={choice.value}
+                      checked={type === choice.value}
+                      onChange={() => setType(choice.value)}
+                      required
+                    />
+                    {choice.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : (
+            <p className="hint">选好家人后，再选择两人的关系。</p>
+          )}
         </fieldset>
         {from && to && type && (
-          <p className="relation-preview">
-            {data.people.find((p) => p.id === from)?.name} 是{" "}
-            {data.people.find((p) => p.id === to)?.name} 的{" "}
-            {type === "parent"
-              ? "父母"
-              : type === "child"
-                ? "子女"
-                : type === "spouse"
-                  ? "配偶"
-                  : "兄弟姐妹"}
+          <p className="relation-preview relation-editor-preview" role="status">
+            {currentPerson?.name} 是 {otherPerson?.name} 的 {relationLabel}
           </p>
         )}
-        <p className="hint">
-          父亲、母亲根据资料性别区分，长幼根据出生日期计算。系统会检查循环与矛盾关系。
-        </p>
         <Alert message={error} />
         <button
           className="button primary full"

@@ -207,10 +207,45 @@ test("relationship shortcut preselects the intended person and requires an expli
       async onSaved() {},
     }),
   );
-  assert.match(html, /value="existing" selected=""/);
+  assert.match(html, /正在为这位家人补关系/);
+  assert.match(html, /<strong>李青<\/strong>/);
+  assert.equal((html.match(/<select/g) || []).length, 1);
+  assert.doesNotMatch(html, /value="existing"/);
   assert.ok(html.includes("补充亲属关系"));
-  assert.ok(html.includes('value="child"'));
-  assert.ok(html.includes("请选择关系"));
+  assert.ok(html.includes("1. 选一位已有家人"));
+  assert.ok(html.includes("选好家人后，再选择两人的关系"));
+  assert.match(html, /disabled="">保存关系/);
+});
+
+test("editing a relationship fixes its subject and states direction using the subject's gender", () => {
+  for (const [gender, parent, child] of [
+    ["male", "爸爸", "儿子"],
+    ["female", "妈妈", "女儿"],
+    ["unknown", "父亲或母亲", "儿子或女儿"],
+  ]) {
+    const html = renderToStaticMarkup(
+      React.createElement(RelationEditor, {
+        data: {
+          circle: { id: "family" },
+          people: [
+            { ...person, gender },
+            { ...person, id: "other", name: "小林" },
+          ],
+        },
+        relation: { id: "edge", from: person.id, to: "other", type: "parent" },
+        onClose() {},
+        async onSaved() {},
+      }),
+    );
+    assert.equal((html.match(/<select/g) || []).length, 1);
+    assert.match(html, /李青是小林的谁？/);
+    assert.ok(html.includes(`李青 是 小林 的 ${parent}`));
+    assert.ok(html.includes(child));
+    assert.match(
+      html,
+      /type="radio"[^>]*checked="" value="parent"/,
+    );
+  }
 });
 
 test("child and parent choices preserve the correct stored direction and reject empty or self links", () => {

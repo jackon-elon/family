@@ -1598,6 +1598,68 @@ form fieldset > label + label {
   text-align: center;
   font-size: 14px;
 }
+.relation-editor-fields {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.relation-current-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #f5f2eb;
+}
+.relation-current-person strong {
+  display: block;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+.relation-current-person .hint {
+  display: block;
+  margin: 0 0 4px;
+}
+.relation-options legend {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+.relation-option-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.relation-option-grid label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 10px;
+  border: 1px solid #d6d6cb;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 17px;
+}
+.relation-option-grid label.selected {
+  border-color: #647b50;
+  background: #edf3e5;
+  color: #405a2d;
+}
+.relation-option-grid input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: none;
+  accent-color: #647b50;
+}
+.relation-editor-preview {
+  font-size: 18px;
+  color: #405a2d;
+  overflow-wrap: anywhere;
+}
 .invite-panel .soft-note {
   margin-bottom: 23px;
 }

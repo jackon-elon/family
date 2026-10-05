@@ -9,12 +9,14 @@ export default function PersonSelect({
   value,
   onChange,
   excludeId,
+  searchLabel,
 }: {
   people: PersonView[];
   label: string;
   value: string;
   onChange: (id: string) => void;
   excludeId?: string;
+  searchLabel?: string;
 }) {
   const [query, setQuery] = useState("");
   const matches = people.filter(
@@ -32,7 +34,7 @@ export default function PersonSelect({
     <div className="person-select">
       {people.length > 12 && (
         <label>
-          查找{label}
+          {searchLabel || `查找${label}`}
           <input
             type="search"
             value={query}
